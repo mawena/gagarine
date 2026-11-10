@@ -4,7 +4,7 @@ Hash: SHA512
 Architectures: all amd64
 Codename: stable
 Components: main
-Date: Tue, 10 Nov 2026 16:27:05 +0000
+Date: Tue, 10 Nov 2026 16:27:12 +0000
 Description: Gagarine, garde-RAM Linux
 Label: Gagarine
 Origin: Gagarine
@@ -31,8 +31,8 @@ SHA512:
  1b46b9b08d5b338be9d732a1724795b2eab63daffde377218727c90857b79fe6a47bceed495117fcde60f7339812ef75ef4c69f82dd79fb69b6cbf8006b521f2               20 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQT+ZrWpAMvo6/uPsHn8p+jgxVE7kwUCavNF2QAKCRD8p+jgxVE7
-k3d2AP9tqJ3Z0vxXHe8Y4+M34zWXGbh1hmaCB7Jb9mtFBvWjcgEAk3CxkdaVG3o0
-n7lYnWOBIbTP1A4RHrBb/KpJNpFcpA0=
-=QNg9
+iHUEARYKAB0WIQT+ZrWpAMvo6/uPsHn8p+jgxVE7kwUCavNF4AAKCRD8p+jgxVE7
+k2gVAQDAPtuFhdNNVQFqzzDGu34bNobQlJKKiutKIMFojZL8oAD/UCWQEkJyROH0
+2zm2BHhz3xHbCz8rttUPPSQxfl5UDAY=
+=tOIT
 -----END PGP SIGNATURE-----
