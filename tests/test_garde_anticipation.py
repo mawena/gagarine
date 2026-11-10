@@ -21,7 +21,8 @@ class BancAnticipation(Banc):
     def grossir(self, n, pct, vitesse_mo=100, pid=20, nom='glouton', depart=1000):
         """n secondes pendant lesquelles `pid` prend `vitesse_mo` Mo par seconde, la RAM restant à pct %."""
         for i in range(n):
-            self.s.ajouter(pid, nom, depart + i * vitesse_mo)
+            etat = self.s.procs[pid].etat if pid in self.s.procs else 'S'   # un programme figé reste figé
+            self.s.ajouter(pid, nom, depart + i * vitesse_mo, etat=etat)
             self.s.pct = pct
             self.g.tour()
             self.s.avancer()
