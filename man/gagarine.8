@@ -7,12 +7,27 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .IR FICHIER ]
 .br
 .B gagarine etat
+.RB [ \-\-json ]
 .br
 .B gagarine reprendre
 .I PID
 .br
 .B gagarine arreter
 .I PID
+.br
+.B gagarine journal
+.RB [ \-n
+.IR N ]
+.RB [ \-\-json ]
+.br
+.B gagarine reglages
+.RB [ \-\-json ]
+.br
+.B gagarine reglages \-\-ecrire
+.IR CLE = VALEUR\ ...
+.br
+.B gagarine service
+.IR demarrer | arreter | redemarrer | activer | desactiver
 .br
 .B gagarine essai
 .br
@@ -48,14 +63,38 @@ est saturé.
 .BR surveiller " [" \-\-config " \fIFICHIER\fR]"
 Lance le démon de surveillance (c'est ce que fait le service). Sans \fB\-\-config\fR, lit \fI/etc/gagarine.conf\fR.
 .TP
-.B etat
-Affiche la RAM utilisée, l'état du service, les programmes figés et les derniers événements.
+.BR etat " [" \-\-json ]
+Affiche la RAM utilisée, l'état du service, les programmes figés et les derniers événements. Avec \fB\-\-json\fR, écrit
+un seul objet JSON (UTF\-8) : version, date, RAM, zones de swap (dont zram), réglages en vigueur, fichier de réglages,
+état du service (\fBsystemctl is\-active\fR) et son activation au démarrage, dossier d'état, programmes figés et les
+dix programmes qui prennent le plus de mémoire (RAM + swap). Les clés ne disparaissent jamais d'une version à l'autre.
 .TP
 .BI reprendre " PID"
 Relance un programme figé. Il reste bridé.
 .TP
 .BI arreter " PID"
 Arrête un programme figé.
+.TP
+.BR journal " [" \-n " \fIN\fR] [" \-\-json ]
+Affiche les \fIN\fR derniers événements (50 par défaut), triés par date, fusionnés depuis le journal du service
+(\fI/var/lib/gagarine/evenements.jsonl\fR), celui de l'utilisateur (\fI~/.local/state/gagarine/evenements.jsonl\fR) et
+l'ancien journal de file\-attente (\fI~/.local/state/file\-attente/evenements.jsonl\fR). Un fichier illisible ou une
+ligne invalide est ignoré. Avec \fB\-\-json\fR : \fB{"evenements": [...]}\fR, chaque événement tel qu'il a été écrit.
+.TP
+.BR reglages " [" \-\-json ]
+Affiche les réglages en vigueur et le fichier lu (en JSON : \fB{"fichier": ..., "reglages": {...}}\fR).
+.TP
+.BI reglages " " \-\-ecrire " CLE=VALEUR" "\fR [\fICLE=VALEUR\fR...]"
+Modifie \fI/etc/gagarine.conf\fR (administrateur seulement, sinon code 1). Chaque valeur est validée avec les mêmes règles
+que la lecture ; une clé inconnue ou une valeur invalide refuse l'ensemble (code 2, rien n'est écrit). Le fichier est
+modifié sur place : commentaires et ordre sont gardés, la ligne \fBcle = ...\fR de la section \fB[gagarine]\fR est
+remplacée, sinon ajoutée à la fin de la section ; l'écriture est atomique. Le service est ensuite rechargé
+(\fBsystemctl reload gagarine\fR) s'il tourne.
+.TP
+.BI service " ACTION"
+Administrateur seulement. \fBdemarrer\fR, \fBarreter\fR, \fBredemarrer\fR, \fBactiver\fR (démarrage avec le poste, et
+démarre maintenant) ou \fBdesactiver\fR (et arrête) : \fBsystemctl\fR \fIstart|stop|restart|enable \-\-now|disable
+\-\-now\fR \fBgagarine\fR.
 .TP
 .B essai
 Auto\-test sans risque : un programme d'essai grossit ; il doit être figé, rangé dans le swap puis arrêté. Un verdict est
@@ -68,7 +107,8 @@ Affiche « gagarine 1.0.0 ».
 Affiche l'aide.
 .SH RÉGLAGES
 Fichier \fI/etc/gagarine.conf\fR, au format INI, section \fB[gagarine]\fR. Il est conservé aux mises à jour du paquet.
-Le service doit être redémarré après une modification (\fBsystemctl restart gagarine\fR).
+Le service relit ses réglages sur le signal SIGHUP, sans perdre son état (programmes figés, historique) : après une
+modification à la main, \fBsystemctl reload gagarine\fR suffit (\fBgagarine reglages \-\-ecrire\fR le fait seul).
 .TP
 .B seuil
 Pourcentage de RAM utilisée qui déclenche l'action (95).
@@ -132,6 +172,15 @@ journalctl \-u gagarine \-f
 .fi
 .RE
 .PP
+Changer le seuil et recharger le service d'un coup :
+.PP
+.RS
+.nf
+sudo gagarine reglages \-\-ecrire seuil=92
+gagarine journal \-n 20
+.fi
+.RE
+.PP
 Reprendre un programme figé (processus 4242) :
 .PP
 .RS
@@ -141,7 +190,7 @@ sudo gagarine reprendre 4242
 .RE
 .PP
 Protéger un programme de plus : dans \fI/etc/gagarine.conf\fR, \fBproteges=^(mon\-rendu|calcul.*)$\fR, puis
-\fBsudo systemctl restart gagarine\fR.
+\fBsudo systemctl reload gagarine\fR.
 .SH VOIR AUSSI
 .BR systemd\-oomd (8),
 .BR earlyoom (1),

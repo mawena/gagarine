@@ -1,3 +1,4 @@
 bin/gagarine usr/bin
+gagarine/*.py usr/share/gagarine/gagarine
 etc/gagarine.conf etc
 systemd/gagarine.service usr/lib/systemd/system
