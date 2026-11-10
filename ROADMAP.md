@@ -48,11 +48,11 @@ Il reprend le garde-RAM écrit le 10/11/2026 pour le poste, après deux redémar
 
 Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 
-- [ ] Paquet Python `gagarine/` (un module par rôle), lanceur `bin/gagarine`, tests adaptés, comportement inchangé
-- [ ] `gagarine etat --json`, `gagarine journal [-n N] [--json]`
-- [ ] `gagarine reglages [--json]` et `--ecrire CLE=VALEUR` (sur place, commentaires gardés), rechargement sur SIGHUP
-- [ ] `gagarine service demarrer|arreter|redemarrer|activer|desactiver`
-- [ ] Notifications rattachées à l'application (nom, icône, entrée de bureau)
+- [x] Paquet Python `gagarine/` (un module par rôle), lanceur `bin/gagarine`, tests adaptés, comportement inchangé
+- [x] `gagarine etat --json`, `gagarine journal [-n N] [--json]`
+- [x] `gagarine reglages [--json]` et `--ecrire CLE=VALEUR` (sur place, commentaires gardés), rechargement sur SIGHUP
+- [x] `gagarine service demarrer|arreter|redemarrer|activer|desactiver`
+- [x] Notifications rattachées à l'application (nom, icône, entrée de bureau)
 
 ## Phase 8 — File d'attente des travaux lourds
 
@@ -78,6 +78,7 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 ## Phase 11 — Paquet et documentation 1.1.0
 
 - [ ] Paquet : nouveaux fichiers, dépendances recommandées, validation du `.desktop` et du metainfo, lintian
+- [ ] Swap compressé en RAM (zram) et réglages du noyau fournis par le paquet, appliqués à l'installation
 - [ ] README (file d'attente, interface, indicateur, captures), pages de manuel, CHANGELOG
 - [ ] Release git flow 1.1.0, release GitHub avec le `.deb`, « About » GitHub à jour
 
@@ -85,3 +86,4 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 
 - [ ] Installation du `.deb` 1.1.0 (par l'utilisateur)
 - [ ] `~/.local/bin/file-attente` renvoie vers `gagarine file` ; hook et consignes des sessions Claude à jour
+- [ ] Plus rien d'éparpillé hors de Gagarine : ancien garde-RAM, script et réglages zram de `/etc` (remplacés par ceux du paquet) retirés
