@@ -1,0 +1,903 @@
+#!/usr/bin/python3
+"""Gagarine : garde-RAM qui empêche la mémoire vive du poste de se remplir au-delà de 95 %.
+
+Le 02/11/2026 et le 10/11/2026, un programme qui grossissait sans fin a rempli la RAM, puis le swap : le poste s'est
+figé plusieurs minutes et il a fallu le redémarrer. Gagarine mesure la RAM chaque seconde (quatre fois par seconde au-delà
+de 85 %). Quand elle atteint 95 % :
+  1. il FIGE (SIGSTOP) le programme qui grossit le plus vite : ce programme ne peut plus rien demander ;
+  2. il le BRIDE (repris, il ne pourra plus grossir que de 256 Mo) et le RANGE dans le swap pour rendre la RAM aux autres
+     programmes ; une notification propose de le reprendre ou de l'arrêter ;
+  3. si la RAM n'est pas redescendue sous 95 % une fois ce rangement fini (10 s au moins, 60 s au plus), ou si elle touche
+     98 %, il l'ARRÊTE (SIGKILL).
+Un programme figé depuis 10 min sans décision est arrêté. Les programmes du système et du bureau (systemd, gnome-shell,
+sshd, dbus…) ne sont jamais touchés.
+
+Deux modes, choisis selon les privilèges :
+  - service système (root, mode normal du paquet) : tous les processus sont surveillés ; le rangement dans le swap vise le
+    seul programme figé (process_madvise) ; les notifications vont à chaque session graphique ouverte ;
+  - sans privilèges : seuls les processus de l'utilisateur sont surveillés ; le rangement passe par memory.reclaim du
+    groupe d'origine du programme.
+
+Chaque action est notée dans evenements.jsonl (une ligne JSON par événement) du dossier d'état, que les outils du poste lisent.
+"""
+import ctypes
+import json
+import os
+import pwd
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from collections import deque, namedtuple
+from configparser import ConfigParser, Error as ErreurConfig
+from dataclasses import dataclass, fields
+from pathlib import Path
+
+VERSION = "1.0.0"
+
+Mo = 2 ** 20
+CROISSANCE_MIN = 64 * Mo   # en dessous, un programme n'est pas considéré comme « en train de grossir »
+ENCORE_EN_RAM = 256 * Mo   # un programme figé qui garde plus que ça en RAM n'a pas pu partir dans le swap
+FENETRES = (10, 60)        # secondes sur lesquelles on mesure qui grossit
+TAILLE_JOURNAL = 512 * 1024
+CONFIG_SYSTEME = '/etc/gagarine.conf'
+ETAT_SYSTEME = '/var/lib/gagarine'
+MADV_PAGEOUT = 21
+SYS_PIDFD_OPEN = 434
+SYS_PROCESS_MADVISE = 440
+PAQUET_IOVEC = 1024        # limite du noyau (UIO_MAXIOV)
+
+# Programmes jamais figés ni arrêtés. Le noyau tronque les noms à 15 caractères dans /proc/PID/status.
+PROTEGES_INTEGRES = (
+    r'gnome-shell', r'gnome-session.*', r'gnome-terminal-.*', r'Xorg', r'Xwayland', r'gdm.*', r'systemd.*',
+    r'\(sd-pam\)', r'systemd-journal.*', r'dbus.*', r'pipewire.*', r'wireplumber', r'pulseaudio', r'gsd-.*', r'ibus-.*',
+    r'at-spi.*', r'xdg-.*', r'gvfs.*', r'mutter.*', r'garde-ram', r'gagarine', r'busctl', r'notify-send', r'polkit.*',
+    r'evolution-.*', r'goa-.*', r'tracker-.*', r'NetworkManager', r'wpa_supplicant', r'sshd', r'cron', r'rsyslogd',
+    r'udisksd', r'upowerd', r'accounts-daemon', r'snapd', r'dpkg', r'apt', r'apt-get', r'unattended-upgr',
+    r'packagekitd', r'containerd', r'dockerd', r'login', r'agetty', r'runuser',
+)
+
+
+# ======================================================================================================================
+# Réglages
+# ======================================================================================================================
+@dataclass
+class Reglages:
+    seuil: float = 95            # % de RAM à partir duquel on fige un programme
+    urgence: float = 98          # % de RAM à partir duquel on arrête sans attendre
+    vigilance: float = 85        # % à partir duquel on mesure quatre fois par seconde
+    grace: float = 10            # secondes laissées après la pause avant d'arrêter si la RAM ne baisse pas
+    vidage_max: float = 60       # secondes au plus tant que le rangement dans le swap n'est pas fini
+    delai_fige: float = 600      # secondes figé sans décision avant l'arrêt
+    reste_si_repris: float = 256  # Mo qu'un programme repris peut encore demander
+    notifications: bool = True
+    proteges: str = ''           # expression régulière de noms à protéger en plus de la liste intégrée
+    filtre: str = ''             # essais : ne viser que les programmes dont la ligne de commande correspond
+
+
+def booleen(texte):
+    t = str(texte).strip().lower()
+    if t in ('oui', 'o', 'yes', 'y', 'true', '1', 'on', 'vrai'):
+        return True
+    if t in ('non', 'n', 'no', 'false', '0', 'off', 'faux'):
+        return False
+    raise ValueError(f'« {texte} » n\'est ni oui ni non')
+
+
+def chemin_config(arg=None, env=None):
+    """--config, puis GAGARINE_CONFIG, puis /etc/gagarine.conf."""
+    env = os.environ if env is None else env
+    return arg or env.get('GAGARINE_CONFIG') or CONFIG_SYSTEME
+
+
+def charger_reglages(arg=None, env=None):
+    """Retourne (Reglages, avertissements). Priorité : variables GAGARINE_* > fichier > valeurs par défaut.
+    Une valeur invalide est ignorée (avec un avertissement) : le service ne doit pas tomber sur une faute de frappe."""
+    env = os.environ if env is None else env
+    r = Reglages()
+    avertissements = []
+    chemin = chemin_config(arg, env)
+    brut = {}
+    cp = ConfigParser(interpolation=None)
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            cp.read_file(f)
+        if cp.has_section('gagarine'):
+            brut = dict(cp['gagarine'])
+    except FileNotFoundError:
+        if arg or env.get('GAGARINE_CONFIG'):
+            avertissements.append(f'fichier de réglages absent : {chemin} (valeurs par défaut)')
+    except (OSError, ErreurConfig, UnicodeDecodeError) as e:
+        avertissements.append(f'fichier de réglages illisible : {chemin} ({e})')
+    for nom, valeur in brut.items():
+        if nom not in {c.name for c in fields(r)}:
+            avertissements.append(f'clé inconnue ignorée : {nom}')
+    for nom, valeur in ((n, env[f'GAGARINE_{n.upper()}']) for n in (c.name for c in fields(r))
+                        if f'GAGARINE_{n.upper()}' in env):
+        brut[nom] = valeur   # les variables passent devant le fichier
+    for c in fields(r):
+        if c.name not in brut:
+            continue
+        valeur = brut[c.name].strip()
+        try:
+            if c.type is bool:
+                v = booleen(valeur)
+            elif c.type is float:
+                v = float(valeur)
+                if not 0 < v <= (100 if c.name in ('seuil', 'urgence', 'vigilance') else 10 ** 9):
+                    raise ValueError('hors limites')
+            else:
+                v = valeur
+                if c.name in ('proteges', 'filtre') and v:
+                    re.compile(v)
+        except (ValueError, re.error) as e:
+            avertissements.append(f'réglage {c.name} invalide ({valeur!r} : {e}), valeur par défaut gardée')
+            continue
+        setattr(r, c.name, v)
+    return r, avertissements
+
+
+def dossier_etat(env=None, euid=None, home=None):
+    """GAGARINE_ETAT, sinon /var/lib/gagarine en root, sinon ~/.local/state/gagarine."""
+    env = os.environ if env is None else env
+    euid = os.geteuid() if euid is None else euid
+    if env.get('GAGARINE_ETAT'):
+        return Path(env['GAGARINE_ETAT'])
+    if euid == 0:
+        return Path(ETAT_SYSTEME)
+    return Path(home or Path.home()) / '.local/state/gagarine'
+
+
+def dossier_etat_lecture(env=None, euid=None, home=None, lisible=os.access):
+    """Pour `etat` et les commandes de reprise : le dossier root s'il est lisible, sinon celui de l'utilisateur."""
+    env = os.environ if env is None else env
+    if env.get('GAGARINE_ETAT'):
+        return Path(env['GAGARINE_ETAT'])
+    racine = Path(ETAT_SYSTEME)
+    if lisible(racine / 'evenements.jsonl', os.R_OK) or lisible(racine / 'figes.json', os.R_OK):
+        return racine
+    return Path(home or Path.home()) / '.local/state/gagarine'
+
+
+# ======================================================================================================================
+# Lectures du système (fonctions pures ou presque : faciles à simuler)
+# ======================================================================================================================
+Proc = namedtuple('Proc', 'nom etat rss swap uid')
+
+
+def go(octets):
+    return f'{octets / 2 ** 30:.1f} Go'
+
+
+def ram_depuis_meminfo(texte):
+    """Pourcentage de RAM utilisée : 100 − MemAvailable / MemTotal (le cache récupérable compte comme libre)."""
+    m = dict(re.findall(r'^(MemTotal|MemAvailable):\s+(\d+)', texte, re.M))
+    return 100 * (1 - int(m['MemAvailable']) / int(m['MemTotal']))
+
+
+def ram_utilisee():
+    with open('/proc/meminfo') as f:
+        return ram_depuis_meminfo(f.read())
+
+
+def lire_processus(uid=None, moi=None):
+    """{pid: Proc} des processus. uid : ne garder que ceux de cet utilisateur (None = tous, mode root).
+    Sont exclus : le PID 1, le programme lui-même et les threads du noyau (PID 2 et enfants, sans mémoire propre)."""
+    moi = os.getpid() if moi is None else moi
+    res = {}
+    for p in os.listdir('/proc'):
+        if not p.isdigit() or int(p) in (1, 2, moi):
+            continue
+        try:
+            with open(f'/proc/{p}/status', 'rb') as f:
+                txt = f.read()
+        except OSError:
+            continue
+        c = dict(re.findall(rb'^(Name|State|PPid|Uid|VmRSS|VmSwap):[ \t]+([^\n]*)', txt, re.M))
+        if b'VmRSS' not in c or c.get(b'PPid') == b'2':   # zombie, thread du noyau
+            continue
+        puid = int(c[b'Uid'].split()[0])
+        if uid is not None and puid != uid:
+            continue
+        res[int(p)] = Proc(c[b'Name'].decode(errors='replace'), c[b'State'].decode()[:1],
+                           int(c[b'VmRSS'].split()[0]) * 1024, int(c.get(b'VmSwap', b'0').split()[0]) * 1024, puid)
+    return res
+
+
+def demarrage(pid):
+    """Date de démarrage du processus : distingue un programme d'un autre qui aurait repris son numéro."""
+    try:
+        s = Path(f'/proc/{pid}/stat').read_text()
+        return s[s.rindex(') ') + 2:].split()[19]
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def commande(pid):
+    try:
+        return Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0', b' ').decode(errors='replace').strip()[:300]
+    except OSError:
+        return ''
+
+
+def nom_utilisateur(uid):
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except (KeyError, OverflowError):
+        return str(uid)
+
+
+def construire_proteges(supplement=''):
+    """Expression régulière des noms protégés : liste intégrée + celle de l'utilisateur (réglage « proteges »)."""
+    motifs = list(PROTEGES_INTEGRES)
+    if supplement:
+        motifs.append(supplement)
+    return re.compile('^(?:' + '|'.join(f'(?:{m})' for m in motifs) + ')$')
+
+
+# ======================================================================================================================
+# Journal des événements
+# ======================================================================================================================
+class Journal:
+    """Une ligne JSON par événement dans evenements.jsonl (0644), renommé en .1 au-delà de 512 Ko."""
+
+    def __init__(self, dossier, heure=time.time, sortie=None, taille_max=TAILLE_JOURNAL):
+        self.dossier = Path(dossier)
+        self.fichier = self.dossier / 'evenements.jsonl'
+        self.heure = heure
+        self.sortie = sortie
+        self.taille_max = taille_max
+        self.verrou = threading.Lock()
+
+    def ecrire(self, action, **champs):
+        ev = {'date': time.strftime('%Y-%m-%dT%H:%M:%S+0000', time.gmtime(self.heure())), 'source': 'gagarine',
+              'action': action, **{k: v for k, v in champs.items() if v is not None}}
+        ligne = json.dumps(ev, ensure_ascii=False)
+        if self.sortie is not False:
+            print(ligne, file=self.sortie or sys.stdout, flush=True)
+        with self.verrou:
+            try:
+                self.dossier.mkdir(parents=True, exist_ok=True, mode=0o755)
+                if self.fichier.exists() and self.fichier.stat().st_size > self.taille_max:
+                    self.fichier.replace(self.fichier.with_suffix('.jsonl.1'))
+                fd = os.open(self.fichier, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+                try:
+                    os.fchmod(fd, 0o644)
+                    os.write(fd, (ligne + '\n').encode())
+                finally:
+                    os.close(fd)
+            except OSError:
+                pass
+        return ev
+
+
+# ======================================================================================================================
+# Actions sur le système : rangement, bridage, notifications
+# ======================================================================================================================
+class Iovec(ctypes.Structure):
+    _fields_ = [('base', ctypes.c_void_p), ('longueur', ctypes.c_size_t)]
+
+
+def zones_a_ranger(texte_maps):
+    """Zones (début, fin) de /proc/PID/maps qui valent la peine d'être rangées : privées et modifiables (tas, piles,
+    mémoire anonyme, données de bibliothèques). Les zones spéciales ([vvar], [vdso], [vsyscall]) sont ignorées."""
+    zones = []
+    for ligne in texte_maps.splitlines():
+        champs = ligne.split(None, 5)
+        if len(champs) < 5:
+            continue
+        adresses, droits = champs[0], champs[1]
+        nom = champs[5] if len(champs) > 5 else ''
+        if len(droits) < 4 or droits[1] != 'w' or droits[3] != 'p' or nom in ('[vvar]', '[vdso]', '[vsyscall]', '[vvar_vclock]'):
+            continue
+        debut, fin = (int(x, 16) for x in adresses.split('-'))
+        if fin > debut:
+            zones.append((debut, fin))
+    return zones
+
+
+def appel_systeme(numero, *args):
+    """Appel système brut par ctypes. Lève OSError en cas d'échec."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    r = libc.syscall(ctypes.c_long(numero), *args)
+    if r < 0:
+        e = ctypes.get_errno()
+        raise OSError(e, os.strerror(e))
+    return r
+
+
+def ranger_precis(pid, appel=appel_systeme, lire_maps=lambda p: Path(f'/proc/{p}/maps').read_text(),
+                  fermer=os.close):
+    """Range dans le swap les seules pages du processus (process_madvise MADV_PAGEOUT, root). Le processus doit être figé :
+    ses zones ne bougent plus. Retourne le nombre d'octets visés ; lève OSError si le noyau refuse dès le début
+    (droits, noyau trop ancien) : l'appelant revient alors à memory.reclaim."""
+    zones = zones_a_ranger(lire_maps(pid))
+    if not zones:
+        raise OSError(61, 'aucune zone à ranger')
+    pidfd = appel(SYS_PIDFD_OPEN, ctypes.c_int(pid), ctypes.c_uint(0))
+    total = 0
+    try:
+        for i in range(0, len(zones), PAQUET_IOVEC):
+            paquet = zones[i:i + PAQUET_IOVEC]
+            tableau = (Iovec * len(paquet))(*((d, f - d) for d, f in paquet))
+            try:
+                total += appel(SYS_PROCESS_MADVISE, ctypes.c_int(pidfd), ctypes.byref(tableau),
+                               ctypes.c_size_t(len(paquet)), ctypes.c_int(MADV_PAGEOUT), ctypes.c_uint(0))
+            except OSError:
+                if i == 0 and total == 0:
+                    raise    # refus dès le premier paquet : le mécanisme n'est pas utilisable
+                # sinon une zone a disparu en route ; on continue avec les paquets suivants
+    finally:
+        fermer(pidfd)
+    return total
+
+
+def cgroup_origine(pid):
+    try:
+        return Path('/sys/fs/cgroup' + Path(f'/proc/{pid}/cgroup').read_text().strip().split('::', 1)[1])
+    except (OSError, IndexError):
+        return None
+
+
+def commande_bridage(pid, cgroup, root, reste_mo, unite, nom_de_uid=nom_utilisateur):
+    """Commande busctl qui met le PID dans un scope à lui, plafonné à reste_mo, sans swap.
+    root + processus sous user@UID.service : le gestionnaire de cet utilisateur ; root + autre : le gestionnaire système ;
+    sans privilèges : celui de l'utilisateur."""
+    m = re.search(r'/user@(\d+)\.service(?:/|$)', cgroup or '')
+    if not root:
+        base = ['busctl', '--user']
+    elif m:
+        base = ['busctl', f'--machine={nom_de_uid(int(m.group(1)))}@.host', '--user']
+    else:
+        base = ['busctl']
+    return base + ['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager',
+                   'StartTransientUnit', 'ssa(sv)a(sa(sv))', unite, 'fail', '4', 'PIDs', 'au', '1', str(pid),
+                   'MemoryMax', 't', str(int(reste_mo * Mo)), 'MemorySwapMax', 't', '0',
+                   'CollectMode', 's', 'inactive-or-failed', '0']
+
+
+def sessions_graphiques(lancer):
+    """[(uid, utilisateur)] des sessions graphiques actives (x11 ou wayland), d'après loginctl.
+    `lancer(commande)` retourne la sortie texte ('' en cas d'échec)."""
+    res = []
+    for ligne in lancer(['loginctl', 'list-sessions', '--no-legend']).splitlines():
+        c = ligne.split()
+        if len(c) < 3 or not c[1].isdigit():
+            continue
+        props = dict(l.split('=', 1) for l in lancer(['loginctl', 'show-session', c[0], '-p', 'Type', '-p', 'Active']
+                                                     ).splitlines() if '=' in l)
+        if props.get('Type') in ('x11', 'wayland') and props.get('Active') == 'yes' and (int(c[1]), c[2]) not in res:
+            res.append((int(c[1]), c[2]))
+    return res
+
+
+def commandes_notification(titre, texte, avec_boutons, root, sessions):
+    """Commandes notify-send à lancer : une seule sans privilèges ; en root, une par session graphique, sous l'utilisateur
+    de la session, avec l'adresse de son bus."""
+    cmd = ['notify-send', '-a', 'Gagarine', '-u', 'critical', '-i', 'dialog-warning']
+    if avec_boutons:
+        cmd += ['-A', 'arreter=Arrêter', '-A', 'reprendre=Reprendre']
+    cmd += [titre, texte]
+    if not root:
+        return [cmd]
+    return [['runuser', '-u', nom, '--', 'env', f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus',
+             f'XDG_RUNTIME_DIR=/run/user/{uid}'] + cmd for uid, nom in sessions]
+
+
+def lancer_texte(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ''
+
+
+class Systeme:
+    """Tout ce que Garde demande au système. Les tests le remplacent par une simulation."""
+
+    def __init__(self, r, root=None):
+        self.r = r
+        self.root = (os.geteuid() == 0) if root is None else root
+        self.uid = os.getuid()
+        self.moi = os.getpid()
+
+    def ram(self):
+        return ram_utilisee()
+
+    def processus(self):
+        return lire_processus(None if self.root else self.uid, self.moi)
+
+    demarrage = staticmethod(demarrage)
+    commande = staticmethod(commande)
+    cgroup = staticmethod(cgroup_origine)
+    utilisateur = staticmethod(nom_utilisateur)
+
+    def heure(self):
+        return time.time()
+
+    def mono(self):
+        return time.monotonic()
+
+    def tuer(self, pid, sig):
+        os.kill(pid, sig)
+
+    def brider(self, pid):
+        """None si le bridage a réussi, sinon le texte de l'erreur."""
+        try:
+            cg = Path(f'/proc/{pid}/cgroup').read_text()
+        except OSError as e:
+            return str(e)
+        cmd = commande_bridage(pid, cg, self.root, self.r.reste_si_repris, f'gagarine-fige-{pid}-{int(time.time())}.scope')
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        except (OSError, subprocess.SubprocessError) as e:
+            return str(e)[:200]
+        return None if res.returncode == 0 else (res.stderr.strip()[:200] or f'code {res.returncode}')
+
+    def ranger(self, pid, rss, origine):
+        """Range le programme dans le swap : process_madvise en root, memory.reclaim du groupe d'origine sinon
+        (cgroup v2 ne déplace pas la mémoire déjà prise : c'est ce groupe-là que le noyau vide, en commençant par les pages
+        qui ne servent plus, celles du programme figé)."""
+        if self.root:
+            try:
+                return ranger_precis(pid)
+            except OSError:
+                pass
+        if origine is None:
+            return 0
+        try:   # peut échouer en partie si le swap est plein : le programme sera alors arrêté
+            (origine / 'memory.reclaim').write_text(str(rss))
+        except OSError:
+            pass
+        return 0
+
+    def notifier(self, titre, texte, pid=None, debut=None):
+        """Notification du bureau ; avec un pid, elle propose « Arrêter » et « Reprendre »."""
+        if not self.r.notifications:
+            return
+        sessions = sessions_graphiques(lancer_texte) if self.root else []
+        for cmd in commandes_notification(titre, texte, bool(pid), self.root, sessions):
+            threading.Thread(target=self._attendre_choix, args=(cmd, pid, debut), daemon=True).start()
+
+    def _attendre_choix(self, cmd, pid, debut):
+        try:
+            choix = subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
+        except OSError:
+            return
+        if pid and choix in ('arreter', 'reprendre') and demarrage(pid) == debut:
+            try:
+                self.tuer(pid, signal.SIGKILL if choix == 'arreter' else signal.SIGCONT)
+            except OSError:
+                pass
+
+
+# ======================================================================================================================
+# La surveillance : décisions prises sur des mesures, sans rien lire elle-même
+# ======================================================================================================================
+def lancer_fil(f, *args):
+    threading.Thread(target=f, args=args, daemon=True).start()
+
+
+class Garde:
+    def __init__(self, r, systeme, journal, fichier_figes, lancer=lancer_fil):
+        self.r = r
+        self.s = systeme
+        self.journal = journal
+        self.fichier_figes = Path(fichier_figes)
+        self.lancer = lancer
+        self.proteges = construire_proteges(r.proteges)
+        self.filtre = re.compile(r.filtre) if r.filtre else None
+        self.historique = {}   # pid -> deque[(instant, rss + swap)], un point par seconde
+        self.figes = self.charger_figes()
+        self.repos_jusqua = 0.0
+        self.vidage = set()    # programmes figés que le noyau est en train de ranger dans le swap
+
+    # --- programmes figés, conservés d'un redémarrage de Gagarine à l'autre ---
+    def charger_figes(self):
+        try:
+            figes = {int(k): v for k, v in json.loads(self.fichier_figes.read_text()).items()}
+        except (OSError, ValueError, AttributeError):
+            return {}
+        return {p: f for p, f in figes.items() if self.s.demarrage(p) == f['debut']}
+
+    def sauver_figes(self):
+        try:
+            self.fichier_figes.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+            tmp = self.fichier_figes.with_suffix('.tmp')
+            tmp.write_text(json.dumps(self.figes, ensure_ascii=False, indent=1))
+            os.chmod(tmp, 0o644)
+            tmp.replace(self.fichier_figes)
+        except OSError:
+            pass
+
+    def evenement(self, action, pid, nom, pct=None, **champs):
+        f = self.figes.get(pid, {})
+        champs.setdefault('commande', f.get('commande') or self.s.commande(pid) or None)
+        champs.setdefault('utilisateur', f.get('utilisateur'))
+        self.journal.ecrire(action, pid=pid, nom=nom, ram=None if pct is None else round(pct, 1), **champs)
+
+    # --- choix du coupable ---
+    def croissance(self, pid, fenetre, maintenant):
+        h = self.historique.get(pid)
+        if not h:
+            return 0
+        anciens = [m for t, m in h if maintenant - t <= fenetre]
+        return h[-1][1] - anciens[0] if anciens else 0
+
+    def est_protege(self, nom):
+        return bool(self.proteges.match(nom))
+
+    def coupable(self, procs, maintenant):
+        """Le programme qui grossit le plus vite (10 s, puis 60 s), à défaut le plus gros."""
+        candidats = [(pid, i) for pid, i in procs.items()
+                     if pid not in self.figes and i.etat not in 'TtZX' and not self.est_protege(i.nom)
+                     and (not self.filtre or self.filtre.search(self.s.commande(pid)))]
+        if not candidats:
+            return None, 0
+        for fenetre in FENETRES:
+            pid, c = max(((p, self.croissance(p, fenetre, maintenant)) for p, _ in candidats), key=lambda x: x[1])
+            if c >= CROISSANCE_MIN:
+                return pid, c
+        return max(candidats, key=lambda x: x[1].rss)[0], 0
+
+    # --- actions ---
+    def figer(self, pid, info, croissance, pct):
+        debut = self.s.demarrage(pid)
+        try:
+            self.s.tuer(pid, signal.SIGSTOP)
+        except OSError:
+            return
+        cmd = self.s.commande(pid)
+        user = self.s.utilisateur(info.uid)
+        mem = info.rss + info.swap
+        self.figes[pid] = {'debut': debut, 'nom': info.nom, 'commande': cmd, 'utilisateur': user,
+                           'depuis': self.s.heure(), 'memoire': mem}
+        self.sauver_figes()
+        vitesse = f', +{croissance / Mo:.0f} Mo en peu de temps' if croissance else ''
+        self.evenement('fige', pid, info.nom, pct, memoire=mem)
+        self.s.notifier(f'RAM à {pct:.0f} % : « {info.nom} » figé',
+                        f'{info.nom} (processus {pid}) occupait {go(mem)}{vitesse}. Il est mis en pause et rangé dans le '
+                        f'swap ; il sera arrêté si la RAM ne redescend pas. Repris, il ne pourra plus grossir.', pid, debut)
+        self.vidage.add(pid)
+        self.lancer(self.isoler, pid, debut, info.rss, info.nom)
+
+    def isoler(self, pid, debut, rss, nom='?'):
+        """Bride le programme figé puis le range dans le swap (dans un fil à part : le noyau peut y mettre du temps)."""
+        try:
+            origine = self.s.cgroup(pid)
+            erreur = self.s.brider(pid)
+            if erreur:
+                self.evenement('bridage-impossible', pid, nom, erreur=erreur)
+            if self.s.demarrage(pid) != debut:
+                return
+            self.s.ranger(pid, rss, origine)
+        finally:
+            self.vidage.discard(pid)
+
+    def arreter(self, pid, nom, raison, pct):
+        try:
+            self.s.tuer(pid, signal.SIGKILL)
+        except OSError:
+            pass
+        f = self.figes.get(pid, {})
+        self.evenement('arrete', pid, nom, pct, raison=raison, memoire=f.get('memoire'))
+        self.figes.pop(pid, None)
+        self.sauver_figes()
+        self.s.notifier(f'« {nom} » arrêté', f'{nom} (processus {pid}) a été arrêté : {raison}. Le poste reste utilisable.')
+        self.repos_jusqua = self.s.mono() + 1.5   # laisser le noyau rendre la mémoire avant de réévaluer
+
+    # --- un tour de surveillance ---
+    def tour(self):
+        r = self.r
+        maintenant = self.s.mono()
+        pct = self.s.ram()
+        procs = self.s.processus()
+        for pid, p in procs.items():
+            h = self.historique.setdefault(pid, deque())
+            if not h or maintenant - h[-1][0] >= 1:
+                h.append((maintenant, p.rss + p.swap))
+                while maintenant - h[0][0] > FENETRES[-1]:
+                    h.popleft()
+        for pid in [p for p in self.historique if p not in procs]:
+            del self.historique[pid]
+
+        changement = False
+        for pid, f in list(self.figes.items()):   # programmes repris ou terminés depuis
+            if pid not in procs or self.s.demarrage(pid) != f['debut']:
+                del self.figes[pid]
+                changement = True
+            elif procs[pid].etat in 'RS' and self.s.heure() - f['depuis'] > 2:   # « D » : la pause n'a pas encore pris
+                self.evenement('repris', pid, f['nom'], pct, commande=f.get('commande'), utilisateur=f.get('utilisateur'))
+                del self.figes[pid]
+                changement = True
+        if changement:
+            self.sauver_figes()
+
+        for pid, f in list(self.figes.items()):
+            if self.s.heure() - f['depuis'] > r.delai_fige:
+                duree = f'{r.delai_fige / 60:.0f} min' if r.delai_fige >= 60 else f'{r.delai_fige:.0f} s'
+                self.arreter(pid, f['nom'], f'figé depuis {duree} sans décision', pct)
+
+        if maintenant < self.repos_jusqua:
+            return pct
+        en_ram = sorted(((procs[p].rss, p) for p in self.figes if p in procs and procs[p].rss > ENCORE_EN_RAM),
+                        reverse=True)
+        if pct >= r.urgence:
+            pid = en_ram[0][1] if en_ram else self.coupable(procs, maintenant)[0]
+            if pid:
+                self.arreter(pid, procs[pid].nom, f'la RAM a atteint {pct:.0f} %', pct)
+        elif pct >= r.seuil:
+            if any(self.s.heure() - f['depuis'] < (r.vidage_max if p in self.vidage else r.grace)
+                   for p, f in self.figes.items()):
+                return pct   # un programme vient d'être figé : on laisse le temps au swap de rendre la RAM
+            if en_ram:
+                pid = en_ram[0][1]
+                self.arreter(pid, procs[pid].nom,
+                             f'la RAM est restée au-dessus de {r.seuil:.0f} % malgré la pause', pct)
+            else:
+                pid, c = self.coupable(procs, maintenant)
+                if pid:
+                    self.figer(pid, procs[pid], c, pct)
+        return pct
+
+    def boucle(self, dormir=time.sleep):
+        while True:
+            try:
+                pct = self.tour()
+            except Exception as e:   # Gagarine ne doit jamais s'arrêter sur une erreur
+                print(f'erreur : {e!r}', file=sys.stderr, flush=True)
+                pct = 100
+            dormir(0.25 if pct >= self.r.vigilance else 1.0)
+
+
+def verrouiller_en_ram():
+    """Garde Gagarine en RAM : il doit répondre même quand le poste échange avec le swap."""
+    try:
+        ctypes.CDLL('libc.so.6', use_errno=True).mlockall(1 | 2 | 4)   # MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT
+    except OSError:
+        pass
+
+
+def surveiller(arg_config=None):
+    r, avertissements = charger_reglages(arg_config)
+    for a in avertissements:
+        print(f'avertissement : {a}', file=sys.stderr, flush=True)
+    dossier = dossier_etat()
+    systeme = Systeme(r)
+    garde = Garde(r, systeme, Journal(dossier), dossier / 'figes.json')
+    verrouiller_en_ram()
+    threading.stack_size(256 * 1024)
+    garde.journal.ecrire('demarrage', pid=os.getpid(), nom='gagarine', seuil=r.seuil, urgence=r.urgence,
+                         mode='root' if systeme.root else 'utilisateur', figes=list(garde.figes),
+                         version=VERSION)
+    garde.boucle()
+
+
+# ======================================================================================================================
+# Commandes : etat, reprendre, arreter
+# ======================================================================================================================
+def etat_service(lancer=lancer_texte, root=None):
+    root = (os.geteuid() == 0) if root is None else root
+    res = [('gagarine', lancer(['systemctl', 'is-active', 'gagarine']).strip() or '?')]
+    if not root:
+        res.append(('garde-ram (service utilisateur)', lancer(['systemctl', '--user', 'is-active', 'garde-ram']).strip() or '?'))
+    return res
+
+
+def lire_figes(dossier):
+    try:
+        figes = json.loads((Path(dossier) / 'figes.json').read_text())
+    except (OSError, ValueError):
+        return {}
+    return {int(p): f for p, f in figes.items() if demarrage(int(p)) == f['debut']}
+
+
+def etat(arg_config=None):
+    r, _ = charger_reglages(arg_config)
+    dossier = dossier_etat_lecture()
+    print(f'RAM utilisée : {ram_utilisee():.0f} % (seuil {r.seuil:.0f} %, urgence {r.urgence:.0f} %)')
+    for nom, actif in etat_service():
+        print(f'Service {nom} : {actif}')
+    print(f'Dossier d\'état : {dossier}')
+    figes = lire_figes(dossier)
+    for p, f in figes.items():
+        print(f'  figé : {f["nom"]} (processus {p}, {go(f["memoire"])}, depuis '
+              f'{time.strftime("%H:%M:%S", time.localtime(f["depuis"]))}) — {f["commande"][:120]}')
+    if not figes:
+        print('Aucun programme figé.')
+    try:
+        lignes = (dossier / 'evenements.jsonl').read_text().splitlines()[-8:]
+    except OSError:
+        lignes = []
+    if lignes:
+        print('Derniers événements :')
+        for l in lignes:
+            try:
+                e = json.loads(l)
+            except ValueError:
+                continue
+            if e.get('action') == 'demarrage':
+                continue
+            print(f'  {e["date"][:19].replace("T", " ")}  {e["action"]:<10} {e.get("nom", "")} {e.get("pid", "")}'
+                  f' {e.get("raison", "")}'.rstrip())
+
+
+def reprendre_ou_arreter(action, pid):
+    """Reprend (SIGCONT) ou arrête (SIGKILL) un programme que Gagarine a figé : jamais un autre."""
+    if pid not in lire_figes(dossier_etat_lecture()):
+        sys.exit(f'processus {pid} : ne figure pas parmi les programmes figés par Gagarine (voir « gagarine etat »)')
+    try:
+        os.kill(pid, signal.SIGCONT if action == 'reprendre' else signal.SIGKILL)
+    except OSError as e:
+        sys.exit(f'processus {pid} : {e.strerror}')
+    print(f'processus {pid} {"repris (il reste bridé à sa taille)" if action == "reprendre" else "arrêté"}')
+
+
+# ======================================================================================================================
+# Commande essai : auto-test réel, avec un moniteur à part qui ne peut viser que le programme d'essai
+# ======================================================================================================================
+PROGRAMME_ESSAI = ('import time\nb = []\nfor _ in range(40):\n    b.append(bytearray(b"\\xa5") * (50 * 2 ** 20))\n'
+                   '    time.sleep(0.1)\ntime.sleep(120)\n')
+
+
+def reglages_essai(base):
+    return {'GAGARINE_SEUIL': f'{base + 5:.1f}', 'GAGARINE_URGENCE': f'{base + 14:.1f}', 'GAGARINE_GRACE': '3',
+            'GAGARINE_VIDAGE_MAX': '10', 'GAGARINE_DELAI_FIGE': '20', 'GAGARINE_NOTIFICATIONS': 'non'}
+
+
+def verdict_essai(echantillons, evenements, code_sortie):
+    """Verdict de l'essai d'après les mesures : [(libellé, ok, détail)].
+    echantillons : [(instant, état, rss_Mo, swap_Mo)] ; evenements : actions notées par le moniteur."""
+    pic = max((e[2] for e in echantillons), default=0)
+    fige = any(e[1] == 'T' for e in echantillons) or 'fige' in evenements
+    apres = [e for e in echantillons if e[1] == 'T']
+    mini = min((e[2] for e in apres), default=pic)
+    swap_max = max((e[3] for e in echantillons), default=0)
+    range_ok = fige and pic > 0 and mini <= 0.8 * pic
+    arrete = 'arrete' in evenements and code_sortie == -signal.SIGKILL
+    return [('figé', fige, 'le programme est passé en pause' if fige else 'le programme n\'a jamais été figé'),
+            ('rangé dans le swap', range_ok, f'RSS {pic} Mo au plus haut, {mini} Mo une fois figé, swap {swap_max} Mo'),
+            ('arrêté', arrete, 'arrêt par Gagarine (SIGKILL)' if arrete else
+             f'pas d\'arrêt constaté (code de sortie {code_sortie})')]
+
+
+def essai():
+    root = os.geteuid() == 0
+    base = ram_utilisee()
+    if base > 80:
+        sys.exit(f'RAM déjà utilisée à {base:.0f} % : essai impossible sans risque, réessayez quand le poste est plus libre')
+    marque = f'gagarine-programme-essai-{os.getpid()}'
+    tmp = Path(tempfile.mkdtemp(prefix='gagarine-essai-'))
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GAGARINE_')}
+    env.update(reglages_essai(base), GAGARINE_ETAT=str(tmp), GAGARINE_FILTRE=re.escape(marque),
+               GAGARINE_CONFIG=os.devnull, PYTHONUNBUFFERED='1')
+    print(f'Essai de Gagarine {VERSION} ({"service système, root" if root else "sans privilèges"})')
+    print(f'RAM de départ {base:.1f} % ; seuil d\'essai {base + 5:.1f} %, urgence {base + 14:.1f} % ; seul le programme '
+          f'd\'essai (« {marque} ») peut être visé', flush=True)
+    log = open(tmp / 'moniteur.log', 'w')
+    moniteur = subprocess.Popen([sys.executable, '-I', os.path.abspath(__file__), 'surveiller'], env=env, stdout=log,
+                                stderr=subprocess.STDOUT)
+    alloc = None
+    echantillons = []
+    try:
+        for _ in range(50):   # attendre l'événement « demarrage » du moniteur
+            if (tmp / 'evenements.jsonl').exists() or moniteur.poll() is not None:
+                break
+            time.sleep(0.1)
+        if moniteur.poll() is not None:
+            sys.exit(f'le moniteur d\'essai s\'est arrêté : {(tmp / "moniteur.log").read_text()[-500:]}')
+        alloc = subprocess.Popen([sys.executable, '-I', '-c', PROGRAMME_ESSAI, marque])
+        debut = time.time()
+        while time.time() - debut < 40 and alloc.poll() is None:
+            try:
+                st = Path(f'/proc/{alloc.pid}/status').read_text()
+                etat_p = re.search(r'State:\s+(\S)', st).group(1)
+                rss = int(re.search(r'VmRSS:\s+(\d+)', st).group(1)) // 1024
+                swap = int(re.search(r'VmSwap:\s+(\d+)', st).group(1)) // 1024
+                cg = Path(f'/proc/{alloc.pid}/cgroup').read_text().strip().rsplit('/', 1)[-1]
+            except (OSError, AttributeError):
+                break
+            echantillons.append((time.time() - debut, etat_p, rss, swap))
+            print(f'{time.time() - debut:5.1f} s  RAM {ram_utilisee():5.1f} %  essai : état {etat_p}  RSS {rss:5d} Mo  '
+                  f'swap {swap:5d} Mo  {cg}', flush=True)
+            time.sleep(1)
+        try:
+            alloc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            pass
+        code = alloc.poll()
+    finally:
+        if alloc is not None and alloc.poll() is None:
+            alloc.kill()
+            alloc.wait()
+        moniteur.terminate()
+        moniteur.wait()
+        log.close()
+    evenements = []
+    try:
+        for l in (tmp / 'evenements.jsonl').read_text().splitlines():
+            e = json.loads(l)
+            if e.get('action') != 'demarrage' and e.get('pid') == alloc.pid:
+                evenements.append(e['action'])
+            elif e.get('action') != 'demarrage':
+                print(f'ATTENTION : événement sur un autre processus : {l}')
+    except (OSError, ValueError):
+        pass
+    print('--- journal du moniteur d\'essai ---')
+    print((tmp / 'moniteur.log').read_text()[-3000:].rstrip())
+    print('--- verdict ---')
+    resultats = verdict_essai(echantillons, evenements, code)
+    for libelle, ok, detail in resultats:
+        print(f'{"✓" if ok else "✗"} {libelle} : {detail}')
+    tout = all(ok for _, ok, _ in resultats)
+    print('Essai réussi : Gagarine fonctionne.' if tout else 'Essai échoué : voir ci-dessus.')
+    subprocess.run(['rm', '-rf', str(tmp)])
+    return 0 if tout else 1
+
+
+# ======================================================================================================================
+# Ligne de commande
+# ======================================================================================================================
+AIDE = f"""gagarine {VERSION} : garde-RAM, empêche la RAM du poste de se remplir au-delà de 95 %.
+
+Usage : gagarine COMMANDE [options]
+
+Commandes :
+  surveiller [--config FICHIER]  surveille la RAM, au premier plan (lancé par le service gagarine.service)
+  etat                           RAM, état du service, programmes figés, derniers événements
+  reprendre PID                  relance un programme figé (il reste bridé à sa taille)
+  arreter PID                    arrête un programme figé
+  essai                          auto-test réel, sans risque : un programme d'essai grossit, Gagarine doit le figer,
+                                 le ranger dans le swap puis l'arrêter (à lancer avec sudo pour tester le mode root)
+  version                        affiche la version
+  -h, --help                     affiche cette aide
+
+Réglages : {CONFIG_SYSTEME}, section [gagarine] (voir ce fichier pour le détail des clés) ; --config FICHIER ou la
+variable GAGARINE_CONFIG en choisissent un autre. Les variables GAGARINE_SEUIL, GAGARINE_URGENCE, GAGARINE_VIGILANCE,
+GAGARINE_GRACE, GAGARINE_VIDAGE_MAX, GAGARINE_DELAI_FIGE, GAGARINE_RESTE_SI_REPRIS, GAGARINE_NOTIFICATIONS,
+GAGARINE_PROTEGES et GAGARINE_FILTRE passent devant tout (essais). GAGARINE_ETAT remplace le dossier d'état
+({ETAT_SYSTEME} en root, sinon ~/.local/state/gagarine).
+"""
+
+
+def main(argv):
+    config = None
+    args = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == '--config':
+            if i + 1 >= len(argv):
+                sys.exit('--config demande un nom de fichier')
+            config = argv[i + 1]
+            i += 2
+        elif argv[i].startswith('--config='):
+            config = argv[i].split('=', 1)[1]
+            i += 1
+        else:
+            args.append(argv[i])
+            i += 1
+    if not args or args[0] in ('-h', '--help', 'aide'):
+        print(AIDE)
+        return 0 if args else 2
+    cmd, reste = args[0], args[1:]
+    if cmd in ('version', '--version', '-V'):
+        print(f'gagarine {VERSION}')
+    elif cmd == 'surveiller' and not reste:
+        surveiller(config)
+    elif cmd == 'etat' and not reste:
+        etat(config)
+    elif cmd in ('reprendre', 'arreter') and len(reste) == 1 and reste[0].isdigit():
+        reprendre_ou_arreter(cmd, int(reste[0]))
+    elif cmd == 'essai' and not reste:
+        return essai()
+    else:
+        print(AIDE, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

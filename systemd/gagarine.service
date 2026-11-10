@@ -1,0 +1,39 @@
+[Unit]
+Description=Gagarine, garde-RAM : fige, bride puis arrête le programme qui remplit la mémoire
+Documentation=man:gagarine(8) https://github.com/mawena/gagarine
+
+[Service]
+# Le démon tourne au premier plan et écrit son journal sur la sortie standard (journald).
+Type=simple
+ExecStart=/usr/bin/gagarine surveiller
+
+# Relancé aussitôt s'il s'arrête, quelle qu'en soit la cause : le poste ne doit jamais rester sans garde.
+Restart=always
+RestartSec=1
+
+# Jamais choisi par le noyau comme victime en cas de manque de mémoire.
+OOMScoreAdjust=-1000
+
+# Prioritaire pour le processeur et le disque : il doit réagir même quand le poste échange avec le swap.
+Nice=-10
+CPUWeight=1000
+IOWeight=1000
+
+# Le démon lui-même reste petit : plafond de RAM, et jamais de swap (il ne doit pas attendre le disque).
+MemoryMax=128M
+MemorySwapMax=0
+
+# Autorise mlockall() : le démon se verrouille en RAM pour répondre même quand le poste est saturé.
+LimitMEMLOCK=infinity
+
+# Dossier d'état /var/lib/gagarine (journal des événements, programmes figés), lisible par tous.
+StateDirectory=gagarine
+StateDirectoryMode=0755
+
+# Aucun durcissement volontairement (ProtectSystem, ProtectKernelTunables, NoNewPrivileges, PrivateUsers…) : le démon
+# doit lire /proc, écrire dans /sys/fs/cgroup, parler à D-Bus (systemd système et gestionnaires utilisateur),
+# appeler process_madvise et lancer runuser et notify-send pour les notifications.
+
+[Install]
+# Démarré à chaque démarrage du poste.
+WantedBy=multi-user.target
