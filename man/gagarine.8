@@ -1,0 +1,149 @@
+.TH GAGARINE 8 "10 novembre 2026" "gagarine 1.0.0" "Administration système"
+.SH NOM
+gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de figer le poste
+.SH SYNOPSIS
+.B gagarine surveiller
+.RB [ \-\-config
+.IR FICHIER ]
+.br
+.B gagarine etat
+.br
+.B gagarine reprendre
+.I PID
+.br
+.B gagarine arreter
+.I PID
+.br
+.B gagarine essai
+.br
+.B gagarine version
+.br
+.B gagarine \-h
+.SH DESCRIPTION
+Quand un programme grossit sans fin (fuite de mémoire, test qui s'emballe), il remplit la RAM puis le swap, et le poste
+passe son temps à échanger avec le disque : plus rien ne répond. \fBgagarine\fR agit avant ce moment. Il tourne en service
+système (\fIgagarine.service\fR, administrateur) et mesure la RAM chaque seconde, quatre fois par seconde au\-delà du seuil
+de vigilance. La RAM utilisée est 100 % moins MemAvailable/MemTotal : le cache récupérable compte comme libre.
+.PP
+Quand la RAM atteint le seuil (95 % par défaut) :
+.IP 1. 3
+\fBFiger\fR : le programme qui grossit le plus vite (sur 10 s, puis 60 s, à défaut le plus gros) reçoit SIGSTOP. Il ne peut
+plus rien demander.
+.IP 2. 3
+\fBBrider\fR : il est placé dans un scope systemd limité en mémoire. S'il est repris, il ne peut plus grossir que de
+\fIreste_si_repris\fR Mo.
+.IP 3. 3
+\fBRanger dans le swap\fR : le noyau est invité à pousser sa mémoire dans le swap (\fBprocess_madvise\fR(2) en
+administrateur, ne touchant que le programme figé), ce qui rend la RAM aux autres programmes. Une notification propose
+« Arrêter » ou « Reprendre ».
+.IP 4. 3
+\fBArrêter\fR (SIGKILL) : si la RAM n'est pas redescendue sous le seuil une fois le rangement fini, si elle atteint le seuil
+d'urgence, ou si le programme reste figé plus de \fIdelai_fige\fR secondes.
+.PP
+Le bureau (gnome\-shell, Xorg, le son, D\-Bus, systemd…) et les services critiques ne sont jamais touchés ; la clé
+\fIproteges\fR ajoute d'autres noms. Le démon se verrouille en RAM (\fBmlockall\fR(2)) pour répondre même quand le poste
+est saturé.
+.SH COMMANDES
+.TP
+.BR surveiller " [" \-\-config " \fIFICHIER\fR]"
+Lance le démon de surveillance (c'est ce que fait le service). Sans \fB\-\-config\fR, lit \fI/etc/gagarine.conf\fR.
+.TP
+.B etat
+Affiche la RAM utilisée, l'état du service, les programmes figés et les derniers événements.
+.TP
+.BI reprendre " PID"
+Relance un programme figé. Il reste bridé.
+.TP
+.BI arreter " PID"
+Arrête un programme figé.
+.TP
+.B essai
+Auto\-test sans risque : un programme d'essai grossit ; il doit être figé, rangé dans le swap puis arrêté. Un verdict est
+affiché. À lancer en administrateur pour essayer la chaîne complète du service.
+.TP
+.BR version ", " \-\-version
+Affiche « gagarine 1.0.0 ».
+.TP
+.BR \-h ", " \-\-help
+Affiche l'aide.
+.SH RÉGLAGES
+Fichier \fI/etc/gagarine.conf\fR, au format INI, section \fB[gagarine]\fR. Il est conservé aux mises à jour du paquet.
+Le service doit être redémarré après une modification (\fBsystemctl restart gagarine\fR).
+.TP
+.B seuil
+Pourcentage de RAM utilisée qui déclenche l'action (95).
+.TP
+.B urgence
+Pourcentage au\-delà duquel le programme est arrêté sans attendre (98).
+.TP
+.B vigilance
+Pourcentage au\-delà duquel la mesure passe à quatre fois par seconde (85).
+.TP
+.B grace
+Secondes laissées après la pause avant d'arrêter si la RAM reste haute, au minimum (10).
+.TP
+.B vidage_max
+Secondes au plus laissées au noyau pour ranger le programme dans le swap (60).
+.TP
+.B delai_fige
+Secondes de pause au bout desquelles un programme sans décision est arrêté (600).
+.TP
+.B reste_si_repris
+Mo qu'un programme repris peut encore demander (256).
+.TP
+.B notifications
+\fBoui\fR ou \fBnon\fR : notifications sur les sessions graphiques ouvertes (oui).
+.TP
+.B proteges
+Expression régulière de noms de programmes à protéger en plus de la liste intégrée (vide).
+.PP
+Des variables d'environnement prévalent sur le fichier : \fBGAGARINE_CONFIG\fR (fichier de réglages), \fBGAGARINE_ETAT\fR
+(dossier d'état), \fBGAGARINE_SEUIL\fR, etc.
+.SH FICHIERS
+.TP
+.I /etc/gagarine.conf
+Réglages.
+.TP
+.I /usr/lib/systemd/system/gagarine.service
+Unité systemd.
+.TP
+.I /var/lib/gagarine/evenements.jsonl
+Journal des événements, une ligne JSON par événement.
+.TP
+.I /var/lib/gagarine/figes.json
+Programmes actuellement figés (conservés d'un redémarrage du service à l'autre).
+.PP
+Hors administrateur, l'état est dans \fI~/.local/state/gagarine\fR.
+.SH EXEMPLES
+Vérifier l'installation :
+.PP
+.RS
+.nf
+sudo gagarine essai
+.fi
+.RE
+.PP
+Voir ce qui se passe :
+.PP
+.RS
+.nf
+gagarine etat
+journalctl \-u gagarine \-f
+.fi
+.RE
+.PP
+Reprendre un programme figé (processus 4242) :
+.PP
+.RS
+.nf
+sudo gagarine reprendre 4242
+.fi
+.RE
+.PP
+Protéger un programme de plus : dans \fI/etc/gagarine.conf\fR, \fBproteges=^(mon\-rendu|calcul.*)$\fR, puis
+\fBsudo systemctl restart gagarine\fR.
+.SH VOIR AUSSI
+.BR systemd\-oomd (8),
+.BR earlyoom (1),
+.BR zramctl (8),
+.BR systemd.resource\-control (5)
