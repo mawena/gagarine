@@ -72,18 +72,24 @@
   </section>
 
   <section class="protections" aria-labelledby="protections-titre">
-    <h2 id="protections-titre">Trois protections, du moins au plus urgent</h2>
+    <h2 id="protections-titre">Quatre protections, du plus tôt au plus urgent</h2>
 
     <div class="protection">
       <h3>Avant : un travail lourd à la fois</h3>
-      <p>Rendus vidéo, compilations, longues suites de tests passent par la file d'attente : chacun attend que la mémoire et les processeurs suffisent, puis tourne dans sa propre limite mémoire. S'il la dépasse, lui seul s'arrête.</p>
+      <p>Rendus vidéo, compilations, longues suites de tests passent par la file d'attente : chacun attend que la mémoire et les processeurs suffisent, puis tourne dans sa propre limite mémoire. S'il la dépasse, lui seul s'arrête. La file retient la mémoire que chaque travail a vraiment prise et corrige une annonce trop basse ; une notification dit quand il a fini.</p>
       <pre class="exemple"><code>gagarine file "rendu vidéo" 4 4 -- ffmpeg -i film.mov film.mp4</code></pre>
     </div>
 
     <div class="protection">
+      <h3>Rien ne garde la mémoire pour rien</h3>
+      <p>Les démons de compilation restés ouverts et les modèles d'IA chargés sans servir sont arrêtés ou déchargés après une demi-heure d'inactivité. Chaque application du bureau peut recevoir un plafond : au-delà, elle ralentit au lieu de pousser tout le poste à bout.</p>
+      <pre class="exemple"><code>gagarine applications plafond google-chrome 5</code></pre>
+    </div>
+
+    <div class="protection">
       <h3>Pendant : le garde, chaque seconde</h3>
-      <p>Au-delà de 95 % de RAM, Gagarine fige le programme qui grossit le plus vite, jamais le bureau ni les services du système. Il ne l'arrête que si la mémoire ne redescend pas, ou s'il reste figé dix minutes sans décision de votre part.</p>
-      <p class="fait">Sur le poste où il est né : 850 Mo rangés dans le swap en une seconde.</p>
+      <p>Au-delà de 95 % de RAM, Gagarine fige le programme qui grossit le plus vite, jamais le bureau ni les services du système. Il agit même plus tôt quand ce programme remplirait la mémoire dans les secondes qui viennent, ou quand le système commence à peiner. Il ne l'arrête que si la mémoire ne redescend pas, ou s'il reste figé dix minutes sans décision de votre part.</p>
+      <p class="fait">Sur le poste où il est né : 850 Mo rangés dans le swap en une seconde. Les alertes arrivent sur le bureau et, si vous le voulez, sur votre téléphone.</p>
     </div>
 
     <div class="protection">
@@ -94,16 +100,16 @@
 
   <section class="ecrans" aria-labelledby="ecrans-titre">
     <h2 id="ecrans-titre">Tout se voit, tout se pilote</h2>
-    <p>L'application Gagarine montre la RAM et le swap en direct, les programmes figés avec Reprendre et Arrêter, la file d'attente et le journal. Un indicateur dans la barre du haut garde le pourcentage sous les yeux.</p>
+    <p>L'application Gagarine montre la RAM et le swap en direct ou sur les sept derniers jours, les programmes figés avec Reprendre et Arrêter, les programmes inactifs à ranger, la file d'attente avec la mémoire de chaque travail, et le journal. Un indicateur dans la barre du haut garde le pourcentage sous les yeux.</p>
     <div class="galerie">
       <figure class="capture capture-grande">
-        <img src="captures/apercu.png" alt="Page Aperçu : jauge de la RAM avec ses repères, courbe des cinq dernières minutes et swap" width="910" height="750" loading="lazy">
+        <img src="captures/apercu-24h.png" alt="Page Aperçu : jauge de la RAM, courbe des dernières 24 heures avec les incidents marqués, et swap" width="910" height="750" loading="lazy">
       </figure>
       <figure class="capture">
-        <img src="captures/programmes.png" alt="Page Programmes : un programme figé avec les boutons Reprendre et Arrêter, puis les plus gros programmes" width="910" height="750" loading="lazy">
+        <img src="captures/programmes-menage.png" alt="Page Programmes : un programme figé avec Reprendre et Arrêter, puis le ménage des programmes inactifs" width="910" height="750" loading="lazy">
       </figure>
       <figure class="capture">
-        <img src="captures/file.png" alt="Page File d'attente : travaux en cours et en attente" width="910" height="750" loading="lazy">
+        <img src="captures/file-historique.png" alt="Page File d'attente : travaux, mémoire apprise de chaque travail et travaux passés" width="910" height="750" loading="lazy">
       </figure>
     </div>
   </section>
