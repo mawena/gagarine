@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Captures des pages de l'interface dans docs/captures/, avec le faux gagarine, SOUS Xvfb uniquement :
 
-    xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 tests/donnees_interface/capturer.py [DOSSIER]
+    dbus-run-session -- xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 tests/donnees_interface/capturer.py [DOSSIER]
 
-Refuse de tourner sans Xvfb (jamais d'ouverture de fenêtre sur l'écran réel).
+Refuse de tourner sans Xvfb (jamais d'ouverture de fenêtre sur l'écran réel) et sans session D-Bus privée : l'interface
+est une application unique (org.gagarine…), et sur le bus de la session une interface déjà ouverte serait réveillée
+au lieu que la capture s'ouvre. `dbus-run-session` donne un bus à part.
 """
 import os
 import sys
@@ -16,6 +18,10 @@ DOSSIER = sys.argv[1] if len(sys.argv) > 1 else os.path.join(RACINE, 'docs', 'ca
 
 if os.environ.get('GDK_BACKEND') != 'x11' or os.environ.get('DISPLAY', ':1') == ':1' or not os.environ.get('DISPLAY'):
     sys.exit('À lancer sous Xvfb : xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 ' + sys.argv[0])
+
+bus = os.environ.get('DBUS_SESSION_BUS_ADDRESS', '')
+if not bus or bus == f'unix:path=/run/user/{os.getuid()}/bus':
+    sys.exit('À lancer avec une session D-Bus privée : dbus-run-session -- xvfb-run … (voir l\'en-tête)')
 
 # environnement isolé : faux gagarine, pas d'indicateur réel, pas de réglages du poste
 tmp = tempfile.mkdtemp(prefix='gagarine-captures-')
