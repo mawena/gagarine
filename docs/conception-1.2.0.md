@@ -170,3 +170,27 @@ utilisateurs), `data/apt/gagarine.sources` → `/etc/apt/sources.list.d/`, `data
 | Assemblage (10) | `debian/`, `man/`, `README.md`, `CHANGELOG.md`, `docs/` |
 
 Personne d'autre ne touche `gagarine/reglages.py`, `gagarine/ntfy.py`, `etc/gagarine.conf` ni `tests/commun.py`.
+
+## Précisions apportées pendant les chantiers
+
+Les contrats ci-dessus restent valables ; voici ce que les chantiers ont précisé (ajouts seulement).
+
+- **File** : `travail-debut` porte `annonce_initiale` et `ajuste: true` seulement quand l'annonce a été corrigée (la
+  nouvelle annonce est alors dans `ram`) ; le ticket porte aussi `annonce_initiale`. Dans `travaux.json`, `annonce_go`
+  est l'annonce demandée par l'appelant (pas la corrigée). Le pic est relevé toutes les 0,5 s (constante
+  `INTERVALLE_PIC`) : à 2 s, un travail court pouvait passer à côté de son pic. Le dernier relevé après la fin échoue le
+  plus souvent (le cgroup du scope disparaît avec lui) : le pic retenu peut sous-estimer de peu un pic des 0,5 dernières
+  secondes.
+- **Garde** : au seuil d'urgence, l'action est `arrete` (pas `fige`), qui porte alors `declencheur: "urgence"`. Points
+  moyennés de l'historique (au-delà de 24 h) : `ram` est le maximum du seau de 10 min, les autres champs des moyennes ;
+  `gros` : 10 entrées au plus, `minutes` = nombre de mesures où le programme était parmi les 3 plus gros.
+- **Ménage** : `action` vaut `arreter` (processus) ou `decharger` (modèles) ; `pid` vaut `null` pour `lmstudio` et
+  `ollama` ; le champ `auto` d'un candidat dit si son type peut être traité tout seul (tout sauf `serveur-dev`),
+  indépendamment de `menage_auto` (le `auto` du niveau supérieur).
+- **Applications** : sous GNOME, une même application peut avoir deux familles de scopes (`app-gnome-google\x2dchrome-…`
+  et `app-com.google.Chrome-…`) : elles sont listées séparément, et l'id qui porte la mémoire est celui à plafonner. Les
+  ids hors `app-gnome-` gardent leur préfixe `app-` (ex. `app-com.microsoft.VSCode`). Le champ `prefixe` du JSON inclut
+  le tiret final, et le dossier est `<prefixe>.scope.d` (systemd l'exige). Le `daemon-reload` suffit à appliquer le
+  plafond aux scopes ouverts ; `set-property --runtime` est gardé, sans danger.
+- **ntfy** : `gagarine ntfy essai CIBLE` (extension `ntfy`) envoie un message d'essai à la cible donnée, même non
+  enregistrée : code 0 si le serveur l'accepte, 1 sinon, 2 si la cible est invalide.
