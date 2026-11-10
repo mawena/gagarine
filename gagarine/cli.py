@@ -109,6 +109,15 @@ def lire_figes(dossier):
     return {int(p): f for p, f in figes.items() if demarrage(int(p)) == f['debut']}
 
 
+def lire_fuites(dossier):
+    """Fuites repérées en cours par le service (fuites.json) : celles dont le programme tourne encore."""
+    try:
+        fuites = json.loads((Path(dossier) / 'fuites.json').read_text())
+        return [f for f in fuites if demarrage(int(f['pid'])) == f['debut']]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
 def est_bride(pid):
     """Un programme figé puis bridé vit dans un scope « gagarine-fige-… »."""
     try:
@@ -123,7 +132,7 @@ def lire_texte(chemin):
 
 
 def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, meminfo=None, swaps=None, procs=None,
-                 figes=None, bride=est_bride, maintenant=time.time, travaux=0):
+                 figes=None, bride=est_bride, maintenant=time.time, travaux=0, fuites=None):
     """L'objet de `gagarine etat --json` (contrat : docs/conception-1.1.0.md, section 2). Tout ce qui vient du poste
     peut être donné en argument (tests) ; sinon il est lu."""
     meminfo = lire_texte('/proc/meminfo') if meminfo is None else meminfo
@@ -132,6 +141,7 @@ def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, 
     if procs is None:
         procs = lire_processus(None if root else os.getuid())
     figes = lire_figes(dossier) if figes is None else figes
+    fuites = lire_fuites(dossier) if fuites is None else fuites
     proteges = construire_proteges(r.proteges)
     gros = sorted(procs.items(), key=lambda x: x[1].rss + x[1].swap, reverse=True)[:10]
     return {
@@ -147,6 +157,8 @@ def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, 
         'figes': [{'pid': p, 'nom': f['nom'], 'depuis': f['depuis'], 'memoire_mo': int(f['memoire'] // Mo),
                    'commande': f['commande'], 'utilisateur': f['utilisateur'], 'bride': bride(p)}
                   for p, f in figes.items()],
+        'fuites': [{'pid': f['pid'], 'nom': f['nom'], 'pente_mo_min': f['pente_mo_min'], 'depuis': f['depuis'],
+                    'memoire_mo': int(f['memoire'] // Mo), 'prevision_s': f.get('prevision_s')} for f in fuites],
         'file': {'travaux': travaux},
         'plus_gros': [{'pid': p, 'nom': i.nom, 'rss_mo': i.rss // Mo, 'swap_mo': i.swap // Mo,
                        'utilisateur': nom_utilisateur(i.uid), 'protege': bool(proteges.match(i.nom))}
@@ -173,6 +185,9 @@ def commande_etat(args, ctx):
               f'{time.strftime("%H:%M:%S", time.localtime(f["depuis"]))}) — {f["commande"][:120]}')
     if not figes:
         print('Aucun programme figé.')
+    for f in lire_fuites(dossier):
+        print(f'  fuite : {f["nom"]} (processus {f["pid"]}, +{f["pente_mo_min"]} Mo/min, {go(f["memoire"])}, depuis '
+              f'{time.strftime("%H:%M:%S", time.localtime(f["depuis"]))})')
     travaux = fa.compter_travaux(ctx.env, ctx.poste)
     print(f'File d\'attente : {travaux} travail(aux) en file' if travaux else 'File d\'attente : aucun travail en file')
     try:
