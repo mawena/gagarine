@@ -1,0 +1,263 @@
+/* Gagarine : page d'accueil. Couleurs reprises de l'icône (fusée, flamme) et de GNOME (bleu Adwaita). */
+:root {
+  --fond: #eef1f5;          /* aluminium, comme le métal de la fusée */
+  --surface: #ffffff;
+  --encre: #1d2433;
+  --discret: #566074;
+  --trait: #d3d9e2;
+  --ram: #3584e4;           /* bleu de la jauge de l'application */
+  --flamme: #ff7a1a;        /* le programme qui s'emballe */
+  --givre: #9fd0f2;         /* figé */
+  --givre-fonce: #5fa8dc;
+  --seuil: #e5383b;         /* rouge de l'icône */
+  --code-fond: #1d2433;
+  --code-encre: #eef1f5;
+  --rayon: 6px;
+  --large: 72rem;
+  --texte: 68ch;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #141a26;
+    --surface: #1c2433;
+    --encre: #e6eaf1;
+    --discret: #9aa4b6;
+    --trait: #2e3850;
+    --givre: #8cc4ec;
+    --givre-fonce: #4f97cc;
+    --code-fond: #0f141d;
+    --code-encre: #e6eaf1;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--encre);
+  font-family: Cantarell, "Noto Sans", "DejaVu Sans", system-ui, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+a { color: inherit; text-decoration-color: var(--ram); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { color: var(--ram); }
+:focus-visible { outline: 3px solid var(--ram); outline-offset: 3px; border-radius: 2px; }
+
+code, pre { font-family: "JetBrains Mono", "DejaVu Sans Mono", ui-monospace, monospace; font-size: 0.9em; }
+p code, li > p code { background: var(--surface); border: 1px solid var(--trait); border-radius: 4px; padding: 0.05em 0.35em; }
+
+h1, h2, h3 { font-family: Unbounded, Cantarell, sans-serif; line-height: 1.15; margin: 0; }
+h2 { font-weight: 500; font-size: clamp(1.5rem, 3.2vw, 2.1rem); letter-spacing: -0.01em; max-width: 24ch; }
+h3 { font-family: Cantarell, sans-serif; font-weight: 700; font-size: 1.2rem; }
+
+.lecteur { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- En-tête ---------------------------------------------------------------------------------------------------- */
+.entete {
+  max-width: var(--large); margin: 0 auto; padding: 1.25rem 1rem;
+  display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; align-items: center; justify-content: space-between;
+}
+.marque { display: inline-flex; align-items: center; gap: 0.6rem; text-decoration: none; font-weight: 700; }
+.entete nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; }
+.entete nav a { text-decoration: none; color: var(--discret); }
+.entete nav a:hover { color: var(--encre); text-decoration: underline; text-decoration-color: var(--ram); }
+
+main { max-width: var(--large); margin: 0 auto; padding: 0 1rem; }
+
+/* ---- Ouverture : le nom, puis la scène de la jauge --------------------------------------------------------------- */
+.ouverture { padding: 2.5rem 0 4rem; }
+h1 {
+  font-weight: 800;
+  font-size: clamp(3.4rem, 13vw, 9.5rem);
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+  margin-left: -0.04em;
+}
+.chapeau { font-size: clamp(1.15rem, 2.2vw, 1.4rem); line-height: 1.5; max-width: 46ch; margin: 1.5rem 0 2.5rem; }
+
+.scene {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: 10px;
+  padding: clamp(1rem, 3vw, 2rem);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "ram compteur" "swap compteur" "etapes etapes";
+  gap: 1.25rem 2rem;
+  position: relative;
+}
+.piste-ram { grid-area: ram; }
+.piste-swap { grid-area: swap; }
+.etapes { grid-area: etapes; }
+.compteur { grid-area: compteur; align-self: start; text-align: right; font-family: Unbounded, sans-serif; }
+.compteur-valeur { display: block; font-size: clamp(2.6rem, 7vw, 4.4rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.compteur-unite { display: block; color: var(--discret); font-family: Cantarell, sans-serif; font-size: 0.95rem; margin-top: 0.35rem; }
+.scene.alerte .compteur-valeur { color: var(--seuil); }
+
+.piste-nom { font-size: 0.95rem; color: var(--discret); margin-bottom: 0.4rem; }
+.rail {
+  position: relative; height: 46px;
+  background: var(--fond); border: 1px solid var(--trait); border-radius: var(--rayon);
+  margin-bottom: 1.6rem;             /* place pour les chiffres des repères */
+}
+.rail-swap { height: 30px; margin-bottom: 0; }
+
+.seg {
+  position: absolute; top: 0; bottom: 0; left: var(--d, 0%); width: var(--l, 0%);
+  display: flex; align-items: center; overflow: hidden; white-space: nowrap;
+  font-size: 0.85rem; font-weight: 700;
+}
+.seg span { padding: 0 0.6rem; }
+.seg-autres { --d: 0%; background: var(--ram); color: #fff; border-radius: var(--rayon) 0 0 var(--rayon); }
+.seg-coupable {
+  --d: 55%; background: var(--flamme); color: #1d2433;
+  transition: width 2.8s cubic-bezier(.55, 0, .9, .45), background-color .25s;
+}
+.seg-coupable.fige {
+  background: repeating-linear-gradient(-45deg, var(--givre) 0 8px, #d8eefb 8px 16px);
+  transition: width .9s ease-in-out, background-color .25s;
+}
+.seg-zram { --d: 55%; background: var(--givre-fonce); transition: width .9s ease-in-out; }
+.seg-range {
+  --d: 0%; background: repeating-linear-gradient(-45deg, var(--givre) 0 8px, #d8eefb 8px 16px); color: #1d2433;
+  border-radius: var(--rayon) 0 0 var(--rayon); transition: width .9s ease-in-out;
+}
+
+.repere {
+  position: absolute; top: -6px; bottom: -6px; left: var(--x); width: 2px; background: var(--discret); opacity: .55;
+  font-style: normal;
+}
+.repere b {
+  position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+  font-size: 0.8rem; font-weight: 700; color: var(--discret); font-variant-numeric: tabular-nums;
+}
+.repere-seuil { background: var(--seuil); opacity: 1; }
+.repere-seuil b { color: var(--seuil); }
+
+.etapes {
+  list-style: none; margin: 0.5rem 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem;
+  counter-reset: etape;
+}
+.etapes li {
+  counter-increment: etape;
+  border-top: 3px solid var(--trait);
+  padding-top: 0.7rem;
+  color: var(--discret);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  transition: color .3s, border-color .3s;
+}
+.etapes li::before {
+  content: counter(etape);
+  font-family: Unbounded, sans-serif; font-weight: 800; font-size: 0.85rem;
+  display: block; margin-bottom: 0.25rem;
+}
+.etapes strong { display: block; color: inherit; }
+.etapes li.fait { color: var(--encre); border-color: var(--givre-fonce); }
+.etapes li.actif { color: var(--encre); border-color: var(--ram); }
+.etapes li[data-etape="2"].actif { border-color: var(--seuil); }
+
+.rejouer {
+  position: absolute; right: clamp(1rem, 3vw, 2rem); bottom: -1.1rem;
+  font: inherit; font-size: 0.9rem; cursor: pointer;
+  background: var(--surface); color: var(--encre); border: 1px solid var(--trait); border-radius: 999px;
+  padding: 0.35rem 1rem;
+}
+.rejouer:hover { border-color: var(--ram); }
+
+/* ---- Commandes ---------------------------------------------------------------------------------------------------- */
+.installation-courte { margin-top: 2.75rem; max-width: 52rem; }
+.installation-courte > p:first-child { margin: 0 0 0.5rem; font-weight: 700; }
+.nuance { color: var(--discret); max-width: var(--texte); margin: 0.75rem 0 0; font-size: 0.95rem; }
+
+.commande {
+  display: flex; align-items: stretch;
+  background: var(--code-fond); color: var(--code-encre);
+  border-radius: var(--rayon); overflow: hidden;
+}
+.commande pre { margin: 0; padding: 0.85rem 1rem; overflow-x: auto; flex: 1; min-width: 0; }
+.commande pre code { white-space: pre; }
+.copier {
+  flex: none; font: inherit; font-size: 0.85rem; cursor: pointer;
+  background: transparent; color: var(--code-encre);
+  border: 0; border-left: 1px solid rgba(255, 255, 255, .14);
+  padding: 0 1rem; min-width: 5.5rem;
+}
+.copier:hover { background: rgba(255, 255, 255, .08); }
+.copier.copie { color: var(--givre); }
+
+/* ---- Protections -------------------------------------------------------------------------------------------------- */
+section + section { border-top: 1px solid var(--trait); }
+.protections, .ecrans, .installer { padding: 4rem 0; }
+
+.protections h2 { margin-bottom: 2.5rem; }
+.protection {
+  display: grid; grid-template-columns: minmax(12rem, 22rem) minmax(0, 1fr);
+  gap: 0.5rem 3rem; padding: 1.75rem 0; border-top: 1px solid var(--trait);
+}
+.protection:first-of-type { border-top: 0; padding-top: 0; }
+.protection h3 { grid-row: span 3; }
+.protection p { margin: 0; max-width: var(--texte); }
+.protection .fait { color: var(--discret); margin-top: 0.75rem; }
+.exemple {
+  margin: 1rem 0 0; padding: 0.75rem 1rem; overflow-x: auto;
+  background: var(--code-fond); color: var(--code-encre); border-radius: var(--rayon);
+}
+
+/* ---- Écrans -------------------------------------------------------------------------------------------------------- */
+.ecrans > p { max-width: var(--texte); margin: 1rem 0 2rem; }
+.galerie { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.capture { margin: 0; }
+.capture img {
+  display: block; width: 100%; height: auto;
+  border-radius: 10px; border: 1px solid var(--trait);
+  box-shadow: 0 18px 40px -24px rgba(20, 30, 50, .45);
+}
+.capture-grande { grid-column: 1 / -1; max-width: 58rem; }
+
+/* ---- Installer ----------------------------------------------------------------------------------------------------- */
+.installer > p { max-width: var(--texte); }
+.pas { margin: 2rem 0; padding: 0; list-style: none; counter-reset: pas; max-width: 60rem; }
+.pas li { counter-increment: pas; display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); column-gap: 0.75rem; margin-bottom: 1.5rem; }
+.pas li::before {
+  content: counter(pas);
+  grid-row: span 2;
+  font-family: Unbounded, sans-serif; font-weight: 800; font-size: 1.1rem;
+  width: 2.5rem; height: 2.5rem; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 2px solid var(--ram); color: var(--ram);
+}
+.pas p { margin: 0.35rem 0 0.6rem; }
+
+/* ---- Pied ---------------------------------------------------------------------------------------------------------- */
+.pied {
+  max-width: var(--large); margin: 0 auto; padding: 2.5rem 1rem 3rem;
+  border-top: 1px solid var(--trait); color: var(--discret); font-size: 0.95rem;
+}
+.pied p { margin: 0.3rem 0; }
+.pied code { overflow-wrap: anywhere; }
+
+/* ---- Petits écrans ------------------------------------------------------------------------------------------------ */
+@media (max-width: 760px) {
+  .scene { grid-template-columns: 1fr; grid-template-areas: "compteur" "ram" "swap" "etapes"; }
+  .compteur { text-align: left; display: flex; align-items: baseline; gap: 0.6rem; }
+  .compteur-unite { margin: 0; }
+  .etapes { grid-template-columns: 1fr 1fr; }
+  .seg span { display: none; }
+  .protection { grid-template-columns: 1fr; }
+  .protection h3 { grid-row: auto; }
+  .galerie { grid-template-columns: 1fr; }
+  .copier { min-width: 4.5rem; padding: 0 0.75rem; }
+}
+@media (max-width: 420px) {
+  .etapes { grid-template-columns: 1fr; }
+}

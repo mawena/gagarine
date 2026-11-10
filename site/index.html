@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gagarine, le garde-RAM du poste Linux</title>
+<meta name="description" content="Gagarine fige le programme qui remplit la mémoire avant que le PC ne gèle. File d'attente des travaux lourds, swap compressé, interface GNOME. Installation par apt sur Ubuntu.">
+<meta name="theme-color" content="#eef1f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141a26" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cantarell:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="entete">
+  <a class="marque" href="./"><img src="icone.svg" alt="" width="32" height="32"><span>Gagarine</span></a>
+  <nav aria-label="Liens du projet">
+    <a href="#installer">Installer</a>
+    <a href="https://github.com/mawena/gagarine/releases/latest">Dernière version</a>
+    <a href="https://github.com/mawena/gagarine">Code source</a>
+  </nav>
+</header>
+
+<main>
+  <section class="ouverture" aria-labelledby="titre">
+    <h1 id="titre">Gagarine</h1>
+    <p class="chapeau">Quand un programme s'emballe et remplit la mémoire, Gagarine le fige avant que le PC ne gèle. Le reste de votre travail continue.</p>
+
+    <figure class="scene" aria-describedby="scene-texte">
+      <div class="compteur" aria-hidden="true"><span class="compteur-valeur" id="compteur">55</span><span class="compteur-unite">% de RAM</span></div>
+
+      <div class="piste piste-ram" aria-hidden="true">
+        <div class="piste-nom">RAM, 14 Go</div>
+        <div class="rail">
+          <div class="seg seg-autres" style="--l: 55%"><span>vos programmes</span></div>
+          <div class="seg seg-coupable" id="coupable"><span>un test qui fuit</span></div>
+          <div class="seg seg-zram" id="zram-ram"></div>
+          <i class="repere" style="--x: 85%"><b>85</b></i>
+          <i class="repere repere-seuil" style="--x: 95%"><b>95</b></i>
+          <i class="repere" style="--x: 98%"><b>98</b></i>
+        </div>
+      </div>
+
+      <div class="piste piste-swap" aria-hidden="true">
+        <div class="piste-nom">Swap compressé en RAM</div>
+        <div class="rail rail-swap">
+          <div class="seg seg-range" id="range"><span>5,6 Go rangés dans 1,6 Go</span></div>
+        </div>
+      </div>
+
+      <ol class="etapes" id="etapes">
+        <li data-etape="1"><strong>Il grossit.</strong> Un test fuit : 5,6 Go en vingt secondes.</li>
+        <li data-etape="2"><strong>Figé à 95 %.</strong> Mis en pause, rien n'est perdu.</li>
+        <li data-etape="3"><strong>Rangé dans le swap.</strong> Compressé, sa mémoire libère la RAM en une seconde.</li>
+        <li data-etape="4"><strong>Le poste reste fluide.</strong> Une notification propose Reprendre ou Arrêter.</li>
+      </ol>
+      <figcaption id="scene-texte" class="lecteur">Illustration : la RAM monte de 55 à 95 % à cause d'un test qui fuit ; Gagarine le fige, le range dans le swap compressé, et la RAM redescend à 66 %.</figcaption>
+      <button class="rejouer" id="rejouer" type="button" hidden>Rejouer</button>
+    </figure>
+
+    <div class="installation-courte">
+      <p>Sur Ubuntu 24.04 :</p>
+      <div class="commande">
+        <pre><code id="cmd-courte">curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh</code></pre>
+        <button type="button" class="copier" data-cible="cmd-courte">Copier</button>
+      </div>
+      <p class="nuance">Le script ajoute le dépôt APT signé puis installe le paquet ; <a href="#installer">les trois commandes qu'il lance</a> sont détaillées plus bas, pour qui préfère les taper soi-même.</p>
+    </div>
+  </section>
+
+  <section class="protections" aria-labelledby="protections-titre">
+    <h2 id="protections-titre">Trois protections, du moins au plus urgent</h2>
+
+    <div class="protection">
+      <h3>Avant : un travail lourd à la fois</h3>
+      <p>Rendus vidéo, compilations, longues suites de tests passent par la file d'attente : chacun attend que la mémoire et les processeurs suffisent, puis tourne dans sa propre limite mémoire. S'il la dépasse, lui seul s'arrête.</p>
+      <pre class="exemple"><code>gagarine file "rendu vidéo" 4 4 -- ffmpeg -i film.mov film.mp4</code></pre>
+    </div>
+
+    <div class="protection">
+      <h3>Pendant : le garde, chaque seconde</h3>
+      <p>Au-delà de 95 % de RAM, Gagarine fige le programme qui grossit le plus vite, jamais le bureau ni les services du système. Il ne l'arrête que si la mémoire ne redescend pas, ou s'il reste figé dix minutes sans décision de votre part.</p>
+      <p class="fait">Sur le poste où il est né : 850 Mo rangés dans le swap en une seconde.</p>
+    </div>
+
+    <div class="protection">
+      <h3>En réserve : un swap qui ne touche pas le disque</h3>
+      <p>Le paquet ajoute un swap compressé en RAM de la taille de la mémoire. Les pages inutilisées y prennent trois à quatre fois moins de place, et en reviennent en quelques microsecondes. Le swap sur disque reste en dernier recours.</p>
+    </div>
+  </section>
+
+  <section class="ecrans" aria-labelledby="ecrans-titre">
+    <h2 id="ecrans-titre">Tout se voit, tout se pilote</h2>
+    <p>L'application Gagarine montre la RAM et le swap en direct, les programmes figés avec Reprendre et Arrêter, la file d'attente et le journal. Un indicateur dans la barre du haut garde le pourcentage sous les yeux.</p>
+    <div class="galerie">
+      <figure class="capture capture-grande">
+        <img src="captures/apercu.png" alt="Page Aperçu : jauge de la RAM avec ses repères, courbe des cinq dernières minutes et swap" width="910" height="750" loading="lazy">
+      </figure>
+      <figure class="capture">
+        <img src="captures/programmes.png" alt="Page Programmes : un programme figé avec les boutons Reprendre et Arrêter, puis les plus gros programmes" width="910" height="750" loading="lazy">
+      </figure>
+      <figure class="capture">
+        <img src="captures/file.png" alt="Page File d'attente : travaux en cours et en attente" width="910" height="750" loading="lazy">
+      </figure>
+    </div>
+  </section>
+
+  <section class="installer" id="installer" aria-labelledby="installer-titre">
+    <h2 id="installer-titre">Installer</h2>
+    <p>Pour Ubuntu 24.04 et les distributions Debian équivalentes. Une fois le dépôt ajouté, <code>sudo apt upgrade</code> apporte les nouvelles versions.</p>
+    <ol class="pas">
+      <li>
+        <p>Ajouter la clé qui signe le dépôt :</p>
+        <div class="commande"><pre><code id="cmd-cle">sudo curl -fsSLo /usr/share/keyrings/gagarine.gpg https://mawena.github.io/gagarine/apt/gagarine.gpg</code></pre><button type="button" class="copier" data-cible="cmd-cle">Copier</button></div>
+      </li>
+      <li>
+        <p>Ajouter le dépôt :</p>
+        <div class="commande"><pre><code id="cmd-source">sudo curl -fsSLo /etc/apt/sources.list.d/gagarine.sources https://mawena.github.io/gagarine/apt/gagarine.sources</code></pre><button type="button" class="copier" data-cible="cmd-source">Copier</button></div>
+      </li>
+      <li>
+        <p>Installer :</p>
+        <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install gagarine</code></pre><button type="button" class="copier" data-cible="cmd-installer">Copier</button></div>
+      </li>
+      <li>
+        <p>Vérifier que tout marche, sans risque : un programme d'essai grossit, il doit être figé, rangé dans le swap puis arrêté.</p>
+        <div class="commande"><pre><code id="cmd-essai">sudo gagarine essai</code></pre><button type="button" class="copier" data-cible="cmd-essai">Copier</button></div>
+      </li>
+    </ol>
+    <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/gagarine/releases/latest">dernière version</a>, puis <code>sudo apt install ./gagarine_*_all.deb</code>.</p>
+  </section>
+</main>
+
+<footer class="pied">
+  <p>Gagarine est un logiciel libre sous licence MIT, écrit par <a href="https://github.com/mawena">mawena</a>.</p>
+  <p>Clé du dépôt APT : <code>FE66 B5A9 00CB E8EB FB8F B079 FCA7 E8E0 C551 3B93</code></p>
+</footer>
+
+<script src="gagarine.js" defer></script>
+</body>
+</html>
