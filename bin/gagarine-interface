@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Interface graphique de Gagarine (GTK 4 + libadwaita). Voir docs/conception-1.1.0.md, section 4."""
+import importlib
+import os
+import sys
+
+_ici = os.path.dirname(os.path.realpath(__file__))
+# installé dans /usr/bin : les modules sont dans /usr/share/gagarine ; dans le dépôt : le dossier parent de bin/
+sys.path.insert(0, '/usr/share/gagarine' if _ici == '/usr/bin' else os.path.dirname(_ici))
+
+
+def _dependances():
+    """Vérifie PyGObject, GTK 4 et libadwaita ; sinon dit clairement quoi installer."""
+    try:
+        import gi
+    except ImportError:
+        sys.exit('Gagarine : il manque PyGObject, nécessaire à l’interface graphique.\n'
+                 'Installez-le : sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1')
+    manque = []
+    for espace, version, paquet in (('Gtk', '4.0', 'gir1.2-gtk-4.0'), ('Adw', '1', 'gir1.2-adw-1')):
+        try:
+            gi.require_version(espace, version)
+            importlib.import_module('gi.repository.' + espace)
+        except (ValueError, ImportError):
+            manque.append(paquet)
+    if manque:
+        sys.exit('Gagarine : l’interface graphique a besoin de ' + ' et '.join(manque) + '.\n'
+                 'Installez-' + ('le' if len(manque) == 1 else 'les') + ' : sudo apt install ' + ' '.join(manque))
+
+
+if __name__ == '__main__':
+    _dependances()
+    from gagarine.interface.application import principal
+    sys.exit(principal(sys.argv))
