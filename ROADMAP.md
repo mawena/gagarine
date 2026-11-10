@@ -73,13 +73,13 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 ## Phase 10 — Indicateur de la barre du haut
 
 - [x] Indicateur GTK 3 + AyatanaAppIndicator : RAM en %, icône selon le niveau, menu d'actions
-- [ ] Démarrage automatique, masquer ou réafficher (aussi depuis l'interface)
+- [x] Démarrage automatique, masquer ou réafficher (aussi depuis l'interface)
 
 ## Phase 11 — Paquet et documentation 1.1.0
 
-- [ ] Paquet : nouveaux fichiers, dépendances recommandées, validation du `.desktop` et du metainfo, lintian
+- [x] Paquet : nouveaux fichiers, dépendances recommandées, validation du `.desktop` et du metainfo, lintian
 - [x] Swap compressé en RAM (zram) et réglages du noyau fournis par le paquet, appliqués à l'installation
-- [ ] README (file d'attente, interface, indicateur, captures), pages de manuel, CHANGELOG
+- [x] README (file d'attente, interface, indicateur, captures), pages de manuel, CHANGELOG
 - [ ] Release git flow 1.1.0, release GitHub avec le `.deb`, « About » GitHub à jour
 
 ## Phase 12 — Mise en place de la 1.1.0 sur le poste
