@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+"""Lanceur de l'indicateur de la barre du haut de Gagarine (voir gagarine/indicateur/)."""
+import os
+import sys
+
+ici = os.path.dirname(os.path.realpath(__file__))
+if ici == '/usr/bin':
+    sys.path.insert(0, '/usr/share/gagarine')
+else:
+    sys.path.insert(0, os.path.dirname(ici))
+
+from gagarine.indicateur.appli import main
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

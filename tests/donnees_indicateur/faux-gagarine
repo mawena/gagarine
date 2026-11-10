@@ -1,0 +1,38 @@
+#!/bin/sh
+# Faux `gagarine` pour les essais de l'indicateur : rend des JSON conformes à docs/conception-1.1.0.md.
+# FAUX_GAGARINE_MODE : normal (défaut), vigilance, fige, panne (code 1), invalide (pas du JSON), lent (dort 30 s).
+mode="${FAUX_GAGARINE_MODE:-normal}"
+journal="${FAUX_GAGARINE_JOURNAL:-}"
+[ -n "$journal" ] && echo "$@" >> "$journal"
+case "$mode" in
+  panne) echo "erreur simulée" >&2; exit 1 ;;
+  invalide) echo "ceci n'est pas du JSON"; exit 0 ;;
+  lent) sleep 30 ;;
+esac
+pct=75.2; dispo=3620; figes='[]'
+[ "$mode" = vigilance ] && { pct=88.0; dispo=1750; }
+[ "$mode" = fige ] && { pct=96.5; dispo=510; figes='[{"pid": 4242, "nom": "python3", "depuis": 1762785000.5, "memoire_mo": 9100, "commande": "python3 -m pytest", "utilisateur": "'"$(id -un)"'", "bride": true}]'; }
+case "$1 $2" in
+  "etat --json")
+    cat <<JSON
+{"version": "1.1.0", "date": "2026-11-10T14:30:00+0000",
+ "ram": {"pourcent": $pct, "total_mo": 14600, "disponible_mo": $dispo},
+ "swap": [{"nom": "/dev/zram0", "type": "partition", "taille_mo": 15237, "utilise_mo": 0, "priorite": 100, "zram": true},
+          {"nom": "/dev/nvme0n1p7", "type": "partition", "taille_mo": 10239, "utilise_mo": 6041, "priorite": -2, "zram": false}],
+ "reglages": {"seuil": 95, "urgence": 98, "vigilance": 85, "grace": 10, "vidage_max": 60, "delai_fige": 600,
+              "reste_si_repris": 256, "notifications": true, "proteges": ""},
+ "fichier_reglages": "/etc/gagarine.conf", "service": {"etat": "active", "actif_au_demarrage": true},
+ "dossier_etat": "/var/lib/gagarine", "figes": $figes, "plus_gros": [], "file": {"travaux": 1}}
+JSON
+    ;;
+  "file --etat")
+    cat <<JSON
+{"ram_disponible_go": 3.6, "charge": 2.1, "coeurs": 14, "dossier": "/tmp/file-attente-travaux-lourds",
+ "travaux": [{"ticket": "1762785000000-1234.json", "position": 1, "nom": "rendu vidéo", "pid": 1234,
+              "depuis": "2026-11-10T14:30:00.000Z", "etat": "en cours", "ram": 4, "coeurs": 4,
+              "commande": "ffmpeg", "unite": null, "sortie": null, "source": "gagarine"}]}
+JSON
+    ;;
+  reprendre*|arreter*) exit 0 ;;
+  *) echo "commande inconnue" >&2; exit 2 ;;
+esac
