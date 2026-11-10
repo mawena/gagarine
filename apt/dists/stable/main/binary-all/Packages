@@ -1,0 +1,43 @@
+Package: gagarine
+Version: 1.1.1
+Architecture: all
+Maintainer: mawena <57989130+mawena@users.noreply.github.com>
+Installed-Size: 285
+Depends: python3 (>= 3.10), libnotify-bin, systemd, util-linux (>= 2.37), systemd-zram-generator
+Recommends: python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5), gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1, pkexec
+Filename: pool/main/gagarine_1.1.1_all.deb
+Size: 73932
+MD5sum: bc19b87df1de513ce92c82569066f765
+SHA1: 3c7f56592e361734c5dd9e6d69cc8b5df814f506
+SHA256: 648108e09493f2dd6bbf7518e52a712015ada2a212037a61d720288831e5d4ec
+Section: admin
+Priority: optional
+Homepage: https://github.com/mawena/gagarine
+Description: RAM guard that freezes the program filling the memory
+ Gagarine keeps a Linux machine from freezing when its memory fills up. It
+ measures the RAM every second (four times per second above 85 %). At 95 %
+ it freezes (SIGSTOP) the program that grows the fastest, throttles it (if
+ resumed, it can only grow by a small amount), pushes it into swap, then
+ stops it if the RAM does not go down once the swap-out is done, if the RAM
+ reaches 98 %, or if it stays frozen for 10 minutes.
+ .
+ It runs as a system service (root), never touches the desktop or critical
+ services, and sends desktop notifications offering to stop or resume the
+ frozen program. The "gagarine essai" command checks the whole chain safely.
+ .
+ It also sets up a compressed swap in RAM (zram, the size of the RAM, zstd,
+ used before the disk swap) with matching kernel settings, so that frozen
+ programs are pushed out fast and the machine never thrashes the disk.
+ .
+ It includes a queue for heavy jobs ("gagarine file"): jobs run one at a
+ time, each one locked into a kernel memory limit, so a runaway job cannot
+ take the machine down.
+ .
+ A GNOME graphical interface ("gagarine-interface", GTK 4 and libadwaita)
+ shows the RAM, the swap, the frozen programs, the job queue, the journal
+ and the settings, and drives the service. A panel indicator
+ ("gagarine-indicateur") shows the RAM in the top bar at all times. Both are
+ optional: they need the recommended packages.
+ .
+ Complements systemd-oomd and earlyoom.
+

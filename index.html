@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Gagarine, dépôt APT</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family:sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem">
+<h1>Gagarine, dépôt APT</h1>
+<p>Garde-RAM pour Linux. Ce dépôt signé permet de mettre Gagarine à jour avec <code>apt upgrade</code>.</p>
+<h2>Installation</h2>
+<pre>sudo curl -fsSL https://mawena.github.io/gagarine/apt/gagarine.gpg -o /usr/share/keyrings/gagarine.gpg
+sudo curl -fsSL https://raw.githubusercontent.com/mawena/gagarine/main/data/apt/gagarine.sources -o /etc/apt/sources.list.d/gagarine.sources
+sudo apt update
+sudo apt install gagarine</pre>
+<p>Ensuite, <code>sudo apt update &amp;&amp; sudo apt upgrade</code> suffit. Les paquets sont aussi sur la page des
+<a href="https://github.com/mawena/gagarine/releases">releases GitHub</a>.</p>
+</body></html>
