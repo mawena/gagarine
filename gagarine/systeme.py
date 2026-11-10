@@ -53,6 +53,21 @@ def ram_utilisee():
         return ram_depuis_meminfo(f.read())
 
 
+def pression_depuis(texte):
+    """« full avg10 » (en %) d'après le texte de /proc/pressure/memory ; 0.0 si la ligne manque."""
+    m = re.search(r'^full\s.*?\bavg10=([\d.]+)', texte, re.M)
+    return float(m.group(1)) if m else 0.0
+
+
+def pression_memoire():
+    """Pression mémoire du noyau (full avg10, en %) ; 0.0 si le noyau ne la donne pas."""
+    try:
+        with open('/proc/pressure/memory') as f:
+            return pression_depuis(f.read())
+    except (OSError, ValueError):
+        return 0.0
+
+
 def lire_processus(uid=None, moi=None):
     """{pid: Proc} des processus. uid : ne garder que ceux de cet utilisateur (None = tous, mode root).
     Sont exclus : le PID 1, le programme lui-même et les threads du noyau (PID 2 et enfants, sans mémoire propre)."""
@@ -241,6 +256,33 @@ class Systeme:
 
     def processus(self):
         return lire_processus(None if self.root else self.uid, self.moi)
+
+    def pression(self):
+        return pression_memoire()
+
+    def memoire_totale(self):
+        """RAM totale en octets (0 si illisible)."""
+        try:
+            with open('/proc/meminfo') as f:
+                return lire_meminfo(f.read())[0]
+        except (OSError, KeyError, ValueError):
+            return 0
+
+    def mesure(self):
+        """{disponible_mo, swap_mo, zram_mo} pour l'historique : swap disque et zram utilisés."""
+        try:
+            with open('/proc/meminfo') as f:
+                disponible = lire_meminfo(f.read())[1] // Mo
+        except (OSError, KeyError, ValueError):
+            disponible = None
+        try:
+            with open('/proc/swaps') as f:
+                zones = lire_swaps(f.read())
+        except OSError:
+            zones = []
+        return {'disponible_mo': disponible,
+                'swap_mo': sum(z['utilise_mo'] for z in zones if not z['zram']),
+                'zram_mo': sum(z['utilise_mo'] for z in zones if z['zram'])}
 
     demarrage = staticmethod(demarrage)
     commande = staticmethod(commande)

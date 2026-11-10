@@ -1,6 +1,7 @@
 """Le garde : décisions prises sur des mesures (sans rien lire lui-même) et boucle de surveillance du service.
 
-Quand la RAM atteint le seuil : figer le programme qui grossit le plus vite (SIGSTOP), le brider, le ranger dans le swap,
+Quand la RAM atteint le seuil (ou, au-delà de `vigilance`, quand un programme la porterait au seuil dans moins de
+`anticipation` secondes, ou que le noyau peine déjà : `pression`) : figer le programme qui grossit le plus vite (SIGSTOP), le brider, le ranger dans le swap,
 puis l'arrêter (SIGKILL) si la RAM ne redescend pas. Le démon relit ses réglages sur SIGHUP sans perdre son état.
 """
 import ctypes
@@ -14,6 +15,8 @@ import time
 from collections import deque
 from pathlib import Path
 
+from gagarine import ntfy
+from gagarine.historique import Enregistreur
 from gagarine.journal import Journal
 from gagarine.reglages import charger_reglages, dossier_etat
 from gagarine.systeme import CROISSANCE_MIN, ENCORE_EN_RAM, FENETRES, Mo, Systeme, construire_proteges, go
@@ -25,7 +28,7 @@ def lancer_fil(f, *args):
 
 
 class Garde:
-    def __init__(self, r, systeme, journal, fichier_figes, lancer=lancer_fil, charger_reglages=None):
+    def __init__(self, r, systeme, journal, fichier_figes, lancer=lancer_fil, charger_reglages=None, alerter=ntfy.envoyer_en_fond):
         self.r = r
         self.s = systeme
         self.journal = journal
@@ -33,6 +36,8 @@ class Garde:
         self.lancer = lancer
         self.charger_reglages = charger_reglages   # () -> (Reglages, avertissements), pour SIGHUP
         self.a_recharger = False
+        self.alerter = alerter   # (cible, titre, texte, priorite, etiquettes) : alerte ntfy, jamais bloquante
+        self.enregistreur = Enregistreur(journal.dossier, systeme.heure)
         self.proteges = construire_proteges(r.proteges)
         self.filtre = re.compile(r.filtre) if r.filtre else None
         self.historique = {}   # pid -> deque[(instant, rss + swap)], un point par seconde
@@ -88,8 +93,46 @@ class Garde:
                 return pid, c
         return max(candidats, key=lambda x: x[1].rss)[0], 0
 
+    def anticipe(self, procs, pct, maintenant):
+        """(pid, croissance) du programme qui, à son rythme des 10 dernières secondes, porterait la RAM au seuil en moins de
+        `anticipation` secondes ; (None, 0) sinon. Il faut au moins 10 s de mesures : une croissance plus brève ne suffit pas."""
+        r = self.r
+        total = getattr(self.s, 'memoire_totale', lambda: 0)()
+        if r.anticipation <= 0 or not total or pct >= r.seuil:
+            return None, 0
+        manque = (r.seuil - pct) / 100 * total   # octets à ajouter pour atteindre le seuil
+        meilleur, vitesse_max, gain_max = None, 0, 0
+        for pid, i in procs.items():
+            if (pid in self.figes or i.etat in 'TtZX' or self.est_protege(i.nom)
+                    or (self.filtre and not self.filtre.search(self.s.commande(pid)))):
+                continue
+            h = self.historique.get(pid)
+            anciens = [(t, m) for t, m in h if maintenant - t <= FENETRES[0]] if h else []
+            if not anciens or maintenant - anciens[0][0] < FENETRES[0] - 1:
+                continue
+            gain = h[-1][1] - anciens[0][1]
+            vitesse = gain / max(h[-1][0] - anciens[0][0], 1e-9)
+            if gain >= CROISSANCE_MIN and vitesse > vitesse_max:
+                meilleur, vitesse_max, gain_max = pid, vitesse, gain
+        if meilleur is not None and manque / vitesse_max < r.anticipation:
+            return meilleur, gain_max
+        return None, 0
+
+    def en_cours_de_pause(self):
+        """Un programme vient d'être figé et le noyau le range encore : on ne fige pas un deuxième."""
+        r = self.r
+        return any(self.s.heure() - f['depuis'] < (r.vidage_max if p in self.vidage else r.grace)
+                   for p, f in self.figes.items())
+
     # --- actions ---
-    def figer(self, pid, info, croissance, pct):
+    def alerte(self, titre, texte, priorite='haute', etiquettes=()):
+        if self.r.ntfy:
+            try:
+                self.alerter(self.r.ntfy, titre, texte, priorite, etiquettes)
+            except Exception:   # une alerte perdue ne doit rien casser
+                pass
+
+    def figer(self, pid, info, croissance, pct, declencheur='seuil'):
         debut = self.s.demarrage(pid)
         try:
             self.s.tuer(pid, signal.SIGSTOP)
@@ -102,10 +145,14 @@ class Garde:
                            'depuis': self.s.heure(), 'memoire': mem}
         self.sauver_figes()
         vitesse = f', +{croissance / Mo:.0f} Mo en peu de temps' if croissance else ''
-        self.evenement('fige', pid, info.nom, pct, memoire=mem)
+        self.evenement('fige', pid, info.nom, pct, memoire=mem, declencheur=declencheur)
         self.s.notifier(f'RAM à {pct:.0f} % : « {info.nom} » figé',
                         f'{info.nom} (processus {pid}) occupait {go(mem)}{vitesse}. Il est mis en pause et rangé dans le '
                         f'swap ; il sera arrêté si la RAM ne redescend pas. Repris, il ne pourra plus grossir.', pid, debut)
+        raisons = {'anticipation': 'il aurait rempli la RAM en quelques secondes', 'pression': 'le noyau manquait de mémoire'}
+        self.alerte(f'RAM à {pct:.0f} % : « {info.nom} » figé',
+                    f'{info.nom} ({go(mem)}) est en pause{vitesse} ; {raisons.get(declencheur, "la RAM avait atteint le seuil")}.',
+                    etiquettes=('warning',))
         self.vidage.add(pid)
         self.lancer(self.isoler, pid, debut, info.rss, info.nom)
 
@@ -122,16 +169,17 @@ class Garde:
         finally:
             self.vidage.discard(pid)
 
-    def arreter(self, pid, nom, raison, pct):
+    def arreter(self, pid, nom, raison, pct, declencheur=None):
         try:
             self.s.tuer(pid, signal.SIGKILL)
         except OSError:
             pass
         f = self.figes.get(pid, {})
-        self.evenement('arrete', pid, nom, pct, raison=raison, memoire=f.get('memoire'))
+        self.evenement('arrete', pid, nom, pct, raison=raison, memoire=f.get('memoire'), declencheur=declencheur)
         self.figes.pop(pid, None)
         self.sauver_figes()
         self.s.notifier(f'« {nom} » arrêté', f'{nom} (processus {pid}) a été arrêté : {raison}. Le poste reste utilisable.')
+        self.alerte(f'« {nom} » arrêté', f'{nom} a été arrêté : {raison}.', etiquettes=('skull',))
         self.repos_jusqua = self.s.mono() + 1.5   # laisser le noyau rendre la mémoire avant de réévaluer
 
     # --- un tour de surveillance ---
@@ -166,6 +214,7 @@ class Garde:
                 duree = f'{r.delai_fige / 60:.0f} min' if r.delai_fige >= 60 else f'{r.delai_fige:.0f} s'
                 self.arreter(pid, f['nom'], f'figé depuis {duree} sans décision', pct)
 
+        self.noter_historique(pct, procs)
         if maintenant < self.repos_jusqua:
             return pct
         en_ram = sorted(((procs[p].rss, p) for p in self.figes if p in procs and procs[p].rss > ENCORE_EN_RAM),
@@ -173,10 +222,9 @@ class Garde:
         if pct >= r.urgence:
             pid = en_ram[0][1] if en_ram else self.coupable(procs, maintenant)[0]
             if pid:
-                self.arreter(pid, procs[pid].nom, f'la RAM a atteint {pct:.0f} %', pct)
+                self.arreter(pid, procs[pid].nom, f'la RAM a atteint {pct:.0f} %', pct, 'urgence')
         elif pct >= r.seuil:
-            if any(self.s.heure() - f['depuis'] < (r.vidage_max if p in self.vidage else r.grace)
-                   for p, f in self.figes.items()):
+            if self.en_cours_de_pause():
                 return pct   # un programme vient d'être figé : on laisse le temps au swap de rendre la RAM
             if en_ram:
                 pid = en_ram[0][1]
@@ -186,7 +234,29 @@ class Garde:
                 pid, c = self.coupable(procs, maintenant)
                 if pid:
                     self.figer(pid, procs[pid], c, pct)
+        elif pct >= r.vigilance and not self.en_cours_de_pause() and not en_ram:
+            pression = getattr(self.s, 'pression', lambda: 0.0)() if r.pression > 0 else 0.0
+            pid, c, declencheur = None, 0, None
+            if r.pression > 0 and pression >= r.pression:
+                pid, c = self.coupable(procs, maintenant)
+                declencheur = 'pression'
+            if pid is None:
+                pid, c = self.anticipe(procs, pct, maintenant)
+                declencheur = 'anticipation'
+            if pid:
+                self.figer(pid, procs[pid], c, pct, declencheur)
         return pct
+
+    def noter_historique(self, pct, procs):
+        """Une mesure par minute dans l'historique (jamais d'erreur ni d'attente pour la boucle)."""
+        mesure = getattr(self.s, 'mesure', None)
+        if mesure is None or self.s.heure() < self.enregistreur.prochaine:
+            return
+        try:
+            pression = getattr(self.s, 'pression', lambda: 0.0)()
+            self.enregistreur.noter(pct, mesure(), pression, [(i.nom, i.rss + i.swap) for i in procs.values()])
+        except Exception:
+            pass
 
     # --- rechargement des réglages (SIGHUP) : l'état (programmes figés, historique) reste ---
     def appliquer_reglages(self, r):
