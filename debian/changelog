@@ -1,3 +1,10 @@
+gagarine (1.2.2) unstable; urgency=low
+
+  * Documentation : installation par le dépôt APT en tête du README (en
+    une ligne, pas à pas, mise à jour, sans le dépôt) et lien du site.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 18:12:51 +0000
+
 gagarine (1.2.1) unstable; urgency=medium
 
   * gagarine applications : une seule ligne par application quand GNOME la
