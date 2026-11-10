@@ -5,7 +5,12 @@ réunit tout ce qui protège la mémoire du poste : le **garde** qui fige le pro
 pour les travaux lourds, le **ménage** des programmes inactifs, un **swap compressé en RAM**, une **interface graphique**
 et un **indicateur** dans la barre du haut. Il se met à jour par `apt upgrade`.
 
-Site : [mawena.github.io/gagarine](https://mawena.github.io/gagarine/).
+**Site et installation : [mawena.github.io/gagarine](https://mawena.github.io/gagarine/)** — dépôt APT signé, mises à
+jour par `sudo apt upgrade`.
+
+```bash
+curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh
+```
 
 ![Aperçu de l'interface de Gagarine](docs/captures/apercu.png)
 
@@ -33,21 +38,55 @@ Gagarine agit sur quatre plans :
 
 ## Installation
 
-Pour Ubuntu 24.04 (noyau 6.8, cgroup v2, systemd, GNOME), ou toute distribution Debian équivalente. Gagarine a son
-**dépôt APT signé** : une fois ajouté, `sudo apt upgrade` apporte les nouvelles versions.
+Pour Ubuntu 24.04 (noyau 6.8, cgroup v2, systemd, GNOME), ou toute distribution Debian équivalente. Gagarine s'installe
+depuis son **dépôt APT signé**, publié sur [mawena.github.io/gagarine](https://mawena.github.io/gagarine/) ; ensuite,
+`sudo apt upgrade` apporte les nouvelles versions avec le reste du système.
+
+### En une ligne
 
 ```bash
-sudo curl -fsSLo /usr/share/keyrings/gagarine.gpg https://mawena.github.io/gagarine/apt/gagarine.gpg
-sudo curl -fsSLo /etc/apt/sources.list.d/gagarine.sources https://mawena.github.io/gagarine/apt/gagarine.sources
-sudo apt update && sudo apt install gagarine
-sudo gagarine essai     # vérifie que tout marche, sans risque
+curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh
 ```
 
-Les mêmes étapes en une ligne : `curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh`. Clé du dépôt :
-`FE66 B5A9 00CB E8EB FB8F B079 FCA7 E8E0 C551 3B93`. Sans le dépôt : télécharger `gagarine_<version>_all.deb` et
-`SHA256SUMS` depuis les [releases GitHub](https://github.com/mawena/gagarine/releases), `sha256sum -c SHA256SUMS
---ignore-missing`, puis `sudo apt install ./gagarine_<version>_all.deb` (depuis la 1.2.0, le paquet ajoute lui-même le
-dépôt APT).
+Le script ([à lire sur le site](https://mawena.github.io/gagarine/installer.sh)) ajoute la clé et le dépôt, puis
+installe Gagarine : exactement les trois étapes ci-dessous.
+
+### Pas à pas
+
+```bash
+# 1. La clé qui signe le dépôt
+sudo curl -fsSLo /usr/share/keyrings/gagarine.gpg https://mawena.github.io/gagarine/apt/gagarine.gpg
+# 2. Le dépôt
+sudo curl -fsSLo /etc/apt/sources.list.d/gagarine.sources https://mawena.github.io/gagarine/apt/gagarine.sources
+# 3. Gagarine
+sudo apt update && sudo apt install gagarine
+```
+
+Empreinte de la clé du dépôt : `FE66 B5A9 00CB E8EB FB8F B079 FCA7 E8E0 C551 3B93` (« Gagarine APT (mawena) »).
+
+### Vérifier que tout marche
+
+```bash
+sudo gagarine essai     # un programme d'essai grossit : il doit être figé, rangé dans le swap puis arrêté
+```
+
+### Mettre à jour
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+### Sans le dépôt
+
+Télécharger `gagarine_<version>_all.deb` et `SHA256SUMS` depuis les
+[releases GitHub](https://github.com/mawena/gagarine/releases), puis :
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+sudo apt install ./gagarine_<version>_all.deb
+```
+
+Depuis la 1.2.0, le paquet ajoute lui-même le dépôt APT et sa clé : les versions suivantes arrivent par `apt upgrade`.
 
 À l'installation :
 

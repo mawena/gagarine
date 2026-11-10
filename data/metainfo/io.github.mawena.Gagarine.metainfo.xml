@@ -62,6 +62,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="1.2.2" date="2026-11-10">
+      <description>
+        <p>Documentation : installation par le dépôt APT et lien du site en tête du README.</p>
+      </description>
+    </release>
     <release version="1.2.1" date="2026-11-10">
       <description>
         <p>Une seule ligne par application du bureau, plafond appliqué à toutes ses familles de scopes ; plafonds affichés avec une virgule.</p>
