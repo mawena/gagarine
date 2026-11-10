@@ -88,4 +88,4 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 - [x] `~/.local/bin/file-attente` renvoie vers `gagarine file` ; hook et consignes des sessions Claude à jour
 - [x] Plus rien d'éparpillé hors de Gagarine : ancien garde-RAM, script et réglages zram de `/etc` (remplacés par ceux du paquet) retirés
 - [x] Essai réel de la file sur le poste : ordre, attente, annulation, ancien outil dans la même file
-- [ ] Installation du correctif 1.1.1 (par l'utilisateur)
+- [x] Installation du correctif 1.1.1 (par l'utilisateur)
