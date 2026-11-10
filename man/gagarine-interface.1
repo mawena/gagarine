@@ -1,0 +1,56 @@
+.TH GAGARINE\-INTERFACE 1 "10 novembre 2026" "gagarine 1.0.0" "Commandes de l'utilisateur"
+.SH NOM
+gagarine\-interface \- interface graphique de Gagarine (GTK 4 et libadwaita)
+.SH SYNOPSIS
+.B gagarine\-interface
+.RB [ \-\-page
+.IR PAGE ]
+.br
+.B gagarine\-interface
+.RB ( \-h " | " \-\-help " | " \-\-aide )
+.SH DESCRIPTION
+.B gagarine\-interface
+ouvre la fenêtre de Gagarine, le garde\-RAM du poste. Elle montre en direct la mémoire vive et le swap, les programmes
+figés par le garde, la file d'attente des travaux lourds, le journal des événements et les réglages, et permet de tout
+piloter à la souris : reprendre ou arrêter un programme figé, annuler ou lancer un travail de la file, modifier les
+réglages, démarrer ou arrêter le service, lancer l'essai de la protection, afficher ou masquer l'indicateur de la barre
+du haut.
+.PP
+L'interface ne parle au cœur de Gagarine qu'à travers la commande
+.BR gagarine (8)
+(sorties \fB\-\-json\fR) et la lecture de /proc/meminfo ; elle tourne sous l'identité de l'utilisateur. Les actions qui
+demandent les droits d'administrateur (enregistrer les réglages, piloter le service, arrêter le programme d'un autre
+utilisateur) passent par
+.BR pkexec (1)
+et la politique polkit \fBio.github.mawena.gagarine.administrer\fR : un mot de passe est demandé. Une seule instance
+tourne à la fois.
+.PP
+Il faut PyGObject, GTK 4 et libadwaita 1.5 ou plus (paquets recommandés python3\-gi, gir1.2\-gtk\-4.0 et
+gir1.2\-adw\-1) ; s'il en manque, le programme dit quel paquet installer.
+.SH OPTIONS
+.TP
+.BI \-\-page " PAGE"
+Ouvre la page demandée : \fBapercu\fR, \fBprogrammes\fR, \fBfile\fR, \fBjournal\fR ou \fBreglages\fR.
+.TP
+.BR \-h ", " \-\-help ", " \-\-aide
+Affiche l'aide et quitte (sans ouvrir de fenêtre).
+.SH ENVIRONNEMENT
+.TP
+.B GAGARINE_COMMANDE
+Remplace la commande \fBgagarine\fR (développement, tests). Les actions d'administrateur sont alors lancées sans
+\fBpkexec\fR.
+.TP
+.B GAGARINE_INDICATEUR
+Remplace la commande de l'indicateur lancée par l'interrupteur « Afficher dans la barre du haut ».
+.SH FICHIERS
+.TP
+.I ~/.local/state/gagarine/travaux/
+Sorties des travaux lancés avec « Nouveau travail… » (variable GAGARINE_SORTIE).
+.TP
+.I ~/.config/autostart/io.github.mawena.Gagarine.Indicateur.desktop
+Surcharge de l'autostart de l'indicateur (Hidden=true quand il est masqué).
+.SH VOIR AUSSI
+.BR gagarine (8),
+.BR gagarine\-indicateur (1)
+.SH AUTEUR
+mawena. Licence MIT.

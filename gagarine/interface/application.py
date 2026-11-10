@@ -61,8 +61,22 @@ class Application(Adw.Application):
         d.present(self.fenetre)
 
 
+AIDE = """Usage : gagarine-interface [--page PAGE | --help]
+
+Interface graphique de Gagarine (GTK 4 + libadwaita).
+
+  --page PAGE    ouvre la page demandée : """ + ', '.join(PAGES) + """
+  -h, --help, --aide   affiche cette aide
+
+Variables : GAGARINE_COMMANDE remplace la commande « gagarine » utilisée (développement, tests).
+"""
+
+
 def principal(argv=None):
     argv = list(sys.argv if argv is None else argv)
+    if any(a in ('-h', '--help', '--aide') for a in argv[1:]):
+        print(AIDE, end='')   # sans affichage ni GTK : fonctionne aussi dans un terminal sans écran
+        return 0
     page = None
     for i, a in enumerate(argv):
         if a.startswith('--page='):
