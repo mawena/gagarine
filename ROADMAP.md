@@ -131,7 +131,7 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 ## Phase 20 — Paquet, documentation et release 1.2.0
 
 - [x] Paquet (nouveaux fichiers, minuteur utilisateur, source APT), pages de manuel, README, CHANGELOG
-- [ ] Release 1.2.0, release GitHub, dépôt APT publié
+- [x] Release 1.2.0, release GitHub, dépôt APT publié
 
 ## Phase 21 — Mise en place de la 1.2.0 sur le poste
 
