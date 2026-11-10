@@ -372,6 +372,18 @@ class EvenementsJournal120(unittest.TestCase):
         self.assertIn('menage', [c for c, _ in d.CATEGORIES])
 
 
+class PicNul(unittest.TestCase):
+    """Un travail trop court pour qu'un pic ait été relevé (pic_go = 0) ne montre pas « pic 0 Go » (intégration réelle)."""
+
+    def test_pic_nul_masque(self):
+        self.assertNotIn('pic', d.decrire_evenement({'action': 'travail-fin', 'nom': 'x', 'code': 0, 'duree': 1, 'pic_go': 0.0})[2])
+        self.assertNotIn('pic', d.detail_travail_passe({'nom': 'x', 'date': '2026-11-10T10:00:00+0000', 'code': 0, 'pic_go': 0.0})[1])
+        self.assertNotIn('pic', d.detail_appris({'nom': 'x', 'pic_go': 0.0, 'annonce_go': 1})[1])
+
+    def test_pic_reel_montre(self):
+        self.assertIn('pic de mémoire : 0,6 Go', d.decrire_evenement({'action': 'travail-fin', 'nom': 'x', 'pic_go': 0.59})[2])
+
+
 class Travail(unittest.TestCase):
     def test_arguments(self):
         a = d.arguments_travail('rendu', 4, 2, 'make -j4 && echo ok', base=['gagarine'])
