@@ -228,6 +228,7 @@ _ACTIONS = {
     'travail-fin': ('object-select-symbolic', 'file', 'travail terminé'),
     'travail-annule': ('edit-delete-symbolic', 'file', 'travail annulé'),
     'demarrage': ('emblem-system-symbolic', 'service', 'service démarré'),
+    'rechargement': ('view-refresh-symbolic', 'service', 'réglages rechargés'),
 }
 
 CATEGORIES = [('tous', 'Tous les événements'), ('protection', 'Protection de la RAM'), ('file', 'File d’attente'),
@@ -236,6 +237,11 @@ CATEGORIES = [('tous', 'Tous les événements'), ('protection', 'Protection de l
 
 def categorie_evenement(ev):
     return _ACTIONS.get(ev.get('action'), (None, 'service', None))[1]
+
+
+def _memoire_evenement(octets):
+    """Le cœur écrit la mémoire d'un événement en octets (RAM + swap) ; mise en forme lisible."""
+    return formater_taille_mo(float(octets) / (1024 * 1024))
 
 
 def decrire_evenement(ev):
@@ -248,7 +254,7 @@ def decrire_evenement(ev):
     if action == 'fige':
         titre = f'« {nom} » figé'
         if ev.get('memoire') is not None:
-            morceaux.append(f'{formater_taille_mo(ev["memoire"])} de mémoire')
+            morceaux.append(f'{_memoire_evenement(ev["memoire"])} de mémoire')
     elif action == 'repris':
         titre = f'« {nom} » repris'
     elif action == 'arrete':
@@ -256,15 +262,18 @@ def decrire_evenement(ev):
         if ev.get('raison'):
             morceaux.append(str(ev['raison']))
         if ev.get('memoire') is not None:
-            morceaux.append(f'{formater_taille_mo(ev["memoire"])} libérés')
+            morceaux.append(f'{_memoire_evenement(ev["memoire"])} libérés')
     elif action == 'bridage-impossible':
         titre = f'« {nom} » : bridage impossible'
         if ev.get('erreur'):
             morceaux.append(str(ev['erreur']))
     elif action == 'limite':
-        titre = f'« {ev.get("declare") or nom} » arrêté : limite de mémoire dépassée'
+        # le cœur écrit `declare` (RAM annoncée) et `limite` en Go, sous forme de nombres
+        titre = f'« {nom} » arrêté : limite de mémoire dépassée'
+        if ev.get('declare') is not None:
+            morceaux.append(f'annoncé : {formater_go(ev["declare"])}')
         if ev.get('limite') is not None:
-            morceaux.append(f'limite : {ev["limite"]}')
+            morceaux.append(f'limite : {formater_go(ev["limite"])}')
     elif action == 'travail-debut':
         titre = f'Travail « {nom} » lancé'
     elif action == 'travail-fin':
@@ -274,6 +283,12 @@ def decrire_evenement(ev):
             morceaux.append(f'durée : {formater_duree(ev["duree"])}')
     elif action == 'travail-annule':
         titre = f'Travail « {nom} » annulé'
+    elif action == 'rechargement':
+        titre = 'Réglages rechargés'
+        if ev.get('seuil') is not None:
+            morceaux.append(f'seuil {ev["seuil"]} %')
+        if ev.get('urgence') is not None:
+            morceaux.append(f'urgence {ev["urgence"]} %')
     elif action == 'demarrage':
         titre = 'Service Gagarine démarré'
         if ev.get('mode'):
@@ -282,7 +297,7 @@ def decrire_evenement(ev):
             morceaux.append(f'version {ev["version"]}')
     else:
         titre = f'{verbe} : {nom}'
-    if pid is not None and action not in ('demarrage',):
+    if pid is not None and action not in ('demarrage', 'rechargement'):
         morceaux.append(f'processus {pid}')
     if ev.get('ram') is not None and action in ('fige', 'arrete', 'repris'):
         morceaux.append(f'RAM à {formater_pourcent(ev["ram"])}')

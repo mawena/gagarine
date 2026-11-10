@@ -121,13 +121,22 @@ class Evenements(unittest.TestCase):
             self.assertNotIn('None', titre + detail)
 
     def test_libelles_precis(self):
-        _, titre, detail = d.decrire_evenement({'action': 'fige', 'nom': 'node', 'pid': 7, 'memoire': 4200, 'ram': 95.9})
+        _, titre, detail = d.decrire_evenement({'action': 'fige', 'nom': 'node', 'pid': 7, 'memoire': 4200 * 2 ** 20, 'ram': 95.9})
         self.assertEqual(titre, '« node » figé')
         self.assertIn('4,1 Go de mémoire', detail)
         self.assertIn('processus 7', detail)
         _, titre, detail = d.decrire_evenement({'action': 'travail-fin', 'nom': 'x', 'code': 1, 'duree': 125})
         self.assertIn('code 1', titre)
         self.assertIn('2 min 5 s', detail)
+        _, titre, detail = d.decrire_evenement({'action': 'limite', 'nom': 'tests', 'declare': 0.1, 'limite': 2.1,
+                                                'commande': 'pytest'})
+        self.assertEqual(titre, '« tests » arrêté : limite de mémoire dépassée')
+        self.assertIn('annoncé : 0,1 Go', detail)
+        self.assertIn('limite : 2,1 Go', detail)
+        _, titre, detail = d.decrire_evenement({'action': 'rechargement', 'pid': 5, 'nom': 'gagarine', 'seuil': 95,
+                                                'urgence': 98})
+        self.assertEqual(titre, 'Réglages rechargés')
+        self.assertIn('seuil 95 %', detail)
         _, titre, _ = d.decrire_evenement({'action': 'inconnue-demain', 'nom': 'y'})
         self.assertIn('y', titre)   # une action future ne plante pas
 

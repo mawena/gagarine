@@ -12,7 +12,7 @@ from .outils import etiquette, page_preferences, synchroniser
 
 class PageApercu(Adw.PreferencesPage):
     def __init__(self, fenetre):
-        super().__init__(title='Aperçu', name='apercu', icon_name='utilities-system-monitor-symbolic')
+        super().__init__(title='Aperçu', name='apercu', icon_name='computer-symbolic')
         self.fenetre = fenetre
         self.source = fenetre.source
         self.lignes_swap = {}

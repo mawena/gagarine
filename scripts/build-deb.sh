@@ -13,6 +13,10 @@ if [[ "$deb_version" != "$cli_version" ]]; then
   exit 1
 fi
 
+# Fichiers de bureau, autostart et metainfo valides (sans réseau) avant de construire
+desktop-file-validate data/applications/*.desktop data/autostart/*.desktop
+appstreamcli validate --no-net data/metainfo/*.metainfo.xml
+
 make clean >/dev/null
 make test
 dpkg-buildpackage -us -uc -b
@@ -23,5 +27,6 @@ mv -f "../gagarine_${deb_version}_all.deb" dist/
 rm -f "../gagarine_${deb_version}_"*.buildinfo "../gagarine_${deb_version}_"*.changes
 (cd dist && sha256sum ./*.deb | sed 's| \./| |' > SHA256SUMS)
 
-lintian --fail-on error "dist/gagarine_${deb_version}_all.deb"
+# Lintian sans erreur ni avertissement
+lintian -I --fail-on error,warning "dist/gagarine_${deb_version}_all.deb"
 echo "Paquet : dist/gagarine_${deb_version}_all.deb"

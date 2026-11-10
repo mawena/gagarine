@@ -1,4 +1,5 @@
 """Application GTK : instance unique, page de départ, boîte « À propos »."""
+import os
 import sys
 
 import gi
@@ -14,6 +15,15 @@ VERSION = '1.1.0'
 DEPOT = 'https://github.com/mawena/gagarine'
 
 
+def dossier_icones_depot():
+    """data/icons du dépôt quand on tourne depuis les sources (là, hicolor n'a pas encore nos icônes), sinon None."""
+    racine = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    dossier = os.path.join(racine, 'data', 'icons')
+    if os.path.exists(os.path.join(racine, 'bin', 'gagarine-interface')) and os.path.isdir(dossier):
+        return dossier
+    return None
+
+
 class Application(Adw.Application):
     def __init__(self):
         super().__init__(application_id=donnees.APPLICATION_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
@@ -25,6 +35,10 @@ class Application(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        dossier = dossier_icones_depot()
+        if dossier and Gdk.Display.get_default():
+            Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(dossier)
+        Gtk.Window.set_default_icon_name(donnees.APPLICATION_ID)
         a = Gio.SimpleAction.new('a-propos', None)
         a.connect('activate', lambda *_: self.a_propos())
         self.add_action(a)
@@ -47,8 +61,22 @@ class Application(Adw.Application):
         d.present(self.fenetre)
 
 
+AIDE = """Usage : gagarine-interface [--page PAGE | --help]
+
+Interface graphique de Gagarine (GTK 4 + libadwaita).
+
+  --page PAGE    ouvre la page demandée : """ + ', '.join(PAGES) + """
+  -h, --help, --aide   affiche cette aide
+
+Variables : GAGARINE_COMMANDE remplace la commande « gagarine » utilisée (développement, tests).
+"""
+
+
 def principal(argv=None):
     argv = list(sys.argv if argv is None else argv)
+    if any(a in ('-h', '--help', '--aide') for a in argv[1:]):
+        print(AIDE, end='')   # sans affichage ni GTK : fonctionne aussi dans un terminal sans écran
+        return 0
     page = None
     for i, a in enumerate(argv):
         if a.startswith('--page='):
