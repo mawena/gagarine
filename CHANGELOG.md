@@ -7,6 +7,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.2.2] - 2026-11-10
+
+### Documentation
+
+- Le README met l'installation par le dépôt APT en tête : en une ligne (`installer.sh` du site), pas à pas (clé,
+  dépôt, `apt install`), vérification, mise à jour par `sudo apt update && sudo apt upgrade`, et le `.deb` des releases
+  en dernier recours ; le lien du site https://mawena.github.io/gagarine/ est en haut de la page.
+
 ## [1.2.1] - 2026-11-10
 
 ### Corrigé
