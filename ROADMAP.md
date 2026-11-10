@@ -80,7 +80,7 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 - [x] Paquet : nouveaux fichiers, dépendances recommandées, validation du `.desktop` et du metainfo, lintian
 - [x] Swap compressé en RAM (zram) et réglages du noyau fournis par le paquet, appliqués à l'installation
 - [x] README (file d'attente, interface, indicateur, captures), pages de manuel, CHANGELOG
-- [ ] Release git flow 1.1.0, release GitHub avec le `.deb`, « About » GitHub à jour
+- [x] Release git flow 1.1.0, release GitHub avec le `.deb`, « About » GitHub à jour
 
 ## Phase 12 — Mise en place de la 1.1.0 sur le poste
 
