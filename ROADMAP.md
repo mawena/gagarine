@@ -35,7 +35,7 @@ Il reprend le garde-RAM écrit le 10/11/2026 pour le poste, après deux redémar
 ## Phase 5 — Première version
 
 - [x] CHANGELOG, release git flow, tag, `main`, `develop` et tags poussés
-- [ ] Release GitHub avec le `.deb` et `SHA256SUMS`
+- [x] Release GitHub avec le `.deb` et `SHA256SUMS`
 
 ## Phase 6 — Mise en place sur le poste
 
