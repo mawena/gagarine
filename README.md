@@ -2,8 +2,10 @@
 
 Gagarine est un garde-RAM pour Linux : il empêche la mémoire vive d'un poste de se remplir au point de le figer. Il
 réunit tout ce qui protège la mémoire du poste : le **garde** qui fige le programme qui s'emballe, une **file d'attente**
-pour les travaux lourds, un **swap compressé en RAM**, une **interface graphique** et un **indicateur** dans la barre du
-haut.
+pour les travaux lourds, le **ménage** des programmes inactifs, un **swap compressé en RAM**, une **interface graphique**
+et un **indicateur** dans la barre du haut. Il se met à jour par `apt upgrade`.
+
+Site : [mawena.github.io/gagarine](https://mawena.github.io/gagarine/).
 
 ![Aperçu de l'interface de Gagarine](docs/captures/apercu.png)
 
@@ -15,40 +17,46 @@ souvent forcer le redémarrage. C'est arrivé le 02/11/2026, avec deux travaux l
 le 10/11/2026 : un test qui avait grossi jusqu'à 9 Go a rempli les 14 Go de RAM puis les 10 Go de swap, et le poste est
 resté figé.
 
-Gagarine agit sur trois plans :
+Gagarine agit sur quatre plans :
 
-- **avant** : la file d'attente fait passer les travaux lourds un par un, quand la RAM et les processeurs suffisent, et
-  enferme chacun dans une limite mémoire du noyau ;
-- **pendant** : il mesure la RAM chaque seconde et, à 95 %, **fige** le programme qui grossit le plus vite, le **bride**,
-  le **range dans le swap**, puis l'**arrête** si la RAM ne redescend pas. Le bureau et les services critiques ne sont
-  jamais touchés, et des notifications proposent « Arrêter » ou « Reprendre » ;
+- **à la source** : la file d'attente fait passer les travaux lourds un par un, quand la RAM et les processeurs
+  suffisent, enferme chacun dans une limite mémoire du noyau, **retient la mémoire qu'il a vraiment prise** et corrige une
+  annonce trop basse ; les sessions Claude Code ne peuvent plus lancer un travail lourd hors de la file ; les démons et
+  modèles qui gardent la mémoire sans rien faire sont **arrêtés ou déchargés** ; chaque application du bureau peut
+  recevoir un **plafond mémoire** ;
+- **avant le seuil** : il mesure la RAM chaque seconde et fige plus tôt un programme qui remplirait la RAM dans les
+  prochaines secondes, ou quand le noyau peine déjà faute de mémoire ;
+- **au seuil** : à 95 %, il **fige** le programme qui grossit le plus vite, le **bride**, le **range dans le swap**, puis
+  l'**arrête** si la RAM ne redescend pas. Le bureau et les services critiques ne sont jamais touchés, et des
+  notifications (sur le bureau et, si on le veut, sur le téléphone) proposent « Arrêter » ou « Reprendre » ;
 - **en réserve** : un swap compressé en RAM (zram) absorbe vite ce qui déborde, sans écrire sur le disque.
 
 ## Installation
 
-Pour Ubuntu 24.04 (noyau 6.8, cgroup v2, systemd, GNOME), ou toute distribution Debian équivalente.
+Pour Ubuntu 24.04 (noyau 6.8, cgroup v2, systemd, GNOME), ou toute distribution Debian équivalente. Gagarine a son
+**dépôt APT signé** : une fois ajouté, `sudo apt upgrade` apporte les nouvelles versions.
 
-1. Télécharger `gagarine_<version>_all.deb` (et `SHA256SUMS`) depuis les
-   [releases GitHub](https://github.com/mawena/gagarine/releases).
-2. Vérifier la somme, puis installer :
+```bash
+sudo curl -fsSLo /usr/share/keyrings/gagarine.gpg https://mawena.github.io/gagarine/apt/gagarine.gpg
+sudo curl -fsSLo /etc/apt/sources.list.d/gagarine.sources https://mawena.github.io/gagarine/apt/gagarine.sources
+sudo apt update && sudo apt install gagarine
+sudo gagarine essai     # vérifie que tout marche, sans risque
+```
 
-   ```bash
-   sha256sum -c SHA256SUMS --ignore-missing
-   sudo apt install ./gagarine_<version>_all.deb
-   ```
-
-3. Vérifier que tout marche, sans risque :
-
-   ```bash
-   sudo gagarine essai
-   ```
+Les mêmes étapes en une ligne : `curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh`. Clé du dépôt :
+`FE66 B5A9 00CB E8EB FB8F B079 FCA7 E8E0 C551 3B93`. Sans le dépôt : télécharger `gagarine_<version>_all.deb` et
+`SHA256SUMS` depuis les [releases GitHub](https://github.com/mawena/gagarine/releases), `sha256sum -c SHA256SUMS
+--ignore-missing`, puis `sudo apt install ./gagarine_<version>_all.deb` (depuis la 1.2.0, le paquet ajoute lui-même le
+dépôt APT).
 
 À l'installation :
 
 - le service `gagarine.service` est activé et démarré (redémarré à la mise à jour, arrêté à la suppression) ;
 - le swap compressé en RAM (zram) est créé et ses réglages du noyau appliqués, sans redémarrer ;
 - l'application **Gagarine** apparaît dans les applications, et l'indicateur se lance à la prochaine ouverture de session
-  (ou tout de suite avec `gagarine-indicateur &`).
+  (ou tout de suite avec `gagarine-indicateur &`) ;
+- le minuteur du ménage (`gagarine-menage.timer`) est activé pour chaque utilisateur ;
+- le dépôt APT et sa clé sont ajoutés (`/etc/apt/sources.list.d/gagarine.sources`, `/usr/share/keyrings/gagarine.gpg`).
 
 Les réglages (`/etc/gagarine.conf`) sont conservés aux mises à jour. L'interface et l'indicateur demandent des paquets
 recommandés (`python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `gir1.2-gtk-3.0`, `gir1.2-ayatanaappindicator3-0.1`,
@@ -61,11 +69,11 @@ Cinq pages :
 
 | Page | Contenu |
 |---|---|
-| **Aperçu** | jauge de la RAM avec les repères (vigilance, seuil, urgence), courbe des cinq dernières minutes, swap (zram et disque), état du service |
-| **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; les dix plus gros programmes (les programmes protégés sont signalés) |
-| **File d'attente** | travaux en cours et en attente, **Annuler**, **Voir la sortie**, **Nouveau travail…** |
-| **Journal** | tous les événements (garde, file, service), filtre par type et recherche |
-| **Réglages** | seuils, délais, bridage, notifications, programmes protégés ; service (démarrer, arrêter, redémarrer) ; essai ; affichage de l'indicateur |
+| **Aperçu** | jauge de la RAM avec les repères (vigilance, seuil, urgence), courbe sur 5 minutes, 24 heures ou 7 jours avec les incidents marqués, swap (zram et disque), état du service |
+| **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; **Ménage** des programmes inactifs ; **Applications du bureau** et leur plafond mémoire ; les dix plus gros programmes |
+| **File d'attente** | travaux en cours et en attente, **Annuler**, **Voir la sortie**, **Nouveau travail…** ; **Mémoire apprise** de chaque travail ; **Travaux passés** avec leur pic |
+| **Journal** | tous les événements (garde, file, ménage, service), filtre par type et recherche |
+| **Réglages** | seuils, anticipation et pression, délais, bridage, notifications (fin de travail, téléphone), file, ménage, sessions Claude, programmes protégés ; service ; essai ; affichage de l'indicateur |
 
 Les actions d'administrateur (réglages, service, essai en administrateur, programme d'un autre utilisateur) passent par
 la fenêtre de mot de passe du système (polkit), une seule fois pour quelques minutes. L'interface reste fluide même quand
@@ -82,7 +90,8 @@ la RAM est pleine : tout ce qu'elle demande au système se fait en arrière-plan
 
 `gagarine-indicateur` affiche la RAM en pourcentage dans la barre du haut, avec une icône qui change selon le niveau
 (normal, vigilance, alerte). Son menu montre la RAM, le swap et les travaux en file, et permet de **reprendre** ou
-d'**arrêter** chaque programme figé, d'**ouvrir Gagarine** ou de **masquer l'indicateur**. Il se lance à l'ouverture de
+d'**arrêter** chaque programme figé, de faire le **ménage** des programmes inactifs, d'**ouvrir Gagarine** ou de
+**masquer l'indicateur**. Il se lance à l'ouverture de
 session ; `gagarine-indicateur --masquer` ou `--afficher` (ou l'interrupteur des réglages) le désactive ou le réactive.
 
 ## File d'attente des travaux lourds
@@ -101,9 +110,51 @@ gagarine file "rendu vidéo" 4 4 -- ffmpeg -i entree.mov sortie.mp4
   faut donc annoncer la RAM qu'il lui faut vraiment.
 - Le code de sortie est celui de la commande. Un travail lancé par un autre travail de la file passe directement.
 - `gagarine file --etat` montre la file ; `gagarine file annuler PID|TICKET` annule un travail.
+- **Mémoire apprise** : la file relève le pic mémoire de chaque travail et le retient (`gagarine file appris`). Si un
+  travail annonce bien moins que ce qu'il a déjà pris, elle le dit et corrige l'annonce (au plus 60 % de la RAM ; réglage
+  `file_ajuster`).
+- **Fin de travail** : une notification dit si un travail d'au moins 30 s s'est terminé, a échoué ou a dépassé sa
+  limite (réglages `notifications_fin`, `notification_fin_min`, et `ntfy` pour le téléphone).
 
 La file est commune à tout le poste : ses tickets (`/tmp/file-attente-travaux-lourds`) sont les mêmes que ceux de l'ancien
 outil `file-attente` et de ses copies dans les projets, qui continuent de partager la même file.
+
+## Ménage des programmes inactifs
+
+Certains programmes gardent beaucoup de mémoire sans rien faire : démons Gradle et Kotlin après une compilation, modèles
+LM Studio ou Ollama chargés pour rien, serveurs de développement oubliés. `gagarine menage` les liste (au moins 300 Mo,
+processeur au repos), `gagarine menage arreter ID` les arrête ou décharge les modèles. Le minuteur utilisateur
+`gagarine-menage.timer` passe toutes les 2 minutes et fait le ménage tout seul après `menage_delai` minutes
+d'inactivité (5 minutes quand la RAM dépasse la vigilance) ; les serveurs de développement ne sont jamais arrêtés tout
+seuls. Réglages `menage_auto` et `menage_delai`.
+
+## Plafond mémoire des applications du bureau
+
+`gagarine applications` liste les applications ouvertes (Chrome, VS Code, Firefox…) et leur mémoire ;
+`gagarine applications plafond google-chrome 5` leur pose un plafond (`MemoryHigh` de systemd) : au-delà, l'application
+est freinée et rangée dans le swap compressé, sans jamais être arrêtée. `aucun` retire le plafond. Le plafond vaut pour
+toutes les fenêtres de l'application, ouvertes maintenant ou plus tard.
+
+## Historique
+
+Le service garde une mesure par minute pendant 8 jours. `gagarine historique --depuis 24h` (ou `5min`, `1h`, `7j`)
+résume la RAM, les incidents, les programmes les plus gourmands et les travaux de la file ; la page **Aperçu** en trace la
+courbe.
+
+## Alertes sur le téléphone
+
+Avec l'application [ntfy](https://ntfy.sh), choisir un sujet difficile à deviner (par exemple `gagarine-k7f3q9x2`), s'y
+abonner sur le téléphone, puis le régler : `sudo gagarine reglages --ecrire ntfy=gagarine-k7f3q9x2` (ou l'adresse
+complète d'un sujet sur un autre serveur). Gagarine y envoie chaque programme figé ou arrêté et la fin des travaux de
+la file. `gagarine ntfy essai SUJET` envoie un message d'essai.
+
+## Sessions Claude Code
+
+`gagarine hook-claude` sert de hook `PreToolUse` aux sessions Claude Code : il rappelle l'état du poste quand il est
+chargé, signale les programmes figés ou arrêtés de la dernière demi-heure et **refuse** les travaux lourds lancés hors
+de la file (tests, compilations, `ffmpeg`, `make deb`…), en donnant la commande corrigée avec la RAM apprise. Un exemple
+de hook est installé dans `/usr/share/gagarine/claude/ressources-poste.sh` ; `gagarine hook-claude --tester "make deb"`
+montre le verdict. Réglage `claude_bloquer`.
 
 ## Utilisation en ligne de commande
 
@@ -112,7 +163,12 @@ outil `file-attente` et de ses copies dans les projets, qui continuent de partag
 | `gagarine etat [--json]` | RAM, swap, service, programmes figés, plus gros programmes, file, derniers événements |
 | `gagarine reprendre PID` | relance un programme figé par Gagarine (il reste bridé) |
 | `gagarine arreter PID` | arrête un programme figé par Gagarine |
-| `gagarine file …` | file d'attente des travaux lourds (voir plus haut) |
+| `gagarine file …` | file d'attente des travaux lourds (voir plus haut) ; `gagarine file appris` : mémoire apprise |
+| `gagarine menage [--json]`, `menage arreter ID…` | programmes inactifs, et leur arrêt |
+| `gagarine applications [--json]`, `applications plafond ID GO\|aucun` | applications du bureau et leur plafond |
+| `gagarine historique [--depuis 5min\|1h\|24h\|7j] [--json]` | RAM, incidents, plus gros programmes et travaux des derniers jours |
+| `gagarine hook-claude [--tester "CMD"]` | hook des sessions Claude Code |
+| `gagarine ntfy essai SUJET` | message d'essai sur le téléphone |
 | `gagarine journal [-n N] [--json]` | les derniers événements, tous journaux fusionnés |
 | `gagarine reglages [--json]` | réglages en vigueur |
 | `sudo gagarine reglages --ecrire CLE=VALEUR…` | modifie `/etc/gagarine.conf` (commentaires gardés) et recharge le service |
@@ -141,6 +197,15 @@ réglages sans perdre son état).
 | `reste_si_repris` | 256 | Mo qu'un programme repris peut encore demander |
 | `notifications` | oui | notifications sur les sessions graphiques ouvertes |
 | `proteges` | (vide) | expression régulière de noms à protéger en plus |
+| `anticipation` | 15 | secondes : figer plus tôt un programme qui remplirait la RAM jusqu'au seuil dans ce délai (0 : non) |
+| `pression` | 20 | % de temps où le noyau est bloqué faute de mémoire (`full avg10`) qui fait agir au-delà de la vigilance (0 : non) |
+| `notifications_fin` | oui | notification à la fin d'un travail de la file |
+| `notification_fin_min` | 30 | secondes : pas de notification de fin pour un travail plus court |
+| `ntfy` | (vide) | sujet ntfy (ou adresse complète) pour les alertes sur le téléphone |
+| `file_ajuster` | oui | la file corrige d'elle-même une annonce bien plus basse que la mémoire déjà mesurée |
+| `menage_auto` | oui | ménage automatique des démons et modèles inactifs |
+| `menage_delai` | 30 | minutes d'inactivité avant le ménage automatique |
+| `claude_bloquer` | oui | le hook des sessions Claude refuse les travaux lourds hors de la file |
 
 Variables d'environnement (prioritaires sur le fichier) : `GAGARINE_CONFIG`, `GAGARINE_ETAT`, `GAGARINE_SEUIL`, etc. ;
 `FILE_ATTENTE_DOSSIER` pour le dossier des tickets de la file.
@@ -163,6 +228,9 @@ Pour en changer, mettre un fichier dans `/etc/systemd/zram-generator.conf.d/` ou
    chaque seconde, quatre fois par seconde au-delà de 85 %.
 2. **Choix du coupable** : le programme dont la mémoire (RAM + swap) a le plus augmenté sur 10 s, puis sur 60 s, à défaut
    le plus gros. Le bureau (gnome-shell, Xorg, le son, D-Bus, systemd…) et les services critiques sont protégés.
+   **Au-delà de 85 %**, sans attendre le seuil : si ce programme, à son rythme des 10 dernières secondes, remplirait la
+   RAM jusqu'au seuil en moins de 15 s (**anticipation**), ou si le noyau passe plus de 20 % de son temps bloqué faute de
+   mémoire (**pression**), il est figé tout de suite.
 3. **Figer** : SIGSTOP. Le programme ne peut plus rien demander.
 4. **Brider** : il est placé dans un scope systemd limité en mémoire. S'il est repris, il ne peut grossir que de 256 Mo.
 5. **Ranger dans le swap** : en administrateur, `process_madvise` demande au noyau de pousser la mémoire du seul programme
@@ -191,8 +259,13 @@ Ils se complètent : on peut garder `systemd-oomd`.
 ```
 gagarine/                 le programme (paquet Python)
   cli.py                  commandes, sorties texte et JSON
-  garde.py                le garde : choix du coupable, figer, brider, ranger, arrêter
-  file.py                 file d'attente des travaux lourds
+  garde.py                le garde : choix du coupable, anticipation, pression, figer, brider, ranger, arrêter
+  file.py                 file d'attente des travaux lourds, mémoire apprise, notification de fin
+  menage.py               ménage des démons et modèles inactifs
+  applications.py         plafond mémoire des applications du bureau
+  historique.py           historique de 7 jours
+  claude.py               hook des sessions Claude Code
+  ntfy.py                 alertes sur le téléphone
   systeme.py              accès au système (/proc, cgroups, appels système, notifications)
   reglages.py journal.py essai.py version.py
   interface/              interface graphique (GTK 4 + libadwaita)
@@ -200,13 +273,16 @@ gagarine/                 le programme (paquet Python)
 bin/                      lanceurs gagarine, gagarine-interface, gagarine-indicateur
 etc/gagarine.conf         réglages par défaut (conffile)
 systemd/gagarine.service  unité systemd
-data/                     bureau (.desktop, icônes, metainfo, polkit, autostart), zram et sysctl
+data/                     bureau (.desktop, icônes, metainfo, polkit, autostart), zram, sysctl, minuteur du ménage,
+                          hook Claude, source et clé du dépôt APT
+site/                     page d'accueil (https://mawena.github.io/gagarine/) et script d'installation
 man/                      pages de manuel
 debian/                   paquet Debian
 scripts/build-deb.sh      construction du .deb dans dist/
-docs/                     conception de la 1.1.0, captures
+scripts/publier-apt.sh    publication du dépôt APT signé et du site (branche gh-pages)
+docs/                     conception des versions 1.1.0 et 1.2.0, captures
 tests/                    tests unitaires
-Makefile                  cibles test, deb, clean
+Makefile                  cibles test, deb, apt, clean
 ```
 
 Le cœur n'utilise que la bibliothèque standard de Python ; seuls `interface/` et `indicateur/` utilisent PyGObject, et ils
@@ -217,8 +293,13 @@ ne parlent au cœur qu'à travers la ligne de commande (`--json`).
 ```bash
 make test    # python3 -m unittest discover -s tests -t .
 make deb     # tests, dist/gagarine_<version>_all.deb, SHA256SUMS, validations, lintian
+make apt     # publie dist/*.deb dans le dépôt APT signé et met le site à jour (branche gh-pages)
 make clean
 ```
+
+Sur le poste de développement, les tests passent eux aussi par la file : `gagarine file "tests" 1 2 -- make test`.
+La clé qui signe le dépôt APT (empreinte dans `data/apt/LISEZMOI`) est dans le trousseau du mainteneur ; elle expire en
+novembre 2029.
 
 Depuis le dépôt, `bin/gagarine`, `bin/gagarine-interface` et `bin/gagarine-indicateur` utilisent le code du dépôt.
 `GAGARINE_COMMANDE` désigne la commande `gagarine` qu'utilisent l'interface et l'indicateur (les tests leur donnent un
