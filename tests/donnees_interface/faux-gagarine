@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Faux `gagarine` pour développer et photographier l'interface : rend des JSON réalistes (contrats de docs/conception-1.1.0.md).
 
-Variables : FAUX_MODE = normal (défaut) | vide (rien de figé, file vide) | erreur (sortie invalide) | lent (dort 30 s)
+Contrats de la 1.2.0 (docs/conception-1.2.0.md) : historique, menage, applications, file appris, ntfy essai.
+Variables : FAUX_MODE = normal (défaut) | vide (rien de figé, file vide, rien à nettoyer) | erreur (sortie invalide)
+            | lent (dort 30 s) | ancien (cœur 1.1 : les commandes de la 1.2.0 sont inconnues, code 2)
             FAUX_RAM = pourcentage de RAM à annoncer (défaut : lu dans /proc/meminfo)
 Les actions (reprendre, arrêter, annuler, service, réglages, essai) ne font rien et le disent.
 """
@@ -37,12 +39,15 @@ def etat():
     figes = [] if mode == 'vide' else [{"pid": 4242, "nom": "python3", "depuis": maintenant - 185.5, "memoire_mo": 9100,
              "commande": "python3 -m pytest tests/lourds --maxfail=1", "utilisateur": "charles-gamligo", "bride": True}]
     return {
-        "version": "1.1.0", "date": iso(maintenant),
+        "version": "1.2.0", "date": iso(maintenant),
         "ram": {"pourcent": round(100 * (1 - dispo / total), 1), "total_mo": round(total), "disponible_mo": round(dispo)},
         "swap": [{"nom": "/dev/zram0", "type": "partition", "taille_mo": 15237, "utilise_mo": 1840, "priorite": 100, "zram": True},
                  {"nom": "/dev/nvme0n1p7", "type": "partition", "taille_mo": 10239, "utilise_mo": 6041, "priorite": -2, "zram": False}],
         "reglages": {"seuil": 95, "urgence": 98, "vigilance": 85, "grace": 10, "vidage_max": 60, "delai_fige": 600,
-                     "reste_si_repris": 256, "notifications": True, "proteges": "postgres|redis-server"},
+                     "reste_si_repris": 256, "notifications": True, "proteges": "postgres|redis-server",
+                     "anticipation": 15, "pression": 20, "notifications_fin": True, "notification_fin_min": 30,
+                     "ntfy": "gagarine-mawena", "file_ajuster": True, "menage_auto": True, "menage_delai": 30,
+                     "claude_bloquer": True},
         "fichier_reglages": "/etc/gagarine.conf",
         "service": {"etat": "active", "actif_au_demarrage": True},
         "dossier_etat": "/var/lib/gagarine",
@@ -78,21 +83,26 @@ def fichier_etat():
 
 def journal(n):
     modele = [
-        (30, "demarrage", {"pid": 138904, "nom": "gagarine", "mode": "root", "version": "1.1.0"}),
-        (170, "fige", {"pid": 4242, "nom": "python3", "ram": 95.4, "memoire": 9100 * 1048576, "commande": "python3 -m pytest tests/lourds"}),
+        (30, "demarrage", {"pid": 138904, "nom": "gagarine", "mode": "root", "version": "1.2.0"}),
+        (60, "menage", {"pid": 5551, "nom": "Démon Gradle", "type": "gradle", "memoire_mo": 3100, "auto": True, "source": "menage"}),
+        (100, "menage", {"nom": "llama3.1:8b", "type": "ollama", "memoire_mo": 5400, "auto": False, "source": "menage"}),
+        (170, "fige", {"pid": 4242, "nom": "python3", "ram": 95.4, "memoire": 9100 * 1048576, "declencheur": "anticipation",
+                       "commande": "python3 -m pytest tests/lourds"}),
         (160, "repris", {"pid": 4242, "nom": "python3", "ram": 71.0, "commande": "python3 -m pytest tests/lourds"}),
-        (300, "travail-debut", {"nom": "rendu vidéo", "pid": 1234, "source": "file", "commande": "ffmpeg -i montage.mkv"}),
+        (300, "travail-debut", {"nom": "tests voix", "pid": 1500, "source": "file", "ajuste": True, "annonce_initiale": 1,
+                                "declare": 11, "commande": "python3 -m unittest"}),
+        (330, "travail-debut", {"nom": "rendu vidéo", "pid": 1234, "source": "file", "commande": "ffmpeg -i montage.mkv"}),
         (900, "fige", {"pid": 3900, "nom": "node", "ram": 95.9, "memoire": 4200 * 1048576, "commande": "node build.js"}),
         (850, "arrete", {"pid": 3900, "nom": "node", "ram": 97.2, "memoire": 4200 * 1048576, "raison": "la RAM n’est pas redescendue"}),
         (1500, "bridage-impossible", {"pid": 3900, "nom": "node", "erreur": "systemd-run a échoué"}),
-        (2400, "travail-fin", {"nom": "export PDF", "pid": 998, "code": 0, "duree": 312.0, "source": "file"}),
+        (2400, "travail-fin", {"nom": "export PDF", "pid": 998, "code": 0, "duree": 312.0, "pic_go": 1.38, "source": "file"}),
         (2700, "travail-debut", {"nom": "export PDF", "pid": 998, "source": "file", "commande": "libreoffice --convert-to pdf"}),
         (4200, "limite", {"nom": "tests", "declare": 4, "limite": 8, "commande": "pytest -x", "source": "file"}),
         (5000, "travail-annule", {"nom": "voix de synthèse", "pid": 777, "source": "file"}),
         (7000, "fige", {"pid": 3100, "nom": "chrome", "ram": 96.1, "memoire": 5100 * 1048576, "commande": "/opt/google/chrome/chrome"}),
         (6900, "arrete", {"pid": 3100, "nom": "chrome", "ram": 98.2, "memoire": 5100 * 1048576, "raison": "urgence : RAM à 98 %"}),
         (9000, "travail-fin", {"nom": "tests de non-régression", "pid": 700, "code": 1, "duree": 1380.0, "source": "file"}),
-        (11000, "rechargement", {"pid": 138904, "nom": "gagarine", "seuil": 95, "urgence": 98}),
+        (11000, "rechargement", {"pid": 138904, "nom": "gagarine", "seuil": 95, "urgence": 98, "anticipation": 15, "pression": 20}),
         (12000, "demarrage", {"pid": 130001, "nom": "gagarine", "mode": "utilisateur", "version": "1.0.0"}),
         (20000, "fige", {"pid": 2500, "nom": "ffmpeg", "ram": 95.0, "memoire": 3300 * 1048576, "commande": "ffmpeg -i a.mkv b.mp4"}),
         (19900, "arrete", {"pid": 2500, "nom": "ffmpeg", "ram": 97.0, "memoire": 3300 * 1048576, "raison": "délai écoulé sans décision"}),
@@ -105,6 +115,71 @@ def journal(n):
                            for dt, a, ev in reversed(modele)][-n:]}
 
 
+def historique(depuis):
+    """Historique réaliste : une mesure par minute (24 h) ou moyennée par 10 min (7 j), incidents, plus gros, travaux."""
+    duree = {'5min': 300, '1h': 3600, '24h': 86400, '7j': 7 * 86400}.get(depuis, 86400)
+    pas = 60 if duree <= 86400 else 600
+    points = []
+    for i in range(int(duree // pas)):
+        t = maintenant - duree + (i + 1) * pas
+        jour = (t % 86400) / 86400
+        ram = 52 + 18 * abs(((t / 3600) % 24) - 12) / 12 * -1 + 22 + 6 * ((i * 7) % 5) / 5
+        if (int(t) // pas) % 211 < 4:
+            ram = 94 + ((int(t) // pas) % 3)       # pics rares, proches du seuil
+        points.append({"date": iso(t), "ram": round(min(ram, 97.4), 1), "swap_mo": int(1500 + 4000 * jour),
+                       "zram_mo": int(900 + 800 * jour), "pression": round(max(0.0, ram - 85) / 3, 1)})
+    incidents = [
+        {"date": iso(maintenant - duree * 0.18), "source": "gagarine", "action": "fige", "pid": 3900, "nom": "node", "ram": 95.9,
+         "memoire": 4200 * 1048576, "declencheur": "anticipation"},
+        {"date": iso(maintenant - duree * 0.18 + 40), "source": "gagarine", "action": "arrete", "pid": 3900, "nom": "node",
+         "ram": 97.2, "memoire": 4200 * 1048576, "raison": "la RAM n’est pas redescendue"},
+        {"date": iso(maintenant - duree * 0.55), "source": "gagarine", "action": "fige", "pid": 4242, "nom": "python3",
+         "ram": 95.4, "memoire": 9100 * 1048576, "declencheur": "pression"},
+        {"date": iso(maintenant - duree * 0.83), "source": "file", "action": "limite", "nom": "tests", "declare": 1, "limite": 3,
+         "pic_go": 3.2},
+    ] if duree >= 86400 else []
+    return {"depuis_s": duree, "pas_s": pas, "points": points, "incidents": incidents,
+            "gros": [{"nom": "chrome", "pic_mo": 4100, "minutes": 840}, {"nom": "python3", "pic_mo": 9100, "minutes": 35},
+                     {"nom": "code", "pic_mo": 2300, "minutes": 620}] if duree >= 86400 else [],
+            "travaux": [{"nom": "rendu vidéo", "date": iso(maintenant - 7200), "duree": 754.0, "code": 0, "pic_go": 3.8},
+                        {"nom": "tests de non-régression", "date": iso(maintenant - 30000), "duree": 1380.0, "code": 1, "pic_go": 6.3},
+                        {"nom": "export PDF", "date": iso(maintenant - 90000), "duree": 312.0, "code": 0, "pic_go": 1.4},
+                        {"nom": "gradle build", "date": iso(maintenant - 200000), "duree": 205.0, "code": 0, "pic_go": 5.1}]
+            if mode != 'vide' else []}
+
+
+def menage():
+    candidats = [] if mode == 'vide' else [
+        {"id": "5551", "type": "gradle", "nom": "Démon Gradle", "pid": 5551, "memoire_mo": 3100, "inactif_depuis_s": 2640,
+         "action": "arreter", "auto": True},
+        {"id": "ollama:llama3.1:8b", "type": "ollama", "nom": "llama3.1:8b", "pid": None, "memoire_mo": 5400,
+         "inactif_depuis_s": 1260, "action": "decharger", "auto": True},
+        {"id": "6001", "type": "serveur-dev", "nom": "node (vite)", "pid": 6001, "memoire_mo": 610, "inactif_depuis_s": 5400,
+         "action": "arreter", "auto": False}]
+    return {"auto": True, "delai_min": 30, "candidats": candidats}
+
+
+def applications():
+    return {"applications": [
+        {"id": "google-chrome", "nom": "Google Chrome", "prefixe": "app-gnome-google\\x2dchrome", "instances": 2,
+         "memoire_mo": 2900, "plafond_go": 4},
+        {"id": "code", "nom": "Visual Studio Code", "prefixe": "app-gnome-code", "instances": 1, "memoire_mo": 1100,
+         "plafond_go": None},
+        {"id": "org.telegram.desktop", "nom": "Telegram", "prefixe": "app-gnome-org.telegram.desktop", "instances": 0,
+         "memoire_mo": 0, "plafond_go": 1}] if mode != 'vide' else []}
+
+
+def appris():
+    return {"travaux": [] if mode == 'vide' else [
+        {"nom": "tests de non-régression", "executions": 5, "pic_go": 6.3, "annonce_go": 6, "derniere": iso(maintenant - 30000)},
+        {"nom": "rendu vidéo", "executions": 3, "pic_go": 3.8, "annonce_go": 4, "derniere": iso(maintenant - 7200)},
+        {"nom": "tests voix", "executions": 2, "pic_go": 9.0, "annonce_go": 1, "derniere": iso(maintenant - 90000)},
+        {"nom": "gradle build", "executions": 4, "pic_go": 5.1, "annonce_go": 6, "derniere": iso(maintenant - 200000)}]}
+
+
+NOUVELLES = ('historique', 'menage', 'applications')
+
+
 def main():
     if mode == 'lent':
         time.sleep(30)
@@ -114,6 +189,22 @@ def main():
     if not args:
         print('faux gagarine'); return 0
     c = args[0]
+    if mode == 'ancien' and (c in NOUVELLES or (c == 'file' and args[1:2] == ['appris']) or c == 'ntfy'):
+        print('commande inconnue', file=sys.stderr); return 2
+    if c == 'historique':
+        print(json.dumps(historique(args[args.index('--depuis') + 1] if '--depuis' in args else '24h'))); return 0
+    if c == 'menage' and len(args) > 1 and args[1] == 'arreter':
+        print(f'Ménage : {" ".join(args[2:])} arrêté (faux).'); return 0
+    if c == 'menage':
+        print(json.dumps(menage())); return 0
+    if c == 'applications' and len(args) > 1 and args[1] == 'plafond':
+        print(f'Plafond de {args[2]} : {args[3]} (faux).'); return 0
+    if c == 'applications':
+        print(json.dumps(applications())); return 0
+    if c == 'file' and args[1:2] == ['appris']:
+        print(json.dumps(appris())); return 0
+    if c == 'ntfy' and args[1:2] == ['essai']:
+        print('Message d’essai envoyé (faux) à ' + ' '.join(args[2:])); return 0
     if c == 'etat':
         print(json.dumps(etat())); return 0
     if c == 'journal':

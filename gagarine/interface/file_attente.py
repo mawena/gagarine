@@ -9,8 +9,11 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, GLib, Gtk
 
 from . import donnees
-from .outils import bouton, confirmer, echappe, ligne_vide, synchroniser
+from .outils import bouton, confirmer, echappe, etiquette, ligne_vide, synchroniser
 
+LIGNES_MAX = 12   # travaux affichés dans chaque liste de l'historique
+DESCRIPTION_APPRIS = ('Gagarine retient la mémoire que prend chaque travail pour annoncer la bonne quantité la fois '
+                      'suivante.')
 TAILLE_MAX_SORTIE = 64 * 1024   # on n'affiche que la fin d'un journal volumineux
 
 
@@ -30,6 +33,20 @@ class PageFile(Adw.PreferencesPage):
                                'ou avec la commande « gagarine file ».', 'view-list-symbolic')
         self.groupe.add(self.vide)
         self.add(self.groupe)
+
+        # mémoire apprise et travaux passés (1.2.0) : sections masquées si le cœur ne les connaît pas
+        self.groupe_appris = Adw.PreferencesGroup(
+            title='Mémoire apprise', visible=False,
+            description='Gagarine retient la mémoire que prend chaque travail pour annoncer la bonne quantité la fois suivante.')
+        self.lignes_appris = []
+        self.groupe_passes = Adw.PreferencesGroup(
+            title='Travaux passés', visible=False, description='Les travaux de la file terminés ces 7 derniers jours.')
+        self.lignes_passes = []
+        self.add(self.groupe_appris)
+        self.add(self.groupe_passes)
+        self.source.suivre_historique('7j')
+        self.source.connect('appris', lambda *_: self.maj_appris())
+        self.source.connect('historique', lambda *_: self.maj_passes())
         self.source.connect('file', lambda *_: self.maj())
         self.source.connect('ram', lambda *_: self.maj_temps())
         self.maj()
@@ -48,6 +65,63 @@ class PageFile(Adw.PreferencesPage):
             morceaux.append(f'charge {str(f["charge"]).replace(".", ",")} sur {f.get("coeurs") or "?"} cœurs')
         base = 'Les travaux passent un par un, chacun dans une limite de mémoire, pour que le poste reste fluide.'
         self.groupe.set_description(base + ('\nMaintenant : ' + ' · '.join(morceaux) if morceaux else ''))
+
+    # --- mémoire apprise ---
+    def maj_appris(self):
+        etat, _ = self.source.etat_option('appris')
+        self.groupe_appris.set_visible(etat in ('ok', 'erreur'))
+        a = self.source.appris
+        if not a:
+            return
+        for ligne in self.lignes_appris:
+            self.groupe_appris.remove(ligne)
+        self.lignes_appris = []
+        travaux = a['travaux']
+        for t in travaux[:LIGNES_MAX]:
+            titre, detail, trop_bas = donnees.detail_appris(t)
+            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), subtitle_lines=2, selectable=False)
+            r.add_prefix(Gtk.Image.new_from_icon_name('dialog-warning-symbolic' if trop_bas else 'dialog-information-symbolic'))
+            if trop_bas:
+                r.add_suffix(etiquette('annonce trop basse', ['warning', 'caption-heading']))
+            self.groupe_appris.add(r)
+            self.lignes_appris.append(r)
+        if not travaux:
+            r = ligne_vide('Rien d’appris pour l’instant', 'Après le premier travail de la file, Gagarine retiendra '
+                           'sa mémoire ici.', 'dialog-information-symbolic')
+            self.groupe_appris.add(r)
+            self.lignes_appris.append(r)
+        if len(travaux) > LIGNES_MAX:
+            self.groupe_appris.set_description(f'{LIGNES_MAX} travaux les plus récents sur {len(travaux)}. ' + DESCRIPTION_APPRIS)
+        else:
+            self.groupe_appris.set_description(DESCRIPTION_APPRIS)
+
+    # --- travaux passés ---
+    def maj_passes(self):
+        etat, _ = self.source.etat_option('historique-7j')
+        self.groupe_passes.set_visible(etat in ('ok', 'erreur'))
+        hist = self.source.historiques.get('7j')
+        if not hist:
+            return
+        for ligne in self.lignes_passes:
+            self.groupe_passes.remove(ligne)
+        self.lignes_passes = []
+        travaux = hist['travaux']
+        for t in travaux[:LIGNES_MAX]:
+            titre, detail, reussi = donnees.detail_travail_passe(t)
+            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), subtitle_lines=2, selectable=False)
+            icone = Gtk.Image.new_from_icon_name('object-select-symbolic' if reussi else 'dialog-error-symbolic')
+            icone.add_css_class('success' if reussi else 'error')
+            r.add_prefix(icone)
+            self.groupe_passes.add(r)
+            self.lignes_passes.append(r)
+        if not travaux:
+            r = ligne_vide('Aucun travail terminé', 'Les travaux de la file apparaîtront ici une fois terminés.',
+                           'dialog-information-symbolic')
+            self.groupe_passes.add(r)
+            self.lignes_passes.append(r)
+        self.groupe_passes.set_description(
+            'Les travaux de la file terminés ces 7 derniers jours' +
+            (f' ({LIGNES_MAX} plus récents sur {len(travaux)}).' if len(travaux) > LIGNES_MAX else '.'))
 
     def maj_temps(self):
         for cle, ligne in self.lignes.items():

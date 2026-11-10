@@ -1,7 +1,7 @@
 """Indicateur de la barre du haut : GTK 3 + AyatanaAppIndicator3, dans son propre processus.
 
 Il ne parle au cœur de Gagarine qu'à travers la ligne de commande (`gagarine etat --json`, `gagarine file --etat --json`,
-`gagarine reprendre|arreter PID`). La RAM est lue directement dans /proc/meminfo. Il ne bloque et ne plante jamais :
+`gagarine menage --json`, `gagarine menage arreter ID`, `gagarine reprendre|arreter PID`). La RAM est lue directement dans /proc/meminfo. Il ne bloque et ne plante jamais :
 quoi qu'il arrive à la commande, l'étiquette montre la RAM.
 """
 import fcntl
@@ -75,6 +75,7 @@ class Indicateur:
         self.utilisateur = getpass.getuser()
         self.etat = None
         self.file = None
+        self.menage = None
         self.pourcent = None
         self.en_cours = False
         self.menu_actuel = None
@@ -137,6 +138,10 @@ class Indicateur:
 
     def apres_file(self, donnees):
         self.file = donnees
+        self.lancer(['menage', '--json'], self.apres_menage)
+
+    def apres_menage(self, donnees):
+        self.menage = donnees   # None si la commande est absente (cœur plus ancien) : l'entrée disparaît
         self.en_cours = False
         self.rafraichir_affichage()
 
@@ -149,7 +154,7 @@ class Indicateur:
                 self.icone_actuelle = niv
                 self.indic.set_icon_full(logique.nom_icone(niv), logique.tooltip(niv, len(logique.figes(self.etat))))
             self.indic.set_label(texte, '100 %')
-            contenu = logique.contenu_menu(self.pourcent, self.etat, self.file, self.utilisateur)
+            contenu = logique.contenu_menu(self.pourcent, self.etat, self.file, self.utilisateur, self.menage)
             if contenu != self.menu_actuel:
                 self.menu_actuel = contenu
                 self.indic.set_menu(self.construire_menu(contenu))
@@ -174,6 +179,15 @@ class Indicateur:
                     sous_ligne.connect('activate', self.agir, action, pid, titre, direct)
                     sous.append(sous_ligne)
                 ligne.set_submenu(sous)
+            elif element[0] == 'menage':
+                _, titre, candidats = element
+                ligne = Gtk.MenuItem(label=titre)
+                sous = Gtk.Menu()
+                for identifiant, libelle, action in candidats:
+                    sous_ligne = Gtk.MenuItem(label=libelle)
+                    sous_ligne.connect('activate', self.nettoyer, identifiant, libelle, action)
+                    sous.append(sous_ligne)
+                ligne.set_submenu(sous)
             else:
                 _, identifiant, libelle = element
                 ligne = Gtk.MenuItem(label=libelle)
@@ -192,6 +206,31 @@ class Indicateur:
                                     self.Gio.SubprocessFlags.STDERR_SILENCE)
         except self.GLib.Error as e:
             print('gagarine-indicateur : %s : %s' % (' '.join(commande), e), file=sys.stderr)
+
+    def nettoyer(self, _item, identifiant, libelle, action):
+        decharger = action == 'decharger'
+        if not self.confirmer_menage(libelle, decharger):
+            return
+        try:
+            commande = logique.commande_menage(identifiant, logique.commande_gagarine())
+            self.Gio.Subprocess.new(commande, self.Gio.SubprocessFlags.STDOUT_SILENCE |
+                                    self.Gio.SubprocessFlags.STDERR_SILENCE)
+        except (ValueError, self.GLib.Error) as e:
+            print('gagarine-indicateur : ménage : %s' % e, file=sys.stderr)
+
+    def confirmer_menage(self, libelle, decharger):
+        Gtk = self.Gtk
+        verbe = 'Décharger' if decharger else 'Arrêter'
+        boite = Gtk.MessageDialog(message_type=Gtk.MessageType.QUESTION,
+                                  text='%s ce programme inactif ?' % verbe,
+                                  secondary_text=('%s. Il se rechargera au prochain usage.' % libelle) if decharger else
+                                  ('%s. S\'il a quelque chose de non enregistré, cela sera perdu.' % libelle))
+        boite.add_button('Annuler', Gtk.ResponseType.CANCEL)
+        boite.add_button(verbe, Gtk.ResponseType.OK)
+        boite.set_default_response(Gtk.ResponseType.CANCEL)
+        reponse = boite.run()
+        boite.destroy()
+        return reponse == Gtk.ResponseType.OK
 
     def confirmer(self, titre):
         Gtk = self.Gtk

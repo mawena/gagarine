@@ -158,6 +158,120 @@ class TestFenetre(unittest.TestCase):
         page.maj(force=True)
         self.assertTrue(0 < lignes() < total)
 
+    def test_sections_de_la_120(self):
+        f = self.ouvrir()
+        src = f.source
+        self.assertTrue(attendre(lambda: src.menage and src.applications and src.appris))
+        prog = f.pages['programmes']
+        self.assertTrue(prog.groupe_menage.get_visible())
+        self.assertEqual(len(prog.lignes_menage), 3)
+        self.assertFalse(prog.vide_menage.get_visible())
+        self.assertEqual(prog.lignes_menage['5551'].action.get_label(), 'Arrêter')
+        self.assertEqual(prog.lignes_menage['ollama:llama3.1:8b'].action.get_label(), 'Décharger')
+        self.assertIn('3 programmes inactifs', prog.groupe_menage.get_description())
+        self.assertTrue(prog.groupe_applis.get_visible())
+        self.assertEqual(len(prog.lignes_applis), 3)
+        self.assertEqual(prog.lignes_applis['google-chrome'].plafond.get_label(), 'Plafond 4 Go')
+        self.assertTrue(attendre(lambda: '7j' in src.historiques))
+        fichier = f.pages['file']
+        self.assertTrue(fichier.groupe_appris.get_visible())
+        self.assertEqual(len(fichier.lignes_appris), 4)
+        self.assertTrue(fichier.groupe_passes.get_visible())
+        self.assertEqual(len(fichier.lignes_passes), 4)
+
+    def test_courbe_24h_et_7j(self):
+        f = self.ouvrir()
+        page = f.pages['apercu']
+        self.assertEqual(page.periode, '5min')
+        self.assertFalse(page.groupe_incidents.get_visible())
+        page.boutons_periode['24h'].set_active(True)
+        self.assertEqual(page.courbe.periode, '24h')
+        self.assertTrue(attendre(lambda: '24h' in f.source.historiques))
+        self.assertTrue(attendre(lambda: page.groupe_incidents.get_visible()))
+        self.assertIn('Pic à', page.resume.get_label())
+        self.assertEqual(len(page.lignes_incidents), 4)
+        self.assertEqual(page.groupe_courbe.get_title(), 'Les dernières 24 heures')
+        page.boutons_periode['7j'].set_active(True)
+        self.assertTrue(attendre(lambda: '7j' in f.source.historiques))
+        page.boutons_periode['5min'].set_active(True)
+        self.assertFalse(page.groupe_incidents.get_visible())
+
+    def test_coeur_ancien_masque_les_sections_sans_bandeau(self):
+        f = self.ouvrir('ancien')
+        self.assertTrue(attendre(lambda: f.source.etat and f.source.options.get('menage')
+                                 and f.source.options.get('applications') and f.source.options.get('appris')
+                                 and f.source.options.get('historique-7j')))
+        self.assertFalse(f.banniere.get_revealed())
+        self.assertEqual(f.source.etat_option('menage')[0], 'absente')
+        self.assertFalse(f.pages['programmes'].groupe_menage.get_visible())
+        self.assertFalse(f.pages['programmes'].groupe_applis.get_visible())
+        self.assertFalse(f.pages['file'].groupe_appris.get_visible())
+        self.assertFalse(f.pages['file'].groupe_passes.get_visible())
+        page = f.pages['apercu']
+        page.boutons_periode['24h'].set_active(True)
+        self.assertTrue(attendre(lambda: f.source.options.get('historique-24h')))
+        self.assertIn('pas disponible', page.resume.get_label())
+
+    def test_menage_vide(self):
+        f = self.ouvrir('vide')
+        self.assertTrue(attendre(lambda: f.source.menage is not None))
+        prog = f.pages['programmes']
+        self.assertTrue(prog.groupe_menage.get_visible())
+        self.assertTrue(prog.vide_menage.get_visible())
+
+    def test_reglages_de_la_120(self):
+        f = self.ouvrir()
+        page = f.pages['reglages']
+        self.assertTrue(attendre(lambda: page.courants))
+        v = page.valeurs()
+        self.assertEqual((v['anticipation'], v['pression'], v['notification_fin_min'], v['menage_delai']), (15, 20, 30, 30))
+        self.assertEqual(v['ntfy'], 'gagarine-mawena')
+        self.assertTrue(all(v[c] for c in ('notifications_fin', 'file_ajuster', 'menage_auto', 'claude_bloquer')))
+        self.assertFalse(page.bouton_enregistrer.get_sensitive())      # rien de modifié
+        self.assertTrue(page.essai_ntfy.get_sensitive())
+        page.champs['anticipation'].set_value(30)
+        page.interrupteurs['claude_bloquer'].set_active(False)
+        self.assertTrue(page.bouton_enregistrer.get_sensitive())
+        self.assertEqual(donnees_args(page), ['reglages', '--ecrire', 'anticipation=30', 'claude_bloquer=non'])
+        page.ntfy.set_text('')
+        self.assertFalse(page.essai_ntfy.get_sensitive())
+
+    def test_reglages_service_ancien_sans_nouvelles_cles(self):
+        f = self.ouvrir()
+        page = f.pages['reglages']
+        self.assertTrue(attendre(lambda: page.courants))
+        f.source.etat['reglages'] = {k: v for k, v in f.source.etat['reglages'].items()
+                                     if k not in ('anticipation', 'ntfy', 'menage_auto')}
+        page.recharger(force=True)
+        self.assertEqual(page.champs['anticipation'].get_value(), 15)      # valeur par défaut
+        self.assertFalse(page.bouton_enregistrer.get_sensitive())          # et pas de « modification » fantôme
+
+    def test_essai_ntfy(self):
+        f = self.ouvrir()
+        page = f.pages['reglages']
+        self.assertTrue(attendre(lambda: page.courants))
+        page.envoyer_essai_ntfy()
+        self.assertFalse(page.essai_ntfy.get_sensitive())      # en cours : pas de second envoi
+        self.assertTrue(attendre(lambda: page.essai_ntfy.get_sensitive()))
+
+    def test_journal_nouveaux_evenements(self):
+        f = self.ouvrir()
+        page = f.pages['journal']
+        self.assertTrue(attendre(lambda: f.source.journal))
+        from gagarine.interface import donnees
+        page.filtre.set_selected([c for c, _ in donnees.CATEGORIES].index('menage'))
+        page.maj(force=True)
+        n, c = 0, page.liste.get_first_child()
+        while c:
+            n, c = n + 1, c.get_next_sibling()
+        self.assertEqual(n, 2)
+
+
+def donnees_args(page):
+    """Arguments de `reglages --ecrire` pour les modifications en cours de la page (sans le préfixe de commande)."""
+    from gagarine.interface import donnees
+    return donnees.arguments_reglages([], page.courants, page.valeurs())
+
 
 if __name__ == '__main__':
     unittest.main()
