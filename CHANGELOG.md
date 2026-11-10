@@ -7,6 +7,16 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.1.1] - 2026-11-10
+
+### Corrigé
+
+- `gagarine journal` affichait « (RAM 0.5 %) » pour un travail de la file : c'est la RAM **annoncée**, en Go. Les
+  événements de la file s'affichent maintenant avec leurs unités : « 0.5 Go annoncés, 1 cœur, limite 2.5 Go »,
+  « code 0, 40 s », « annulé en attente », « annoncé 4 Go, limite 8 Go dépassée ».
+- Un travail annulé (ou arrêté en cours) par `gagarine file annuler` l'écrit maintenant dans sa sortie, au lieu de
+  s'arrêter sans un mot.
+
 ## [1.1.0] - 2026-11-10
 
 Gagarine réunit maintenant tout ce qui protège la mémoire du poste : le garde, la file d'attente des travaux lourds et le
