@@ -147,9 +147,9 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 
 ## Phase 23 — File plus rapide
 
-- [ ] Plusieurs travaux à la fois quand la mémoire et les cœurs suffisent (`file_paralleles`), sans famine
-- [ ] Priorités (`--priorite urgent|normal|fond`, `gagarine file priorite`)
-- [ ] Fuite d'un lancement à l'autre (tendance de la mémoire apprise)
+- [x] Plusieurs travaux à la fois quand la mémoire et les cœurs suffisent (`file_paralleles`), sans famine
+- [x] Priorités (`--priorite urgent|normal|fond`, `gagarine file priorite`)
+- [x] Fuite d'un lancement à l'autre (tendance de la mémoire apprise)
 
 ## Phase 24 — Fuites repérées pendant qu'un programme tourne
 
