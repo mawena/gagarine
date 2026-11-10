@@ -3,27 +3,19 @@
 Chaque commande est une fonction `commande_xxx(args, ctx)` qui retourne le code de sortie ; la table COMMANDES les
 rassemble (ajouter une commande, comme `file`, c'est ajouter une fonction et une ligne dans la table).
 """
-import importlib
 import json
 import os
-import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
 
-from gagarine.essai import essai
-from gagarine import file as fa
-from gagarine.garde import surveiller
-from gagarine.journal import fichiers_journaux, ligne_lisible, lire_evenements
-from gagarine.reglages import (CONFIG_SYSTEME, ETAT_SYSTEME, ErreurReglages, charger_reglages,
-                               chemin_config, dossier_etat_lecture, ecrire_reglages, reglages_en_dict,
-                               valider_ecriture)
-from gagarine.systeme import (Mo, construire_proteges, demarrage, go, lancer_texte, lire_meminfo, lire_processus,
-                              lire_swaps, nom_utilisateur, ram_depuis_meminfo, ram_utilisee)
 from gagarine.version import VERSION
 
-AIDE = f"""gagarine {VERSION} : garde-RAM, empêche la RAM du poste de se remplir au-delà de 95 %.
+# Démarrage rapide : ce module n'importe que le strict nécessaire. Les modules lourds (file, garde, systeme, reglages,
+# journal, essai…) sont importés par les commandes qui s'en servent, au moment de s'en servir (`gagarine ligne-etat`
+# et `gagarine hook-claude` tournent à chaque message de Claude Code).
+
+_MODELE_AIDE = """gagarine {VERSION} : garde-RAM, empêche la RAM du poste de se remplir au-delà de 95 %.
 
 Usage : gagarine COMMANDE [options]
 
@@ -56,9 +48,24 @@ Réglages : {CONFIG_SYSTEME}, section [gagarine] (voir ce fichier pour le détai
 variable GAGARINE_CONFIG en choisissent un autre. Les variables GAGARINE_SEUIL, GAGARINE_URGENCE, GAGARINE_VIGILANCE,
 GAGARINE_GRACE, GAGARINE_VIDAGE_MAX, GAGARINE_DELAI_FIGE, GAGARINE_RESTE_SI_REPRIS, GAGARINE_NOTIFICATIONS,
 GAGARINE_PROTEGES et GAGARINE_FILTRE passent devant tout (essais). GAGARINE_ETAT remplace le dossier d'état
-({ETAT_SYSTEME} en root, sinon ~/.local/state/gagarine). La file garde ses tickets dans {fa.DOSSIER_DEFAUT}
+({ETAT_SYSTEME} en root, sinon ~/.local/state/gagarine). La file garde ses tickets dans {DOSSIER_FILE}
 (variable FILE_ATTENTE_DOSSIER), partagés avec l'ancien outil file-attente.
 """
+
+
+def texte_aide():
+    """L'aide de base (les extensions s'y ajoutent dans aide())."""
+    from gagarine import file as fa
+    from gagarine.reglages import CONFIG_SYSTEME, ETAT_SYSTEME
+    return _MODELE_AIDE.format(VERSION=VERSION, CONFIG_SYSTEME=CONFIG_SYSTEME, ETAT_SYSTEME=ETAT_SYSTEME,
+                               DOSSIER_FILE=fa.DOSSIER_DEFAUT)
+
+
+def __getattr__(nom):
+    """cli.AIDE reste lisible, mais n'est construit (donc ses imports faits) qu'à la demande."""
+    if nom == 'AIDE':
+        return texte_aide()
+    raise AttributeError(f'module {__name__!r} has no attribute {nom!r}')
 
 ACTIONS_SERVICE = {
     'demarrer': (['start'], 'démarré'),
@@ -71,6 +78,7 @@ ACTIONS_SERVICE = {
 
 def executer(cmd):
     """(code, sortie, erreurs) d'une commande ; code 127 si elle est introuvable."""
+    import subprocess
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError) as e:
@@ -82,22 +90,48 @@ class Contexte:
     """Ce que les commandes demandent au poste, remplaçable par les tests : privilèges, environnement, exécution de
     commandes (systemctl), lecture de commandes (sortie texte), configuration donnée par --config."""
 
-    def __init__(self, config=None, root=None, env=None, executer=executer, lancer=lancer_texte, poste=None):
+    def __init__(self, config=None, root=None, env=None, executer=executer, lancer=None, poste=None):
         self.config = config
         self.root = (os.geteuid() == 0) if root is None else root
         self.env = os.environ if env is None else env
         self.executer = executer
-        self.lancer = lancer
-        self.poste = poste or fa.Poste()   # ce que la file demande au poste (horloge, /proc, systemctl, lancement)
+        self._lancer = lancer
+        self._poste = poste
+
+    @property
+    def lancer(self):
+        if self._lancer is None:
+            from gagarine.systeme import lancer_texte
+            self._lancer = lancer_texte
+        return self._lancer
+
+    @lancer.setter
+    def lancer(self, valeur):
+        self._lancer = valeur
+
+    @property
+    def poste(self):
+        """Ce que la file demande au poste (horloge, /proc, systemctl, lancement), créé à la première demande."""
+        if self._poste is None:
+            from gagarine import file as fa
+            self._poste = fa.Poste()
+        return self._poste
+
+    @poste.setter
+    def poste(self, valeur):
+        self._poste = valeur
 
     def fichier_reglages(self):
+        from gagarine.reglages import chemin_config
         return chemin_config(self.config, self.env)
 
 
 # ======================================================================================================================
 # etat
 # ======================================================================================================================
-def etat_service(lancer=lancer_texte, root=None):
+def etat_service(lancer=None, root=None):
+    if lancer is None:
+        from gagarine.systeme import lancer_texte as lancer
     root = (os.geteuid() == 0) if root is None else root
     res = [('gagarine', lancer(['systemctl', 'is-active', 'gagarine']).strip() or '?')]
     if not root:
@@ -106,6 +140,7 @@ def etat_service(lancer=lancer_texte, root=None):
 
 
 def lire_figes(dossier):
+    from gagarine.systeme import demarrage
     try:
         figes = json.loads((Path(dossier) / 'figes.json').read_text())
     except (OSError, ValueError):
@@ -115,6 +150,7 @@ def lire_figes(dossier):
 
 def lire_fuites(dossier):
     """Fuites repérées en cours par le service (fuites.json) : celles dont le programme tourne encore."""
+    from gagarine.systeme import demarrage
     try:
         fuites = json.loads((Path(dossier) / 'fuites.json').read_text())
         return [f for f in fuites if demarrage(int(f['pid'])) == f['debut']]
@@ -135,10 +171,14 @@ def lire_texte(chemin):
         return f.read()
 
 
-def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, meminfo=None, swaps=None, procs=None,
+def donnees_etat(r, fichier_reglages, dossier, lancer=None, root=False, meminfo=None, swaps=None, procs=None,
                  figes=None, bride=est_bride, maintenant=time.time, travaux=0, fuites=None):
     """L'objet de `gagarine etat --json` (contrat : docs/conception-1.1.0.md, section 2). Tout ce qui vient du poste
     peut être donné en argument (tests) ; sinon il est lu."""
+    from gagarine.reglages import reglages_en_dict
+    from gagarine.systeme import (Mo, construire_proteges, lancer_texte, lire_meminfo, lire_processus, lire_swaps,
+                                  nom_utilisateur, ram_depuis_meminfo)
+    lancer = lancer or lancer_texte
     meminfo = lire_texte('/proc/meminfo') if meminfo is None else meminfo
     swaps = lire_texte('/proc/swaps') if swaps is None else swaps
     total, dispo = lire_meminfo(meminfo)
@@ -173,6 +213,9 @@ def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, 
 def commande_etat(args, ctx):
     if args not in ([], ['--json']):
         return usage()
+    from gagarine import file as fa
+    from gagarine.reglages import charger_reglages, dossier_etat_lecture
+    from gagarine.systeme import go, ram_utilisee
     r, _ = charger_reglages(ctx.config, ctx.env)
     dossier = dossier_etat_lecture(ctx.env)
     if args:
@@ -224,6 +267,8 @@ USAGE_FILE = ('usage : gagarine file "<nom>" <Go de RAM> <cœurs libres> [--prio
 
 
 def commande_file(args, ctx):
+    from gagarine import file as fa
+    from gagarine.reglages import charger_reglages
     if '--' not in args:
         # Sans commande à lancer : état ou annulation
         if args in (['--etat'], ['etat']):
@@ -274,8 +319,10 @@ def commande_file(args, ctx):
 # ======================================================================================================================
 def reprendre_ou_arreter(action, pid):
     """Reprend (SIGCONT) ou arrête (SIGKILL) un programme que Gagarine a figé : jamais un autre."""
+    from gagarine.reglages import dossier_etat_lecture
     if pid not in lire_figes(dossier_etat_lecture()):
         sys.exit(f'processus {pid} : ne figure pas parmi les programmes figés par Gagarine (voir « gagarine etat »)')
+    import signal
     try:
         os.kill(pid, signal.SIGCONT if action == 'reprendre' else signal.SIGKILL)
     except OSError as e:
@@ -296,6 +343,7 @@ def commande_reprendre_ou_arreter(action):
 # journal
 # ======================================================================================================================
 def commande_journal(args, ctx):
+    from gagarine.journal import fichiers_journaux, ligne_lisible, lire_evenements
     n, en_json = 50, False
     i = 0
     while i < len(args):
@@ -328,6 +376,7 @@ def commande_journal(args, ctx):
 # reglages
 # ======================================================================================================================
 def commande_reglages(args, ctx):
+    from gagarine.reglages import charger_reglages, reglages_en_dict
     if args and args[0] == '--ecrire':
         return ecrire(args[1:], ctx)
     if args not in ([], ['--json']):
@@ -349,6 +398,7 @@ def commande_reglages(args, ctx):
 
 def ecrire(args, ctx):
     """reglages --ecrire CLE=VALEUR… : tout ou rien, modification sur place, puis rechargement du service."""
+    from gagarine.reglages import ErreurReglages, ecrire_reglages, valider_ecriture
     if not args or any('=' not in a for a in args):
         print('usage : gagarine reglages --ecrire CLE=VALEUR [CLE=VALEUR…]', file=sys.stderr)
         return 2
@@ -416,8 +466,17 @@ def commande_service(args, ctx):
 EXTENSIONS = ('claude', 'menage', 'historique', 'applications', 'ntfy', 'ligne')
 
 
-def charger_extensions(noms=EXTENSIONS, importer=importlib.import_module):
+# Quelle extension porte quelle commande, pour n'importer que celle-là (tests/test_cli.py vérifie l'accord avec les
+# COMMANDES de chaque module). Une commande absente d'ici est quand même cherchée dans toutes les extensions.
+COMMANDES_EXTENSIONS = {'hook-claude': 'claude', 'menage': 'menage', 'historique': 'historique',
+                        'applications': 'applications', 'ntfy': 'ntfy', 'ligne-etat': 'ligne'}
+
+
+def charger_extensions(noms=EXTENSIONS, importer=None):
     """[(module, COMMANDES, AIDE_COMMANDES)] des extensions présentes."""
+    if importer is None:
+        import importlib
+        importer = importlib.import_module
     trouvees = []
     for nom in noms:
         complet = f'gagarine.{nom}'
@@ -434,11 +493,12 @@ def charger_extensions(noms=EXTENSIONS, importer=importlib.import_module):
 def aide(extensions=None):
     """Le texte d'aide, avec les lignes des extensions présentes avant « version »."""
     extensions = charger_extensions() if extensions is None else extensions
+    base = texte_aide()
     lignes = ''.join(a if a.endswith('\n') else a + '\n' for _, _, a in extensions if a)
     if not lignes:
-        return AIDE
+        return base
     marque = '  version                        affiche la version\n'
-    return AIDE.replace(marque, lignes + marque, 1)
+    return base.replace(marque, lignes + marque, 1)
 
 
 def usage():
@@ -449,12 +509,16 @@ def usage():
 def commande_surveiller(args, ctx):
     if args:
         return usage()
+    from gagarine.garde import surveiller
     surveiller(ctx.config)
     return 0
 
 
 def commande_essai(args, ctx):
-    return usage() if args else essai()
+    if args:
+        return usage()
+    from gagarine.essai import essai
+    return essai()
 
 
 def commande_version(args, ctx):
@@ -498,6 +562,9 @@ def main(argv, ctx=None):
         print(aide())
         return 0 if args else 2
     commande = COMMANDES.get(args[0])
+    if commande is None and args[0] in COMMANDES_EXTENSIONS:   # le plus courant : un seul module à importer
+        noms = (COMMANDES_EXTENSIONS[args[0]],)
+        commande = next((c[args[0]] for _, c, _ in charger_extensions(noms) if args[0] in c), None)
     if commande is None:
         for _, commandes, _ in charger_extensions():
             if args[0] in commandes:

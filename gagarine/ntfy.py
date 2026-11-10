@@ -6,7 +6,6 @@ la file d'attente (fin d'un travail).
 """
 import json
 import threading
-import urllib.request
 
 SERVEUR_DEFAUT = 'https://ntfy.sh'
 DELAI = 5            # secondes au plus pour un envoi
@@ -36,13 +35,15 @@ def message(cible, titre, texte, priorite='normale', etiquettes=()):
     return serveur + '/', json.dumps(corps, ensure_ascii=False).encode('utf-8')
 
 
-def envoyer(cible, titre, texte, priorite='normale', etiquettes=(), ouvrir=urllib.request.urlopen, delai=DELAI):
+def envoyer(cible, titre, texte, priorite='normale', etiquettes=(), ouvrir=None, delai=DELAI):
     """Publie l'alerte ; rend True si le serveur l'a acceptée. Ne lève jamais : une alerte perdue ne doit rien casser."""
     m = message(cible, titre, texte, priorite, etiquettes)
     if m is None:
         return False
     adresse, corps = m
     try:
+        import urllib.request   # importé ici : le réseau est lent à charger et rarement utilisé
+        ouvrir = ouvrir or urllib.request.urlopen
         requete = urllib.request.Request(adresse, data=corps, method='POST',
                                          headers={'Content-Type': 'application/json', 'User-Agent': 'gagarine'})
         with ouvrir(requete, timeout=delai) as reponse:
@@ -64,7 +65,7 @@ def envoyer_en_fond(cible, titre, texte, priorite='normale', etiquettes=(), **op
 # ======================================================================================================================
 # Commande : gagarine ntfy essai CIBLE
 # ======================================================================================================================
-def commande_essai(args, ctx, ouvrir=urllib.request.urlopen):
+def commande_essai(args, ctx, ouvrir=None):
     """Envoie un message d'essai à CIBLE (même non enregistrée). 0 : le serveur l'a accepté ; 1 : refusé ou injoignable ;
     2 : cible invalide ou arguments faux."""
     import sys

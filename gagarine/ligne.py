@@ -7,9 +7,6 @@ est ajoutée à la fin de sa dernière ligne. Ce module ne plante jamais : au pi
 """
 import json
 import os
-import shlex
-import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -205,6 +202,8 @@ def partie_gagarine(env, avec_couleur=True, config=None):
 
 def lancer_avec(commande, entree):
     """Lance la ligne d'état existante avec la même entrée ; retourne le Popen, ou None si elle ne démarre pas."""
+    import shlex
+    import subprocess   # importés ici : seul --avec s'en sert, et la commande doit démarrer vite
     try:
         return subprocess.Popen(shlex.split(commande), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, start_new_session=True)
@@ -216,6 +215,8 @@ def sortie_avec(proc, entree, echeance):
     """Sortie texte de la commande si elle finit avant l'échéance avec le code 0, sinon ''. Passé le délai, elle est tuée."""
     if proc is None:
         return ''
+    import signal
+    import subprocess
     try:
         sortie, _ = proc.communicate(entree, timeout=max(0.0, echeance - time.monotonic()))
     except subprocess.TimeoutExpired:
