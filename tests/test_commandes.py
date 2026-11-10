@@ -91,7 +91,7 @@ class TestEtatJson(Banc2):
         self.assertEqual(e['dossier_etat'], str(self.d))
         self.assertEqual(e['figes'], [{'pid': 4242, 'nom': 'python3', 'depuis': 1762785000.5, 'memoire_mo': 9100,
                                        'commande': 'python3 -m pytest', 'utilisateur': 'moi', 'bride': True}])
-        self.assertNotIn('file', e)
+        self.assertEqual(e['file'], {'travaux': 0})
 
     def test_plus_gros_dix_par_ram_et_swap(self):
         gros = self.donnees()['plus_gros']

@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from gagarine.essai import essai
+from gagarine import file as fa
 from gagarine.garde import surveiller
 from gagarine.journal import fichiers_journaux, ligne_lisible, lire_evenements
 from gagarine.reglages import (CONFIG_SYSTEME, ETAT_SYSTEME, ErreurReglages, charger_reglages,
@@ -30,6 +31,11 @@ Commandes :
   etat [--json]                  RAM, swap, état du service, programmes figés, plus gros programmes, derniers événements
   reprendre PID                  relance un programme figé (il reste bridé à sa taille)
   arreter PID                    arrête un programme figé
+  file "NOM" GO COEURS [--apres PID] -- COMMANDE…
+                                 file d'attente des travaux lourds : attend son tour (RAM, cœurs libres), puis lance la
+                                 commande dans sa limite mémoire ; rend le code de la commande (137 si limite dépassée)
+  file --etat [--json]           mémoire disponible, charge et travaux en file (aussi : file etat)
+  file annuler PID|TICKET        annule un travail en attente ou arrête un travail en cours (le sien ; tous : root)
   journal [-n N] [--json]        les N derniers événements (50 par défaut), tous journaux fusionnés
   reglages [--json]              affiche les réglages en vigueur
   reglages --ecrire CLE=VALEUR…  modifie /etc/gagarine.conf et recharge le service (administrateur)
@@ -43,7 +49,8 @@ Réglages : {CONFIG_SYSTEME}, section [gagarine] (voir ce fichier pour le détai
 variable GAGARINE_CONFIG en choisissent un autre. Les variables GAGARINE_SEUIL, GAGARINE_URGENCE, GAGARINE_VIGILANCE,
 GAGARINE_GRACE, GAGARINE_VIDAGE_MAX, GAGARINE_DELAI_FIGE, GAGARINE_RESTE_SI_REPRIS, GAGARINE_NOTIFICATIONS,
 GAGARINE_PROTEGES et GAGARINE_FILTRE passent devant tout (essais). GAGARINE_ETAT remplace le dossier d'état
-({ETAT_SYSTEME} en root, sinon ~/.local/state/gagarine).
+({ETAT_SYSTEME} en root, sinon ~/.local/state/gagarine). La file garde ses tickets dans {fa.DOSSIER_DEFAUT}
+(variable FILE_ATTENTE_DOSSIER), partagés avec l'ancien outil file-attente.
 """
 
 ACTIONS_SERVICE = {
@@ -68,12 +75,13 @@ class Contexte:
     """Ce que les commandes demandent au poste, remplaçable par les tests : privilèges, environnement, exécution de
     commandes (systemctl), lecture de commandes (sortie texte), configuration donnée par --config."""
 
-    def __init__(self, config=None, root=None, env=None, executer=executer, lancer=lancer_texte):
+    def __init__(self, config=None, root=None, env=None, executer=executer, lancer=lancer_texte, poste=None):
         self.config = config
         self.root = (os.geteuid() == 0) if root is None else root
         self.env = os.environ if env is None else env
         self.executer = executer
         self.lancer = lancer
+        self.poste = poste or fa.Poste()   # ce que la file demande au poste (horloge, /proc, systemctl, lancement)
 
     def fichier_reglages(self):
         return chemin_config(self.config, self.env)
@@ -112,7 +120,7 @@ def lire_texte(chemin):
 
 
 def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, meminfo=None, swaps=None, procs=None,
-                 figes=None, bride=est_bride, maintenant=time.time):
+                 figes=None, bride=est_bride, maintenant=time.time, travaux=0):
     """L'objet de `gagarine etat --json` (contrat : docs/conception-1.1.0.md, section 2). Tout ce qui vient du poste
     peut être donné en argument (tests) ; sinon il est lu."""
     meminfo = lire_texte('/proc/meminfo') if meminfo is None else meminfo
@@ -136,6 +144,7 @@ def donnees_etat(r, fichier_reglages, dossier, lancer=lancer_texte, root=False, 
         'figes': [{'pid': p, 'nom': f['nom'], 'depuis': f['depuis'], 'memoire_mo': int(f['memoire'] // Mo),
                    'commande': f['commande'], 'utilisateur': f['utilisateur'], 'bride': bride(p)}
                   for p, f in figes.items()],
+        'file': {'travaux': travaux},
         'plus_gros': [{'pid': p, 'nom': i.nom, 'rss_mo': i.rss // Mo, 'swap_mo': i.swap // Mo,
                        'utilisateur': nom_utilisateur(i.uid), 'protege': bool(proteges.match(i.nom))}
                       for p, i in gros],
@@ -148,7 +157,8 @@ def commande_etat(args, ctx):
     r, _ = charger_reglages(ctx.config, ctx.env)
     dossier = dossier_etat_lecture(ctx.env)
     if args:
-        print(json.dumps(donnees_etat(r, ctx.fichier_reglages(), dossier, ctx.lancer, ctx.root), ensure_ascii=False))
+        print(json.dumps(donnees_etat(r, ctx.fichier_reglages(), dossier, ctx.lancer, ctx.root,
+                                      travaux=fa.compter_travaux(ctx.env, ctx.poste)), ensure_ascii=False))
         return 0
     print(f'RAM utilisée : {ram_utilisee():.0f} % (seuil {r.seuil:.0f} %, urgence {r.urgence:.0f} %)')
     for nom, actif in etat_service(ctx.lancer, ctx.root):
@@ -160,6 +170,8 @@ def commande_etat(args, ctx):
               f'{time.strftime("%H:%M:%S", time.localtime(f["depuis"]))}) — {f["commande"][:120]}')
     if not figes:
         print('Aucun programme figé.')
+    travaux = fa.compter_travaux(ctx.env, ctx.poste)
+    print(f'File d\'attente : {travaux} travail(aux) en file' if travaux else 'File d\'attente : aucun travail en file')
     try:
         lignes = (dossier / 'evenements.jsonl').read_text().splitlines()[-8:]
     except OSError:
@@ -176,6 +188,45 @@ def commande_etat(args, ctx):
             print(f'  {e["date"][:19].replace("T", " ")}  {e["action"]:<10} {e.get("nom", "")} {e.get("pid", "")}'
                   f' {e.get("raison", "")}'.rstrip())
     return 0
+
+
+# ======================================================================================================================
+# file
+# ======================================================================================================================
+USAGE_FILE = ('usage : gagarine file "<nom>" <Go de RAM> <cœurs libres> [--apres PID] -- <commande> [arguments…]\n'
+              '        gagarine file --etat [--json]   |   gagarine file etat\n'
+              '        gagarine file annuler <PID|ticket>')
+
+
+def commande_file(args, ctx):
+    if '--' not in args:
+        # Sans commande à lancer : état ou annulation
+        if args in (['--etat'], ['etat']):
+            return fa.afficher_etat(ctx.env, False, ctx.poste)
+        if args in (['--etat', '--json'], ['etat', '--json'], ['--json', '--etat'], ['--json', 'etat']):
+            return fa.afficher_etat(ctx.env, True, ctx.poste)
+        if len(args) == 2 and args[0] == 'annuler':
+            return fa.annuler(args[1], ctx.env, ctx.root, ctx.poste)
+        print(USAGE_FILE, file=sys.stderr)
+        return 2
+    tiret = args.index('--')
+    avant, commande = args[:tiret], args[tiret + 1:]
+    apres = None
+    if '--apres' in avant:
+        i = avant.index('--apres')
+        if i + 1 >= len(avant) or not avant[i + 1].isdigit():
+            print('--apres demande le numéro d\'un processus', file=sys.stderr)
+            return 2
+        apres = int(avant[i + 1])
+        avant = avant[:i] + avant[i + 2:]
+    if len(avant) != 3 or not commande:
+        print(USAGE_FILE, file=sys.stderr)
+        return 2
+    nom, ram, coeurs = avant[0], fa.nombre(avant[1]), fa.nombre(avant[2])
+    if not nom or ram is None or coeurs is None or ram < 0 or coeurs < 0:
+        print(USAGE_FILE, file=sys.stderr)
+        return 2
+    return fa.lancer_travail(nom, ram or 1, coeurs or 1, apres, commande, dict(ctx.env), ctx.poste)
 
 
 # ======================================================================================================================
@@ -344,6 +395,7 @@ COMMANDES = {
     'etat': commande_etat,
     'reprendre': commande_reprendre_ou_arreter('reprendre'),
     'arreter': commande_reprendre_ou_arreter('arreter'),
+    'file': commande_file,
     'journal': commande_journal,
     'reglages': commande_reglages,
     'service': commande_service,
