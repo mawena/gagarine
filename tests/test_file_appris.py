@@ -30,7 +30,7 @@ class BancAppris(BancFile):
         sortie, erreur = __import__('io').StringIO(), __import__('io').StringIO()
         code = fa.lancer_travail(kw.pop('nom', 'tests'), kw.pop('ram', 1), kw.pop('coeurs', 1), None,
                                  ['true'], dict(kw.pop('env', self.env)), self.poste, sortie, erreur,
-                                 reglages=reglages or Reglages())
+                                 reglages=reglages or Reglages(file_paralleles=1))
         self.sortie, self.erreur = sortie.getvalue(), erreur.getvalue()
         return code
 
@@ -263,8 +263,10 @@ class TestAppris(BancAppris):
         code, sortie, _ = self.appris('--json')
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(sortie), {'travaux': [
-            {'nom': 'recent', 'executions': 3, 'pic_go': 6.3, 'annonce_go': 1, 'derniere': '2026-11-10T10:00:00+0000'},
-            {'nom': 'ancien', 'executions': 1, 'pic_go': 2.0, 'annonce_go': 1, 'derniere': '2026-11-08T10:00:00+0000'}]})
+            {'nom': 'recent', 'executions': 3, 'pic_go': 6.3, 'annonce_go': 1, 'derniere': '2026-11-10T10:00:00+0000',
+             'tendance': 'stable'},
+            {'nom': 'ancien', 'executions': 1, 'pic_go': 2.0, 'annonce_go': 1, 'derniere': '2026-11-08T10:00:00+0000',
+             'tendance': 'stable'}]})
 
     def test_vide(self):
         self.assertEqual(json.loads(self.appris('--json')[1]), {'travaux': []})

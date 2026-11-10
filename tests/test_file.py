@@ -9,6 +9,7 @@ from pathlib import Path
 
 from gagarine import cli
 from gagarine import file as fa
+from gagarine.reglages import Reglages
 from tests.test_commandes import Banc2
 
 
@@ -37,6 +38,7 @@ class FauxPoste:
         self.armes = 0
         self.total = 16.0
         self.pics = []            # pics rendus à chaque relevé ; None : pas de cgroup
+        self.memoires = {}        # scope -> mémoire actuelle (Go) de son cgroup
         self.notifs = []
         self.ntfys = []
 
@@ -44,7 +46,10 @@ class FauxPoste:
         return self.total
 
     def cgroup_scope(self, scope):
-        return Path('/cgroup-simule') / scope if self.pics else None
+        return Path('/cgroup-simule') / scope if self.pics or scope in self.memoires else None
+
+    def memoire_cgroup(self, chemin):
+        return self.memoires.get(Path(chemin).name)
 
     def pic_cgroup(self, chemin):
         return self.pics.pop(0) if self.pics else None
@@ -127,7 +132,9 @@ class BancFile(Banc2):
         super().setUp()
         self.tickets = self.d / 'tickets'
         self.dossier_etat = self.d / 'etat'
-        self.env = {'FILE_ATTENTE_DOSSIER': str(self.tickets), 'GAGARINE_ETAT': str(self.dossier_etat), 'HOME': str(self.d)}
+        # Réglages fixés : un seul travail à la fois, sans lire /etc/gagarine.conf du poste
+        self.env = {'FILE_ATTENTE_DOSSIER': str(self.tickets), 'GAGARINE_ETAT': str(self.dossier_etat), 'HOME': str(self.d),
+                    'GAGARINE_CONFIG': str(self.d / 'absent.conf'), 'GAGARINE_FILE_PARALLELES': '1'}
         self.poste = FauxPoste()
 
     def ticket(self, nom, pid, demarrage='x', vivant=True, **champs):
@@ -139,9 +146,12 @@ class BancFile(Banc2):
         if vivant:
             self.poste.vivants[pid] = demarrage
 
-    def lancer_file(self, commande=('echo', 'ok'), nom='essai', ram=1, coeurs=1, apres=None, env=None):
+    def lancer_file(self, commande=('echo', 'ok'), nom='essai', ram=1, coeurs=1, apres=None, env=None, paralleles=1,
+                    priorite='normal'):
+        """Par défaut un seul travail à la fois, comme avant la 1.3.0."""
         sortie, erreur = io.StringIO(), io.StringIO()
-        code = fa.lancer_travail(nom, ram, coeurs, apres, list(commande), dict(env or self.env), self.poste, sortie, erreur)
+        code = fa.lancer_travail(nom, ram, coeurs, apres, list(commande), dict(env or self.env), self.poste, sortie, erreur,
+                                 reglages=Reglages(file_paralleles=paralleles), priorite=priorite)
         self.sortie, self.erreur = sortie.getvalue(), erreur.getvalue()
         return code
 
@@ -454,12 +464,13 @@ class TestEtat(BancFile):
         self.assertEqual(code, 0)
         self.assertEqual(sortie.count('\n'), 1)
         e = json.loads(sortie)
-        self.assertEqual(set(e), {'ram_disponible_go', 'charge', 'coeurs', 'dossier', 'travaux'})
+        self.assertEqual(set(e), {'ram_disponible_go', 'charge', 'coeurs', 'dossier', 'travaux', 'paralleles', 'en_cours'})
         self.assertEqual((e['ram_disponible_go'], e['charge'], e['coeurs'], e['dossier']), (3.6, 2.1, 4, str(self.tickets)))
         self.assertEqual(e['travaux'], [{
             'ticket': '1762785000000-1234.json', 'position': 1, 'nom': 'rendu vidéo', 'pid': 1234,
             'depuis': '2026-11-10T14:30:00.000Z', 'etat': 'en cours', 'ram': 4, 'coeurs': 4, 'commande': 'ffmpeg …',
-            'unite': 'gagarine-travail-1762785000000-1234.scope', 'sortie': '/x.log', 'source': 'gagarine'}])
+            'unite': 'gagarine-travail-1762785000000-1234.scope', 'sortie': '/x.log', 'source': 'gagarine',
+            'priorite': 'normal', 'besoin_go': 4, 'motif': None}])
 
     def test_json_ticket_de_l_outil_node(self):
         """Un ticket écrit par l'outil Node : quatre champs, les autres à null, source « autre »."""
@@ -468,7 +479,7 @@ class TestEtat(BancFile):
         self.assertEqual(e['travaux'], [{
             'ticket': '1762785000000-1234.json', 'position': 1, 'nom': 'node', 'pid': 1234,
             'depuis': '2026-11-10T14:30:00.000Z', 'etat': None, 'ram': None, 'coeurs': None, 'commande': None,
-            'unite': None, 'sortie': None, 'source': 'autre'}])
+            'unite': None, 'sortie': None, 'source': 'autre', 'priorite': None, 'besoin_go': None, 'motif': None}])
 
     def test_json_positions_et_ticket_mort_absent(self):
         self.ticket('1-10.json', 10)
