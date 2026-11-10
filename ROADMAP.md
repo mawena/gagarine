@@ -157,7 +157,7 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 
 ## Phase 25 — État du poste dans Claude Code
 
-- [ ] `gagarine ligne-etat [--avec COMMANDE]`
+- [x] `gagarine ligne-etat [--avec COMMANDE]`
 
 ## Phase 26 — Interface, paquet et release 1.3.0
 
