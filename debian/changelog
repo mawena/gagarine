@@ -1,0 +1,12 @@
+gagarine (1.0.0) unstable; urgency=medium
+
+  * Première version : garde-RAM en service système (root) qui fige le
+    programme qui grossit le plus vite à 95 % de RAM, le bride, le range
+    dans le swap, puis l'arrête si la RAM ne redescend pas, à 98 % ou
+    après 10 minutes de pause.
+  * Commandes surveiller, etat, reprendre, arreter, essai et version ;
+    réglages dans /etc/gagarine.conf (conservé aux mises à jour).
+  * Paquet Debian : service systemd activé et démarré à l'installation,
+    page de manuel gagarine(8), README.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 14:00:00 +0000
