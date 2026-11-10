@@ -399,6 +399,7 @@ class TestSignaux(BancFile):
         e = self.journal()
         self.assertEqual([x['action'] for x in e], ['travail-annule'])
         self.assertEqual((e[0]['source'], e[0]['en_cours'], e[0]['signal']), ('file', False, 15))
+        self.assertIn("file d'attente (essai) : travail annulé", self.erreur)
 
     def test_sigint_pendant_l_attente(self):
         self.ticket('1-10.json', 10)
@@ -412,6 +413,7 @@ class TestSignaux(BancFile):
         self.assertEqual(self.noms_tickets(), [])
         self.assertEqual([e['action'] for e in self.journal()], ['travail-debut', 'travail-annule'])
         self.assertTrue(self.journal()[1]['en_cours'])
+        self.assertIn("file d'attente (essai) : travail arrêté", self.erreur)
 
     def test_signaux_armes(self):
         self.lancer_file()

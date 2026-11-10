@@ -113,6 +113,30 @@ def ligne_lisible(e):
     for cle in ('nom', 'pid', 'raison'):
         if e.get(cle) not in (None, ''):
             morceaux.append(str(e[cle]))
-    if e.get('ram') is not None:
-        morceaux.append(f'(RAM {e["ram"]} %)')
+    detail = detail_lisible(e)
+    if detail:
+        morceaux.append(f'({detail})')
     return ' '.join(morceaux)
+
+
+def detail_lisible(e):
+    """Le détail d'un événement, avec ses unités : pour le garde, `ram` est le % de RAM utilisée ; pour la file, `ram`,
+    `declare` et `limite` sont des Go, `duree` des secondes."""
+    action = e.get('action')
+    if action == 'travail-debut':
+        coeurs = e.get('coeurs')
+        parties = [f'{e["ram"]} Go annoncés' if e.get('ram') is not None else None,
+                   f'{coeurs} cœur{"s" if coeurs != 1 else ""}' if coeurs is not None else None,
+                   f'limite {e["limite"]} Go' if e.get('limite') is not None else None]
+        return ', '.join(x for x in parties if x)
+    if action == 'travail-fin':
+        parties = [f'code {e["code"]}' if e.get('code') is not None else None,
+                   f'{round(e["duree"])} s' if isinstance(e.get('duree'), (int, float)) else None]
+        return ', '.join(x for x in parties if x)
+    if action == 'travail-annule':
+        return 'arrêté en cours' if e.get('en_cours') else 'annulé en attente'
+    if action == 'limite':
+        return f'annoncé {e.get("declare", "?")} Go, limite {e.get("limite", "?")} Go dépassée'
+    if e.get('ram') is not None and e.get('source') != 'file':
+        return f'RAM {e["ram"]} %'
+    return ''
