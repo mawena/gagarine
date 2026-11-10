@@ -139,8 +139,13 @@ def etat_service(lancer=None, root=None):
     return res
 
 
+def demarrage(pid):
+    """Instant de démarrage d'un processus (gagarine.systeme, importé à la demande)."""
+    from gagarine.systeme import demarrage as lire
+    return lire(pid)
+
+
 def lire_figes(dossier):
-    from gagarine.systeme import demarrage
     try:
         figes = json.loads((Path(dossier) / 'figes.json').read_text())
     except (OSError, ValueError):
@@ -150,7 +155,6 @@ def lire_figes(dossier):
 
 def lire_fuites(dossier):
     """Fuites repérées en cours par le service (fuites.json) : celles dont le programme tourne encore."""
-    from gagarine.systeme import demarrage
     try:
         fuites = json.loads((Path(dossier) / 'fuites.json').read_text())
         return [f for f in fuites if demarrage(int(f['pid'])) == f['debut']]

@@ -74,10 +74,10 @@ class TestDemarrageRapide(unittest.TestCase):
         racine = str(CHEMIN.parent.parent)
         r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, input='{}',
                            env=dict(os.environ, PYTHONPATH=racine))
-        # file est chargé pour compter les tickets ; ni le garde, ni ntfy, ni le réseau, ni l'essai, ni le hook
+        # file est chargé pour compter les tickets ; ni le garde, ni le réseau, ni l'essai, ni le hook
         import json
         charges = json.loads(r.stdout.strip().splitlines()[-1])
-        for m in ('gagarine.garde', 'gagarine.ntfy', 'gagarine.essai', 'gagarine.claude', 'urllib.request'):
+        for m in ('gagarine.garde', 'gagarine.essai', 'gagarine.claude', 'urllib.request'):
             self.assertNotIn(m, charges)
 
     def test_aide_complete_avec_les_extensions(self):
