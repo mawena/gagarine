@@ -42,7 +42,7 @@ Il reprend le garde-RAM écrit le 10/11/2026 pour le poste, après deux redémar
 - [x] Installation du `.deb` (`sudo apt install ./gagarine_<version>_all.deb`, par l'utilisateur)
 - [x] Retrait du garde-RAM sous le compte utilisateur, hook des sessions Claude et consignes mis à jour
 - [ ] Vérification du service système (`sudo gagarine essai`)
-- [ ] Swap compressé en RAM (zram de la taille de la RAM, zstd, avant le swap disque) et réglages du noyau associés
+- [x] Swap compressé en RAM (zram de la taille de la RAM, zstd, avant le swap disque) et réglages du noyau associés
 
 ## Phase 7 — Code rangé et commandes pour l'interface (1.1.0)
 
