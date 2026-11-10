@@ -2,6 +2,8 @@
 # Faux `gagarine` pour les essais de l'indicateur : rend des JSON conformes à docs/conception-1.1.0.md.
 # FAUX_GAGARINE_MODE : normal (défaut), vigilance, fige, panne (code 1), invalide (pas du JSON), lent (dort 30 s).
 # FAUX_GAGARINE_MENAGE : normal (deux candidats), vide, absent (commande inconnue, code 2) ; commandes de docs/conception-1.2.0.md.
+# FAUX_GAGARINE_FUITE=oui : contrats de la 1.3.0 (docs/conception-1.3.0.md) : `fuites` dans `etat --json`, `en_cours` et
+# `paralleles` dans `file --etat --json` (trois travaux dont deux en cours). Sans cette variable : cœur 1.2.x.
 mode="${FAUX_GAGARINE_MODE:-normal}"
 journal="${FAUX_GAGARINE_JOURNAL:-}"
 [ -n "$journal" ] && echo "$@" >> "$journal"
@@ -13,6 +15,12 @@ esac
 pct=75.2; dispo=3620; figes='[]'
 [ "$mode" = vigilance ] && { pct=88.0; dispo=1750; }
 [ "$mode" = fige ] && { pct=96.5; dispo=510; figes='[{"pid": 4242, "nom": "python3", "depuis": 1762785000.5, "memoire_mo": 9100, "commande": "python3 -m pytest", "utilisateur": "'"$(id -un)"'", "bride": true}]'; }
+fuites=''; file_en_tete=''; travaux_extra=''
+if [ "$FAUX_GAGARINE_FUITE" = oui ]; then
+  fuites=', "fuites": [{"pid": 6001, "nom": "python3", "pente_mo_min": 210, "depuis": "2026-11-10T14:23:00+0000"}, {"pid": 7301, "nom": "node", "pente_mo_min": 120, "depuis": "2026-11-10T14:26:00+0000"}]'
+  file_en_tete=', "paralleles": 3, "en_cours": 2'
+  travaux_extra=', {"ticket": "1762785050000-1280.json", "position": 2, "nom": "tests", "pid": 1280, "depuis": "2026-11-10T14:31:00.000Z", "etat": "en cours", "ram": 2, "coeurs": 2, "priorite": "fond", "besoin_go": 2, "commande": "pytest", "unite": null, "sortie": null, "source": "gagarine"}, {"ticket": "1762785100000-1301.json", "position": 3, "nom": "rendu", "pid": 1301, "depuis": "2026-11-10T14:32:00.000Z", "etat": "en attente", "ram": 6, "coeurs": 8, "priorite": "normal", "besoin_go": 6, "motif": "2 travaux en cours", "commande": "ffmpeg", "unite": null, "sortie": null, "source": "gagarine"}'
+fi
 case "$1 $2" in
   "etat --json")
     cat <<JSON
@@ -23,15 +31,15 @@ case "$1 $2" in
  "reglages": {"seuil": 95, "urgence": 98, "vigilance": 85, "grace": 10, "vidage_max": 60, "delai_fige": 600,
               "reste_si_repris": 256, "notifications": true, "proteges": ""},
  "fichier_reglages": "/etc/gagarine.conf", "service": {"etat": "active", "actif_au_demarrage": true},
- "dossier_etat": "/var/lib/gagarine", "figes": $figes, "plus_gros": [], "file": {"travaux": 1}}
+ "dossier_etat": "/var/lib/gagarine", "figes": $figes, "plus_gros": [], "file": {"travaux": 1}$fuites}
 JSON
     ;;
   "file --etat")
     cat <<JSON
-{"ram_disponible_go": 3.6, "charge": 2.1, "coeurs": 14, "dossier": "/tmp/file-attente-travaux-lourds",
+{"ram_disponible_go": 3.6, "charge": 2.1, "coeurs": 14, "dossier": "/tmp/file-attente-travaux-lourds"$file_en_tete,
  "travaux": [{"ticket": "1762785000000-1234.json", "position": 1, "nom": "rendu vidéo", "pid": 1234,
               "depuis": "2026-11-10T14:30:00.000Z", "etat": "en cours", "ram": 4, "coeurs": 4,
-              "commande": "ffmpeg", "unite": null, "sortie": null, "source": "gagarine"}]}
+              "commande": "ffmpeg", "unite": null, "sortie": null, "source": "gagarine"}$travaux_extra]}
 JSON
     ;;
   "menage --json")

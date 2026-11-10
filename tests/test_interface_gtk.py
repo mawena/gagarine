@@ -118,7 +118,7 @@ class TestFenetre(unittest.TestCase):
         self.assertTrue(attendre(lambda: f.source.etat and f.source.file and f.source.journal))
         self.assertFalse(f.banniere.get_revealed())
         self.assertEqual(len(f.pages['programmes'].lignes_figes), 1)
-        self.assertEqual(len(f.pages['file'].lignes), 2)
+        self.assertEqual(len(f.pages['file'].lignes), 5)
         self.assertEqual(len(f.pages['apercu'].lignes_swap), 2)
         self.assertIsNotNone(f.source.ram_pourcent)
 
@@ -265,6 +265,86 @@ class TestFenetre(unittest.TestCase):
         while c:
             n, c = n + 1, c.get_next_sibling()
         self.assertEqual(n, 2)
+
+
+    def test_file_130(self):
+        f = self.ouvrir()
+        page = f.pages['file']
+        self.assertTrue(attendre(lambda: f.source.file and f.source.appris and len(page.lignes) == 5))
+        self.assertIn('2 en cours sur 3', page.groupe.get_description())
+        l = page.lignes
+        self.assertEqual(l['1762785000000-1234.json'].priorite.get_label(), 'Urgent')
+        self.assertEqual(l['1762785050000-1280.json'].priorite.get_label(), 'En fond')
+        self.assertFalse(l['1762785000000-1234.json'].changer.get_visible())          # en cours : pas de changement
+        self.assertTrue(l['1762785100000-1301.json'].changer.get_visible())           # en attente
+        self.assertIn('Attend : mémoire : 1,8 Go libres, il en faut 6', l['1762785100000-1301.json'].get_subtitle())
+        self.assertFalse(l['1762785300000-1400.json'].priorite.get_visible())         # ancien outil : pas de priorité
+        self.assertFalse(l['1762785300000-1400.json'].changer.get_visible())
+        self.assertEqual(len(page.lignes_appris), 4)
+
+    def test_file_130_avec_un_cœur_1_2(self):
+        f = self.ouvrir('v12')
+        page = f.pages['file']
+        self.assertTrue(attendre(lambda: f.source.file and len(page.lignes) == 5))
+        self.assertFalse(f.banniere.get_revealed())
+        self.assertNotIn('en cours sur', page.groupe.get_description())
+        self.assertTrue(all(not r.priorite.get_visible() and not r.changer.get_visible() for r in page.lignes.values()))
+
+    def test_nouveau_travail_avec_priorite(self):
+        f = self.ouvrir()
+        from gagarine.interface.file_attente import DialogueNouveauTravail
+        d = DialogueNouveauTravail(f)
+        self.assertEqual(d.priorite.get_selected(), 1)      # normal par défaut
+        self.assertEqual(d.priorite.get_model().get_n_items(), 3)
+
+    def test_fuites_dans_programmes(self):
+        f = self.ouvrir()
+        page = f.pages['programmes']
+        self.assertTrue(attendre(lambda: f.source.etat and len(page.lignes_fuites) == 2))
+        self.assertTrue(page.groupe_fuites.get_visible())
+        self.assertEqual(page.lignes_fuites[6001].pente.get_label(), '+210 Mo/min')
+        self.assertTrue(page.lignes_gros[6001].fuite.get_visible())
+        self.assertEqual(page.lignes_gros[6001].fuite.get_label(), 'fuite +210 Mo/min')
+        self.assertFalse(page.lignes_gros[3100].fuite.get_visible())      # chrome ne fuit pas
+
+    def test_fuites_masquees_sans_fuite_ou_avec_un_cœur_1_2(self):
+        for mode in ('vide', 'v12'):
+            f = self.ouvrir(mode)
+            page = f.pages['programmes']
+            self.assertTrue(attendre(lambda: f.source.etat))
+            self.assertFalse(page.groupe_fuites.get_visible(), mode)
+            self.assertEqual(page.lignes_fuites, {})
+            self.assertFalse(any(r.fuite.get_visible() for r in page.lignes_gros.values()))
+
+    def test_reglages_130(self):
+        f = self.ouvrir()
+        page = f.pages['reglages']
+        self.assertTrue(attendre(lambda: page.courants))
+        v = page.valeurs()
+        self.assertEqual((v['file_paralleles'], v['fuite_seuil'], v['fuite_notifier']), (3, 100, True))
+        page.champs['file_paralleles'].set_value(5)
+        page.champs['fuite_seuil'].set_value(0)
+        page.interrupteurs['fuite_notifier'].set_active(False)
+        self.assertEqual(sorted(donnees_args(page)[2:]), ['file_paralleles=5', 'fuite_notifier=non', 'fuite_seuil=0'])
+
+    def test_reglages_130_service_ancien(self):
+        f = self.ouvrir('v12')
+        page = f.pages['reglages']
+        self.assertTrue(attendre(lambda: page.courants))
+        v = page.valeurs()
+        self.assertEqual((v['file_paralleles'], v['fuite_seuil'], v['fuite_notifier']), (2, 100, True))   # valeurs par défaut
+        self.assertFalse(page.bouton_enregistrer.get_sensitive())
+
+    def test_journal_fuites(self):
+        f = self.ouvrir()
+        page = f.pages['journal']
+        self.assertTrue(attendre(lambda: f.source.journal))
+        page.recherche.set_text('fuite')
+        page.maj(force=True)
+        n, c = 0, page.liste.get_first_child()
+        while c:
+            n, c = n + 1, c.get_next_sibling()
+        self.assertEqual(n, 4)
 
 
 def donnees_args(page):
