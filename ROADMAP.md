@@ -121,7 +121,7 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 ## Phase 18 — Mises à jour par apt
 
 - [x] Dépôt APT signé sur GitHub Pages, `scripts/publier-apt.sh`
-- [ ] Source APT et clé installées par le paquet
+- [x] Source APT et clé installées par le paquet
 
 ## Phase 19 — Interface et indicateur 1.2.0
 
@@ -130,7 +130,7 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 20 — Paquet, documentation et release 1.2.0
 
-- [ ] Paquet (nouveaux fichiers, minuteur utilisateur, source APT), pages de manuel, README, CHANGELOG
+- [x] Paquet (nouveaux fichiers, minuteur utilisateur, source APT), pages de manuel, README, CHANGELOG
 - [ ] Release 1.2.0, release GitHub, dépôt APT publié
 
 ## Phase 21 — Mise en place de la 1.2.0 sur le poste
