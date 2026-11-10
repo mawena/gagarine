@@ -95,6 +95,7 @@ def main():
         ('apercu-7j', 'apercu', lambda f: (periode(f, '7j'), defiler(f.pages['apercu'], 0.45)), 2500),
         ('programmes', 'programmes', None, 1500),
         ('programmes-menage', 'programmes', lambda f: defiler(f.pages['programmes'], 0.5), 2500),
+        ('programmes-plafond', 'programmes', lambda f: f.pages['programmes'].regler_plafond(next(iter(f.pages['programmes'].applis))), 2500),
         ('file', 'file', None, 1500),
         ('file-historique', 'file', lambda f: defiler(f.pages['file'], 1), 2500),
         ('journal', 'journal', None, 1500), ('reglages', 'reglages', None, 1500),
