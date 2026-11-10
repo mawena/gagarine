@@ -1,0 +1,5 @@
+Types: deb
+URIs: https://mawena.github.io/gagarine/apt
+Suites: stable
+Components: main
+Signed-By: /usr/share/keyrings/gagarine.gpg

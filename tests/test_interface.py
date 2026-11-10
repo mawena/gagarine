@@ -71,7 +71,7 @@ class Ram(unittest.TestCase):
 class LectureJson(unittest.TestCase):
     def test_etat_du_faux(self):
         e = d.lire_etat(faux('etat', '--json'))
-        self.assertEqual(e['version'], '1.1.0')
+        self.assertEqual(e['version'], '1.2.0')
         self.assertEqual(len(e['swap']), 2)
         self.assertTrue(e['swap'][0]['zram'])
         self.assertEqual(e['figes'][0]['pid'], 4242)
@@ -150,6 +150,238 @@ class Evenements(unittest.TestCase):
         self.assertTrue(chrome and all('chrome' in json.dumps(e) for e in chrome))
         self.assertEqual(d.filtrer_evenements(self.ev, 'tous', 'introuvable-xyz'), [])
         self.assertTrue(d.filtrer_evenements(self.ev, 'protection', 'node arrêté'))   # plusieurs mots
+
+
+class Historique120(unittest.TestCase):
+    """Contrats de docs/conception-1.2.0.md : historique, ménage, applications, mémoire apprise."""
+
+    def test_historique_24h(self):
+        h = d.lire_historique(faux('historique', '--json', '--depuis', '24h'))
+        self.assertEqual((h['depuis_s'], h['pas_s']), (86400, 60))
+        self.assertEqual(len(h['points']), 1440)
+        self.assertEqual([p['t'] for p in h['points']], sorted(p['t'] for p in h['points']))
+        self.assertTrue(h['incidents'] and h['gros'] and h['travaux'])
+        self.assertEqual(h['travaux'][0]['nom'], 'rendu vidéo')    # le plus récent d'abord
+
+    def test_historique_7j_moyenne_par_10_min(self):
+        h = d.lire_historique(faux('historique', '--json', '--depuis', '7j'))
+        self.assertEqual(h['pas_s'], 600)
+        self.assertEqual(len(h['points']), 1008)
+
+    def test_historique_robuste(self):
+        h = d.lire_historique(json.dumps({'points': [{'date': 'n', 'ram': 5}, {'date': '2026-11-10T10:00:00+0000', 'ram': 'x'},
+                                                      {'date': '2026-11-10T10:00:00+0000', 'ram': 50}], 'depuis_s': -3}))
+        self.assertEqual(len(h['points']), 1)
+        self.assertIsNone(h['depuis_s'])
+        self.assertEqual((h['incidents'], h['gros'], h['travaux']), ([], [], []))
+        with self.assertRaises(d.ErreurDonnees):
+            d.lire_historique('pas du json')
+
+    def test_periodes_et_axe(self):
+        self.assertEqual([c for c, _, _ in d.PERIODES], ['5min', '24h', '7j'])
+        self.assertEqual(d.duree_periode('7j'), 7 * 86400)
+        self.assertEqual(d.libelle_periode('24h'), '24 h')
+        self.assertEqual(d.graduations_axe('24h')[0], (0.0, '-24 h'))
+        self.assertEqual(d.graduations_axe('7j')[-1], (1.0, 'maintenant'))
+        self.assertEqual(len(d.graduations_axe('7j')), 8)
+        self.assertAlmostEqual(d.fraction_temps(500, 1000, 1000), 0.5)
+        self.assertIsNone(d.fraction_temps(-500, 1000, 1000))
+        self.assertIsNone(d.fraction_temps(1100, 1000, 1000))
+
+    def test_resume(self):
+        h = d.lire_historique(faux('historique', '--json', '--depuis', '24h'))
+        texte = d.resume_historique(h)
+        self.assertIn('Pic à', texte)
+        self.assertIn('4 incidents', texte)
+        self.assertIn('aucun incident', d.resume_historique(dict(h, incidents=[])))
+        self.assertIn('Pas encore', d.resume_historique(dict(h, points=[])))
+        self.assertIn('Pas encore', d.resume_historique(None))
+
+    def test_travaux_passes(self):
+        h = d.lire_historique(faux('historique', '--json', '--depuis', '7j'))
+        titre, detail, ok = d.detail_travail_passe(h['travaux'][0])
+        self.assertEqual(titre, 'rendu vidéo')
+        self.assertIn('durée 12 min 34 s', detail)
+        self.assertIn('pic 3,8 Go', detail)
+        self.assertTrue(ok)
+        titre, detail, ok = d.detail_travail_passe({'nom': 'tests', 'code': 3, 'duree': 60})
+        self.assertFalse(ok)
+        self.assertIn('échec (code 3)', detail)
+        self.assertNotIn('None', detail)
+        self.assertEqual(d.titre_gros({'nom': 'chrome', 'pic_mo': 4100, 'minutes': 90}),
+                         ('chrome', 'pic de 4,0 Go · parmi les plus gros pendant 1 h 30 min'))
+
+    def test_vide(self):
+        h = d.lire_historique(faux('historique', '--json', '--depuis', '24h', mode='vide'))
+        self.assertEqual(h['travaux'], [])
+
+    def test_memoire_apprise(self):
+        a = d.lire_appris(faux('file', 'appris', '--json'))
+        self.assertEqual(len(a['travaux']), 4)
+        self.assertEqual(a['travaux'][0]['nom'], 'rendu vidéo')    # le plus récent d'abord
+        titre, detail, trop_bas = d.detail_appris(next(t for t in a['travaux'] if t['nom'] == 'tests voix'))
+        self.assertTrue(trop_bas)
+        self.assertIn('pic habituel 9 Go', detail)
+        self.assertIn('annoncé 1 Go', detail)
+        self.assertIn('2 exécutions', detail)
+        self.assertFalse(d.detail_appris({'nom': 'a', 'pic_go': 4, 'annonce_go': 4})[2])
+        self.assertFalse(d.detail_appris({'nom': 'a'})[2])   # champs absents : pas d'erreur
+        self.assertEqual(d.lire_appris(faux('file', 'appris', '--json', mode='vide'))['travaux'], [])
+
+    def test_menage(self):
+        m = d.lire_menage(faux('menage', '--json'))
+        self.assertTrue(m['auto'])
+        self.assertEqual([c['id'] for c in m['candidats']], ['ollama:llama3.1:8b', '5551', '6001'])   # les plus gros d'abord
+        self.assertEqual(d.total_menage(m), (3, 9110))
+        self.assertEqual(d.libelle_action_menage(m['candidats'][0]), 'Décharger')
+        self.assertEqual(d.libelle_action_menage(m['candidats'][1]), 'Arrêter')
+        self.assertEqual(d.libelle_action_menage({'type': 'lmstudio'}), 'Décharger')
+        detail = d.detail_menage(m['candidats'][1])
+        self.assertIn('Démon Gradle', detail)
+        self.assertIn('PID 5551', detail)
+        self.assertIn('3,0 Go', detail)
+        self.assertIn('inactif depuis 44 min', detail)
+        self.assertIn('jamais automatique', d.detail_menage(m['candidats'][2]))
+        self.assertIn('30 min', d.etat_menage_auto(m))
+        self.assertIn('désactivé', d.etat_menage_auto({'auto': False}))
+        self.assertEqual(d.lire_menage(faux('menage', '--json', mode='vide'))['candidats'], [])
+        self.assertEqual(d.lire_menage('{"candidats": [{"nom": "sans id"}, 3]}')['candidats'], [])
+
+    def test_menage_commande(self):
+        self.assertEqual(d.arguments_menage(['g'], {'id': 'ollama:x:7b'}), ['g', 'menage', 'arreter', 'ollama:x:7b'])
+        self.assertEqual(d.arguments_menage(['g'], {'id': 5551}), ['g', 'menage', 'arreter', '5551'])
+
+    def test_applications(self):
+        a = d.lire_applications(faux('applications', '--json'))['applications']
+        self.assertEqual([x['id'] for x in a], ['google-chrome', 'code', 'org.telegram.desktop'])
+        self.assertEqual(d.libelle_plafond(a[0]), 'plafond 4 Go')
+        self.assertEqual(d.libelle_plafond(a[1]), 'aucun plafond')
+        self.assertEqual(d.detail_application(a[0]), '2 instances ouvertes · 2,8 Go')
+        self.assertEqual(d.detail_application(a[1]), '1 instance ouverte · 1,1 Go')
+        self.assertEqual(d.detail_application(a[2]), 'fermée')
+        self.assertEqual(d.lire_applications(faux('applications', '--json', mode='vide'))['applications'], [])
+
+    def test_plafond_commande(self):
+        self.assertEqual(d.arguments_plafond(['g'], 'code', 3.5), ['g', 'applications', 'plafond', 'code', '3.5'])
+        self.assertEqual(d.arguments_plafond(['g'], 'code', 4.0), ['g', 'applications', 'plafond', 'code', '4'])
+        self.assertEqual(d.arguments_plafond(['g'], 'code', None), ['g', 'applications', 'plafond', 'code', 'aucun'])
+        self.assertEqual(d.arguments_plafond(['g'], 'code', 0), ['g', 'applications', 'plafond', 'code', 'aucun'])
+
+    def test_cœur_ancien(self):
+        """Avec un cœur 1.1, les commandes de la 1.2.0 échouent (code 2) : l'interface masque les sections."""
+        for args in (('menage', '--json'), ('applications', '--json'), ('historique', '--json'), ('file', 'appris', '--json')):
+            env = dict(os.environ, FAUX_MODE='ancien')
+            r = subprocess.run([sys.executable, str(FAUX), *args], capture_output=True, text=True, env=env, timeout=20)
+            self.assertEqual(r.returncode, 2, args)
+
+
+class Reglages120(unittest.TestCase):
+    def test_nouvelles_cles_du_faux(self):
+        r = d.lire_reglages(faux('reglages', '--json'))['reglages']
+        for cle in d.DEFAUTS_120:
+            self.assertIn(cle, r)
+
+    def test_valeurs_par_defaut_pour_un_service_plus_ancien(self):
+        complet = d.reglages_complets({'seuil': 95, 'anticipation': 0})
+        self.assertEqual(complet['anticipation'], 0)      # 0 est une vraie valeur, pas une absence
+        self.assertEqual(complet['pression'], 20)
+        self.assertTrue(complet['menage_auto'])
+        self.assertEqual(complet['ntfy'], '')
+        # un enregistrement sans modification ne réécrit pas les clés que le service ne connaît pas encore
+        self.assertIsNone(d.arguments_reglages(['g'], complet, dict(d.DEFAUTS_120, anticipation=0)))
+
+    def test_enregistrement_des_seules_cles_modifiees(self):
+        courants = d.reglages_complets({})
+        nouveaux = dict(courants, anticipation=30, notifications_fin=False, ntfy='gagarine-test', menage_delai=45,
+                        claude_bloquer=False)
+        self.assertEqual(d.arguments_reglages(['pkexec', 'g'], courants, nouveaux),
+                         ['pkexec', 'g', 'reglages', '--ecrire', 'anticipation=30', 'notifications_fin=non',
+                          'ntfy=gagarine-test', 'menage_delai=45', 'claude_bloquer=non'])
+
+    def test_definitions_completes(self):
+        cles = ([c[0] for c in d.REGLAGES_ANTICIPATION + d.REGLAGES_NOTIFICATIONS + d.REGLAGES_MENAGE] +
+                list(d.REGLAGES_BOOLEENS) + ['ntfy'])
+        self.assertEqual(sorted(set(cles) - {'notifications'}), sorted(d.DEFAUTS_120))
+        for _, _, aide, _, mini, maxi in d.REGLAGES_ANTICIPATION + d.REGLAGES_NOTIFICATIONS + d.REGLAGES_MENAGE:
+            self.assertTrue(aide.endswith('.'))
+            self.assertLess(mini, maxi)
+
+    def test_sujet_ntfy(self):
+        self.assertIsNone(d.verifier_reglages({'ntfy': 'gagarine-mawena'}))
+        self.assertIsNone(d.verifier_reglages({'ntfy': 'https://ntfy.sh/mon-sujet'}))
+        self.assertIn('ntfy', d.verifier_reglages({'ntfy': 'deux mots'}))
+
+    def test_essai_ntfy(self):
+        self.assertEqual(d.commande_essai_ntfy(['g'], ' sujet '), ['g', 'ntfy', 'essai', 'sujet'])
+        self.assertIn('essai envoyé', faux('ntfy', 'essai', 'sujet'))
+
+
+class EvenementsJournal120(unittest.TestCase):
+    def test_menage(self):
+        _, titre, detail = d.decrire_evenement({'action': 'menage', 'nom': 'Démon Gradle', 'type': 'gradle', 'pid': 5551,
+                                                'memoire_mo': 3100, 'auto': True})
+        self.assertEqual(titre, '« Démon Gradle » arrêté par le ménage')
+        self.assertIn('ménage automatique', detail)
+        self.assertIn('3,0 Go libérés', detail)
+        self.assertIn('processus 5551', detail)
+        icone, titre, detail = d.decrire_evenement({'action': 'menage', 'nom': 'llama3', 'type': 'ollama', 'memoire_mo': 5400,
+                                                    'auto': False})
+        self.assertEqual(titre, '« llama3 » déchargé par le ménage')
+        self.assertIn('à votre demande', detail)
+        self.assertEqual(icone, 'user-trash-symbolic')
+        self.assertEqual(d.categorie_evenement({'action': 'menage'}), 'menage')
+
+    def test_declencheur(self):
+        for decl, texte in (('seuil', 'seuil atteint'), ('anticipation', 'croissance trop rapide'),
+                            ('pression', 'pression du noyau'), ('urgence', 'urgence'), ('futur', 'futur')):
+            _, _, detail = d.decrire_evenement({'action': 'fige', 'nom': 'x', 'declencheur': decl})
+            self.assertIn('déclencheur : ' + texte, detail)
+        _, _, detail = d.decrire_evenement({'action': 'arrete', 'nom': 'x', 'declencheur': 'urgence'})
+        self.assertIn('déclencheur : urgence', detail)
+        _, _, detail = d.decrire_evenement({'action': 'fige', 'nom': 'x'})
+        self.assertNotIn('déclencheur', detail)     # ancien événement : rien d'inventé
+
+    def test_pic_et_ajustement(self):
+        _, _, detail = d.decrire_evenement({'action': 'travail-fin', 'nom': 'x', 'code': 0, 'duree': 60, 'pic_go': 6.31})
+        self.assertIn('pic de mémoire : 6,3 Go', detail)
+        _, _, detail = d.decrire_evenement({'action': 'limite', 'nom': 'x', 'declare': 1, 'limite': 3, 'pic_go': 3.2})
+        self.assertIn('pic de mémoire : 3,2 Go', detail)
+        _, _, detail = d.decrire_evenement({'action': 'travail-debut', 'nom': 'x', 'ajuste': True, 'annonce_initiale': 1,
+                                            'declare': 11})
+        self.assertIn('annonce corrigée : 1 Go → 11 Go', detail)
+        _, _, detail = d.decrire_evenement({'action': 'travail-debut', 'nom': 'x', 'ajuste': True, 'annonce_initiale': 1})
+        self.assertIn('annoncé au départ : 1 Go', detail)
+        _, _, detail = d.decrire_evenement({'action': 'travail-debut', 'nom': 'x', 'ajuste': True})
+        self.assertIn('annonce corrigée', detail)
+        _, _, detail = d.decrire_evenement({'action': 'travail-debut', 'nom': 'x'})
+        self.assertNotIn('annonce', detail)
+
+    def test_rechargement(self):
+        _, _, detail = d.decrire_evenement({'action': 'rechargement', 'seuil': 95, 'anticipation': 0, 'pression': 20})
+        self.assertIn('anticipation désactivée', detail)
+        self.assertIn('pression 20 %', detail)
+
+    def test_filtre_menage_et_journal_du_faux(self):
+        ev = d.lire_journal(faux('journal', '--json', '-n', '200'))
+        menage = d.filtrer_evenements(ev, 'menage')
+        self.assertEqual(len(menage), 2)
+        self.assertTrue(all(e['action'] == 'menage' for e in menage))
+        for e in ev:
+            _, titre, detail = d.decrire_evenement(e)
+            self.assertNotIn('None', titre + detail)
+        self.assertIn('menage', [c for c, _ in d.CATEGORIES])
+
+
+class PicNul(unittest.TestCase):
+    """Un travail trop court pour qu'un pic ait été relevé (pic_go = 0) ne montre pas « pic 0 Go » (intégration réelle)."""
+
+    def test_pic_nul_masque(self):
+        self.assertNotIn('pic', d.decrire_evenement({'action': 'travail-fin', 'nom': 'x', 'code': 0, 'duree': 1, 'pic_go': 0.0})[2])
+        self.assertNotIn('pic', d.detail_travail_passe({'nom': 'x', 'date': '2026-11-10T10:00:00+0000', 'code': 0, 'pic_go': 0.0})[1])
+        self.assertNotIn('pic', d.detail_appris({'nom': 'x', 'pic_go': 0.0, 'annonce_go': 1})[1])
+
+    def test_pic_reel_montre(self):
+        self.assertIn('pic de mémoire : 0,6 Go', d.decrire_evenement({'action': 'travail-fin', 'nom': 'x', 'pic_go': 0.59})[2])
 
 
 class Travail(unittest.TestCase):

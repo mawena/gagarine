@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test deb clean
+.PHONY: test deb apt clean
 
 # Tests unitaires (décisions sur des mesures simulées, sans toucher au poste)
 test:
@@ -9,6 +9,10 @@ test:
 # Construit dist/gagarine_<version>_all.deb avec SHA256SUMS et lintian
 deb:
 	scripts/build-deb.sh
+
+# Publie dist/*.deb dans le dépôt APT signé (branche gh-pages)
+apt:
+	scripts/publier-apt.sh dist/*.deb
 
 clean:
 	rm -rf dist build debian/gagarine debian/.debhelper debian/files debian/*.substvars debian/*.debhelper debian/*.debhelper.log debian/debhelper-build-stamp

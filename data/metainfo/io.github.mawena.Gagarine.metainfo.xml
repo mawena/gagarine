@@ -62,6 +62,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="1.2.0" date="2026-11-10">
+      <description>
+        <p>Mémoire apprise par la file, notification de fin, anticipation et pression mémoire, historique de 7 jours, ménage des programmes inactifs, plafond des applications, alertes ntfy, mises à jour par APT.</p>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-11-10">
       <description>
         <p>Le journal affiche les travaux de la file avec leurs unités ; un travail annulé l’écrit dans sa sortie.</p>

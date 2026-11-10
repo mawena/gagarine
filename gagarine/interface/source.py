@@ -14,6 +14,8 @@ DUREE_COURBE = 300          # secondes d'historique de la courbe (5 minutes)
 DELAI_COMMANDE = 8          # secondes au plus pour une commande de lecture
 PERIODE_COMMANDES = 2500    # ms entre deux lectures de l'état et de la file
 PERIODE_JOURNAL = 5000      # ms entre deux lectures du journal
+PERIODE_OPTIONS = 10000     # ms entre deux lectures du ménage et des applications
+PERIODE_HISTORIQUE = 30000  # ms entre deux lectures de l'historique (une mesure par minute)
 NOMBRE_EVENEMENTS = 200
 
 
@@ -89,10 +91,13 @@ class Executeur:
 class Source(GObject.Object):
     """Dernières données connues (RAM, état, file, journal, erreurs), mises à jour en continu, et signaux de changement.
 
-    Signaux : « ram » (chaque seconde), « etat », « file », « journal », « erreurs ».
+    Signaux : « ram » (chaque seconde), « etat », « file », « journal », « erreurs », et pour les commandes de la 1.2.0
+    « menage », « applications », « appris », « historique ». Ces dernières sont facultatives : si le `gagarine` installé
+    ne les connaît pas, la section reste masquée (`disponible(cle)` faux) et aucune erreur n'est montrée dans le bandeau.
     """
 
-    __gsignals__ = {n: (GObject.SignalFlags.RUN_FIRST, None, ()) for n in ('ram', 'etat', 'file', 'journal', 'erreurs')}
+    __gsignals__ = {n: (GObject.SignalFlags.RUN_FIRST, None, ())
+                    for n in ('ram', 'etat', 'file', 'journal', 'erreurs', 'menage', 'applications', 'appris', 'historique')}
 
     def __init__(self, executeur=None):
         super().__init__()
@@ -106,6 +111,12 @@ class Source(GObject.Object):
         self.file = None
         self.journal = None
         self.erreurs = {}
+        self.menage = None
+        self.applications = None
+        self.appris = None
+        self.historiques = {}       # période ('24h', '7j') -> historique normalisé
+        self.periodes_suivies = set()
+        self.options = {}           # clé -> (message d'erreur, commande inconnue ?) ; absente si tout va bien
         self._minuteries = []
 
     # --- cycle de vie ---
@@ -113,9 +124,12 @@ class Source(GObject.Object):
         self.lire_ram()
         self.rafraichir()
         self.rafraichir_journal()
+        self.rafraichir_options()
         self._minuteries = [GLib.timeout_add(1000, self._tic_ram),
                             GLib.timeout_add(PERIODE_COMMANDES, self._tic_commandes),
-                            GLib.timeout_add(PERIODE_JOURNAL, self._tic_journal)]
+                            GLib.timeout_add(PERIODE_JOURNAL, self._tic_journal),
+                            GLib.timeout_add(PERIODE_OPTIONS, self._tic_options),
+                            GLib.timeout_add(PERIODE_HISTORIQUE, self._tic_historique)]
 
     def arreter(self):
         for m in self._minuteries:
@@ -132,6 +146,15 @@ class Source(GObject.Object):
 
     def _tic_journal(self):
         self.rafraichir_journal()
+        return GLib.SOURCE_CONTINUE
+
+    def _tic_options(self):
+        self.rafraichir_options()
+        return GLib.SOURCE_CONTINUE
+
+    def _tic_historique(self):
+        for periode in sorted(self.periodes_suivies):
+            self.rafraichir_historique(periode)
         return GLib.SOURCE_CONTINUE
 
     # --- RAM, lue dans le processus ---
@@ -155,6 +178,51 @@ class Source(GObject.Object):
 
     def rafraichir_journal(self):
         self._lire('journal', self.base + ['journal', '--json', '-n', str(NOMBRE_EVENEMENTS)], donnees.lire_journal)
+
+    def rafraichir_options(self):
+        """Ménage, applications du bureau et mémoire apprise (commandes de la 1.2.0, facultatives)."""
+        self._lire_option('menage', self.base + ['menage', '--json'], donnees.lire_menage)
+        self._lire_option('applications', self.base + ['applications', '--json'], donnees.lire_applications)
+        self._lire_option('appris', self.base + ['file', 'appris', '--json'], donnees.lire_appris)
+
+    def suivre_historique(self, periode):
+        """Demande l'historique d'une période ('24h', '7j') et le garde à jour toutes les 30 s."""
+        self.periodes_suivies.add(periode)
+        self.rafraichir_historique(periode)
+
+    def rafraichir_historique(self, periode):
+        self._lire_option('historique-' + periode, self.base + ['historique', '--json', '--depuis', periode],
+                          donnees.lire_historique, 'historique', lambda v: self.historiques.__setitem__(periode, v))
+
+    def valeur(self, cle):
+        """Dernières données d'une commande facultative, ou None."""
+        if cle.startswith('historique-'):
+            return self.historiques.get(cle[len('historique-'):])
+        return getattr(self, cle, None)
+
+    def etat_option(self, cle):
+        """(« ok », None) si les données sont là ; (« absente », message) si la commande est inconnue du `gagarine` installé
+        (section à masquer) ; (« erreur », message) pour une vraie panne ; (« attente », None) avant la première réponse."""
+        if self.valeur(cle) is not None:
+            return 'ok', None
+        if cle not in self.options:
+            return 'attente', None
+        message, inconnue = self.options[cle]
+        return ('absente' if inconnue else 'erreur'), message
+
+    def _lire_option(self, cle, argv, lecteur, signal=None, stocker=None):
+        def fini(res):
+            if res.ok:
+                try:
+                    (stocker or (lambda v: setattr(self, cle, v)))(lecteur(res.sortie))
+                    self.options.pop(cle, None)
+                except donnees.ErreurDonnees as e:
+                    self.options[cle] = (str(e), False)
+            else:
+                # code 2 = commande inconnue (cœur plus ancien) ; commande absente : la section reste masquée
+                self.options[cle] = (res.message, res.code == 2 or res.absente)
+            self.emit(signal or cle)
+        self.executeur.lancer(argv, fini, cle=cle)
 
     def _lire(self, cle, argv, lecteur):
         def fini(res):

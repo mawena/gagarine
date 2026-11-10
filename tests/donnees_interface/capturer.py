@@ -60,9 +60,17 @@ def photographier(fenetre, nom):
     print('capture', chemin, f'{w}x{h}', flush=True)
 
 
-def bas(page):
-    """Fait défiler une page jusqu'en bas."""
-    GLib.idle_add(lambda: [a.set_value(a.get_upper()) for a in [_defileur(page).get_vadjustment()]] and False)
+def defiler(page, fraction):
+    """Fait défiler une page jusqu'à une fraction de sa hauteur (0 = haut, 1 = bas), une fois la mise en page faite."""
+    def aller():
+        a = _defileur(page).get_vadjustment()
+        a.set_value(a.get_lower() + fraction * max(0.0, a.get_upper() - a.get_page_size() - a.get_lower()))
+        return False
+    GLib.timeout_add(900, aller)
+
+
+def periode(f, cle):
+    f.pages['apercu'].boutons_periode[cle].set_active(True)
 
 
 def _defileur(w):
@@ -82,12 +90,20 @@ def main():
     app = Application()
     # (nom du fichier, page, action avant la prise, attente en ms)
     etapes = [
-        ('apercu', 'apercu', None, 1500), ('programmes', 'programmes', None, 1500), ('file', 'file', None, 1500),
+        ('apercu', 'apercu', lambda f: periode(f, '5min'), 1500),
+        ('apercu-24h', 'apercu', lambda f: periode(f, '24h'), 2500),
+        ('apercu-7j', 'apercu', lambda f: (periode(f, '7j'), defiler(f.pages['apercu'], 0.45)), 2500),
+        ('programmes', 'programmes', None, 1500),
+        ('programmes-menage', 'programmes', lambda f: defiler(f.pages['programmes'], 0.5), 2500),
+        ('programmes-plafond', 'programmes', lambda f: f.pages['programmes'].regler_plafond(next(iter(f.pages['programmes'].applis))), 2500),
+        ('file', 'file', None, 1500),
+        ('file-historique', 'file', lambda f: defiler(f.pages['file'], 1), 2500),
         ('journal', 'journal', None, 1500), ('reglages', 'reglages', None, 1500),
-        ('reglages-service', 'reglages', lambda f: (bas(f.pages['reglages']), f.pages['reglages'].lancer_essai_cmd(False)), 5500),
+        ('reglages-notifications', 'reglages', lambda f: defiler(f.pages['reglages'], 0.3), 2500),
+        ('reglages-service', 'reglages', lambda f: (defiler(f.pages['reglages'], 1), f.pages['reglages'].lancer_essai_cmd(False)), 5500),
         ('nouveau-travail', 'file', lambda f: f.pages['file'].nouveau_travail(), 1500),
         ('sortie-travail', 'file', lambda f: f.pages['file'].voir_sortie(next(iter(f.pages['file'].travaux))), 1500),
-        ('etroit', 'apercu', lambda f: f.set_default_size(420, 720), 2000),
+        ('etroit', 'apercu', lambda f: (periode(f, '24h'), defiler(f.pages['apercu'], 0), f.set_default_size(420, 720)), 2500),
     ]
 
     def demarre(_app):

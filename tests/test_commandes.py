@@ -77,15 +77,17 @@ class TestEtatJson(Banc2):
 
     def test_contrat(self):
         e = self.donnees()
-        self.assertEqual(e['version'], '1.1.1')
+        self.assertEqual(e['version'], '1.2.0')
         self.assertRegex(e['date'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d{4}$')
         self.assertEqual(e['ram'], {'pourcent': 75.0, 'total_mo': 15625, 'disponible_mo': 3906})
         self.assertEqual(e['swap'][0], {'nom': '/dev/zram0', 'type': 'partition', 'taille_mo': 8192, 'utilise_mo': 1024,
                                         'priorite': 100, 'zram': True})
         self.assertFalse(e['swap'][1]['zram'])
         self.assertEqual(e['swap'][1]['priorite'], -2)
-        self.assertEqual(set(e['reglages']), {'seuil', 'urgence', 'vigilance', 'grace', 'vidage_max', 'delai_fige',
-                                              'reste_si_repris', 'notifications', 'proteges'})
+        # Le contrat garde toujours les clés de la 1.1.0 ; la 1.2.0 en ajoute (on peut ajouter, jamais retirer)
+        self.assertLessEqual({'seuil', 'urgence', 'vigilance', 'grace', 'vidage_max', 'delai_fige', 'reste_si_repris',
+                              'notifications', 'proteges'}, set(e['reglages']))
+        self.assertEqual(set(e['reglages']), set(rg.CLES_ECRITURE))
         self.assertEqual(e['fichier_reglages'], '/etc/gagarine.conf')
         self.assertEqual(e['service'], {'etat': 'active', 'actif_au_demarrage': True})
         self.assertEqual(e['dossier_etat'], str(self.d))
@@ -471,7 +473,7 @@ class TestNotificationsEtFichiers(unittest.TestCase):
 
     def test_lanceur_depuis_un_autre_dossier(self):
         r = subprocess.run([str(CHEMIN), 'version'], capture_output=True, text=True, cwd='/')
-        self.assertEqual(r.stdout, 'gagarine 1.1.1\n')
+        self.assertEqual(r.stdout, 'gagarine 1.2.0\n')
 
     def test_aide_des_nouvelles_commandes(self):
         r = subprocess.run([str(CHEMIN), '-h'], capture_output=True, text=True)

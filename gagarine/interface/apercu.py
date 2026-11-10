@@ -7,7 +7,7 @@ from gi.repository import Adw, Gtk
 
 from . import donnees
 from .graphiques import Courbe, Jauge
-from .outils import etiquette, page_preferences, synchroniser
+from .outils import echappe, etiquette, page_preferences, synchroniser
 
 
 class PageApercu(Adw.PreferencesPage):
@@ -41,10 +41,43 @@ class PageApercu(Adw.PreferencesPage):
         groupe.add(self._carte(boite))
         self.add(groupe)
 
-        groupe = Adw.PreferencesGroup(title='Les cinq dernières minutes')
+        self.groupe_courbe = Adw.PreferencesGroup(title='Les cinq dernières minutes')
+        self.periode = '5min'
+        self.boutons_periode = {}
+        selecteur = Gtk.Box(valign=Gtk.Align.CENTER)
+        selecteur.add_css_class('linked')
+        premier = None
+        for cle, libelle, _ in donnees.PERIODES:
+            b = Gtk.ToggleButton(label=libelle, active=cle == self.periode)
+            b.set_tooltip_text(f'Afficher la RAM sur {libelle}')
+            if premier is None:
+                premier = b
+            else:
+                b.set_group(premier)
+            b.connect('toggled', self._periode_choisie, cle)
+            self.boutons_periode[cle] = b
+            selecteur.append(b)
+        self.groupe_courbe.set_header_suffix(selecteur)
         self.courbe = Courbe(self.source)
-        groupe.add(self._carte(self.courbe))
-        self.add(groupe)
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        boite.append(self.courbe)
+        self.resume = Gtk.Label(label='', xalign=0, wrap=True)
+        self.resume.add_css_class('dim-label')
+        self.resume.add_css_class('caption')
+        self.resume.set_visible(False)
+        boite.append(self.resume)
+        self.groupe_courbe.add(self._carte(boite))
+        self.add(self.groupe_courbe)
+
+        # incidents et plus gros programmes de la période (24 h et 7 jours)
+        self.groupe_incidents = Adw.PreferencesGroup(title='Incidents de la période', visible=False)
+        self.lignes_incidents = []
+        self.add(self.groupe_incidents)
+        self.groupe_gros = Adw.PreferencesGroup(
+            title='Les plus gros de la période', visible=False,
+            description='Les programmes qui ont le plus pris de mémoire (pic mesuré une fois par minute).')
+        self.lignes_gros = []
+        self.add(self.groupe_gros)
 
         # swap
         self.groupe_swap = Adw.PreferencesGroup(title='Swap', description='Espace de débordement quand la RAM est pleine.')
@@ -65,8 +98,63 @@ class PageApercu(Adw.PreferencesPage):
 
         self.source.connect('ram', lambda *_: self.maj_ram())
         self.source.connect('etat', lambda *_: self.maj_etat())
+        self.source.connect('historique', lambda *_: self.maj_historique())
         self.maj_ram()
         self.maj_etat()
+
+    # --- période de la courbe ---
+    def _periode_choisie(self, bouton, cle):
+        if not bouton.get_active():
+            return
+        self.periode = cle
+        self.courbe.choisir_periode(cle)
+        titres = {'5min': 'Les cinq dernières minutes', '24h': 'Les dernières 24 heures', '7j': 'Les 7 derniers jours'}
+        self.groupe_courbe.set_title(titres[cle])
+        if cle != '5min':
+            self.source.suivre_historique(cle)
+        self.maj_historique()
+
+    def maj_historique(self):
+        long = self.periode != '5min'
+        for g in (self.groupe_incidents, self.groupe_gros):
+            g.set_visible(False)
+        self.resume.set_visible(long)
+        if not long:
+            return
+        hist = self.source.historiques.get(self.periode)
+        if hist is None:
+            etat, message = self.source.etat_option('historique-' + self.periode)
+            self.resume.set_label('Lecture de l’historique…' if etat == 'attente' else
+                                  'L’historique n’est pas disponible avec cette version de Gagarine.' if etat == 'absente'
+                                  else f'Historique indisponible : {message}')
+            self.courbe.queue_draw()
+            return
+        self.resume.set_label(donnees.resume_historique(hist))
+        self.courbe.queue_draw()
+        for ligne in self.lignes_incidents:
+            self.groupe_incidents.remove(ligne)
+        self.lignes_incidents = []
+        for ev in list(reversed(hist['incidents']))[:6]:
+            icone, titre, detail = donnees.decrire_evenement(ev)
+            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), subtitle_lines=2, selectable=False)
+            r.add_prefix(Gtk.Image.new_from_icon_name(icone))
+            r.add_suffix(etiquette(donnees.heure_locale(ev.get('date')), ['dim-label', 'numeric']))
+            self.groupe_incidents.add(r)
+            self.lignes_incidents.append(r)
+        n = len(hist['incidents'])
+        self.groupe_incidents.set_description(
+            '' if not n else f'Marqués par un point rouge sur la courbe{f" ({min(n, 6)} derniers sur {n})" if n > 6 else ""}.')
+        self.groupe_incidents.set_visible(bool(n))
+        for ligne in self.lignes_gros:
+            self.groupe_gros.remove(ligne)
+        self.lignes_gros = []
+        for g in sorted(hist['gros'], key=lambda g: g.get('pic_mo') or 0, reverse=True)[:5]:
+            titre, detail = donnees.titre_gros(g)
+            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), selectable=False)
+            r.add_prefix(Gtk.Image.new_from_icon_name('application-x-executable-symbolic'))
+            self.groupe_gros.add(r)
+            self.lignes_gros.append(r)
+        self.groupe_gros.set_visible(bool(self.lignes_gros))
 
     def _carte(self, enfant):
         """Enfant dans une carte arrondie (comme une liste encadrée)."""
@@ -99,7 +187,8 @@ class PageApercu(Adw.PreferencesPage):
         self.detail.set_label(f'{donnees.formater_taille_mo(utilise)} utilisés sur {donnees.formater_taille_mo(s.ram_total_mo)}'
                               f' · {donnees.formater_taille_mo(s.ram_dispo_mo)} disponibles')
         self.jauge.maj(s.ram_pourcent, s.reglages(), niveau)
-        self.courbe.queue_draw()
+        if self.periode == '5min':
+            self.courbe.queue_draw()
         r = s.reglages()
         self.legende.set_label(f'Repères : vigilance {r.get("vigilance", 85)} % · seuil d’intervention {r.get("seuil", 95)} % · '
                                f'urgence {r.get("urgence", 98)} %')

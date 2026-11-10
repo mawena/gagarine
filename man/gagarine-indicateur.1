@@ -1,4 +1,4 @@
-.TH GAGARINE\-INDICATEUR 1 "10 novembre 2026" "gagarine 1.1.1" "Commandes de l'utilisateur"
+.TH GAGARINE\-INDICATEUR 1 "10 novembre 2026" "gagarine 1.2.0" "Commandes de l'utilisateur"
 .SH NOM
 gagarine\-indicateur \- indicateur de Gagarine dans la barre du haut
 .SH SYNOPSIS
@@ -14,14 +14,14 @@ gagarine\-indicateur \- indicateur de Gagarine dans la barre du haut
 affiche en permanence, dans la barre du haut du bureau, le pourcentage de RAM utilisée à côté d'une icône qui change de
 niveau : normal, vigilance (au\-delà du seuil de vigilance) et alerte (au\-delà du seuil d'intervention, ou programme
 figé). Son menu montre la RAM et le swap, les programmes figés (avec Reprendre et Arrêter), le nombre de travaux dans la
-file d'attente, « Ouvrir Gagarine » (lance
+file d'attente, le ménage possible (« Ménage : N inactifs (X Go) », avec un sous\-menu pour arrêter ou décharger chacun), « Ouvrir Gagarine » (lance
 .BR gagarine\-interface (1))
 et « Masquer l'indicateur ».
 .PP
 Il tourne dans son propre processus (GTK 3 et AyatanaAppIndicator3), sous l'identité de l'utilisateur, une seule fois
 par session. Il lit la RAM dans /proc/meminfo et le reste par la commande
 .BR gagarine (8)
-(\fBetat \-\-json\fR et \fBfile \-\-etat \-\-json\fR) toutes les 2 secondes, sans jamais bloquer ; quoi qu'il arrive à la
+(\fBetat \-\-json\fR, \fBfile \-\-etat \-\-json\fR et \fBmenage \-\-json\fR) toutes les 2 secondes, sans jamais bloquer ; quoi qu'il arrive à la
 commande, l'étiquette montre la RAM. Il a besoin d'une extension d'indicateurs dans le bureau (sous GNOME,
 « AppIndicator and KStatusNotifierItem Support », active par défaut sur Ubuntu) et de PyGObject, GTK 3 et
 AyatanaAppIndicator3 (paquets recommandés python3\-gi, gir1.2\-gtk\-3.0 et gir1.2\-ayatanaappindicator3\-0.1).

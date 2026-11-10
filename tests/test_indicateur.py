@@ -129,6 +129,56 @@ class TestMenu(unittest.TestCase):
             L.commande_action('detruire', 1, True)
 
 
+class TestMenage(unittest.TestCase):
+    CANDIDATS = {'auto': True, 'delai_min': 30, 'candidats': [
+        {'id': '5551', 'type': 'gradle', 'nom': 'Démon Gradle', 'pid': 5551, 'memoire_mo': 3100, 'inactif_depuis_s': 2640,
+         'action': 'arreter', 'auto': True},
+        {'id': 'ollama:llama3.1:8b', 'type': 'ollama', 'nom': 'llama3.1:8b', 'pid': None, 'memoire_mo': 5400,
+         'inactif_depuis_s': 1260, 'action': 'decharger', 'auto': True}]}
+
+    def test_ligne(self):
+        c = L.candidats_menage(self.CANDIDATS)
+        self.assertEqual([x['id'] for x in c], ['ollama:llama3.1:8b', '5551'])     # les plus gros d'abord
+        self.assertEqual(L.ligne_menage(c), 'Ménage : 2 inactifs (8,3 Go)')
+        self.assertEqual(L.ligne_menage(c[:1]), 'Ménage : 1 inactif (5,3 Go)')
+        self.assertIsNone(L.ligne_menage([]))
+
+    def test_entree_du_menu(self):
+        menu = L.contenu_menu(75.2, ETAT, {'travaux': []}, 'moi', self.CANDIDATS)
+        entree = next(e for e in menu if e[0] == 'menage')
+        self.assertEqual(entree[1], 'Ménage : 2 inactifs (8,3 Go)')
+        self.assertEqual(entree[2][0], ('ollama:llama3.1:8b', 'Décharger llama3.1:8b (5,3 Go, inactif depuis 21 min)', 'decharger'))
+        self.assertEqual(entree[2][1], ('5551', 'Arrêter Démon Gradle (3,0 Go, inactif depuis 44 min)', 'arreter'))
+        # l'entrée se place avant les actions finales, le menu reste comparable (pas de reconstruction inutile)
+        self.assertLess(menu.index(entree), menu.index(('action', 'ouvrir', 'Ouvrir Gagarine')))
+        self.assertEqual(menu, L.contenu_menu(75.2, ETAT, {'travaux': []}, 'moi', self.CANDIDATS))
+
+    def test_pas_d_entree_sans_candidat_ni_commande(self):
+        for menage in (None, {}, {'candidats': []}, {'candidats': 'x'}, {'candidats': [3, {'nom': 'sans id'}]}):
+            menu = L.contenu_menu(75.2, ETAT, None, 'moi', menage)
+            self.assertFalse([e for e in menu if e[0] == 'menage'], menage)
+        self.assertEqual(L.contenu_menu(75.2, ETAT, None, 'moi'), L.contenu_menu(75.2, ETAT, None, 'moi', None))
+
+    def test_identifiants_dangereux_ignores(self):
+        c = L.candidats_menage({'candidats': [{'id': '--tout', 'memoire_mo': 9}, {'id': 'a b'}, {'id': 'ok', 'memoire_mo': 1}]})
+        self.assertEqual([x['id'] for x in c], ['ok'])
+
+    def test_commande(self):
+        self.assertEqual(L.commande_menage('5551'), ['gagarine', 'menage', 'arreter', '5551'])
+        self.assertEqual(L.commande_menage('ollama:x:7b', ['/x/g']), ['/x/g', 'menage', 'arreter', 'ollama:x:7b'])
+        for mauvais in ('', '-f', 'a b'):
+            with self.assertRaises(ValueError):
+                L.commande_menage(mauvais)
+
+    def test_duree(self):
+        self.assertEqual([L.duree(x) for x in (5, 125, 3900, 200000, None)], ['5 s', '2 min', '1 h 05', '2 j', '0 s'])
+
+    def test_action(self):
+        self.assertEqual(L.action_menage({'action': 'decharger'}), 'decharger')
+        self.assertEqual(L.action_menage({'type': 'lmstudio'}), 'decharger')
+        self.assertEqual(L.action_menage({'type': 'gradle'}), 'arreter')
+
+
 class TestSurcharge(unittest.TestCase):
     def test_masquer_puis_afficher(self):
         with tempfile.TemporaryDirectory() as d:
@@ -170,6 +220,16 @@ class TestFauxGagarine(unittest.TestCase):
         self.assertEqual(L.niveau(50, etat), L.ALERTE)
         self.assertEqual(L.niveau(90, L.lire_json(self.sortie('normal', 'etat', '--json').stdout)), L.VIGILANCE)
         self.assertEqual(L.travaux_en_file(L.lire_json(self.sortie('normal', 'file', '--etat', '--json').stdout)), 1)
+
+    def test_menage_du_faux(self):
+        m = L.lire_json(self.sortie('normal', 'menage', '--json').stdout)
+        self.assertEqual(len(L.candidats_menage(m)), 2)
+        self.assertEqual(L.candidats_menage(L.lire_json(
+            subprocess.run([FAUX, 'menage', '--json'], env=dict(os.environ, FAUX_GAGARINE_MENAGE='vide'),
+                           capture_output=True, text=True).stdout)), [])
+        absent = subprocess.run([FAUX, 'menage', '--json'], env=dict(os.environ, FAUX_GAGARINE_MENAGE='absent'),
+                                capture_output=True, text=True)
+        self.assertEqual(absent.returncode, 2)
 
     def test_pannes(self):
         self.assertIsNone(L.lire_json(self.sortie('invalide', 'etat', '--json').stdout))

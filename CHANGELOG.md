@@ -7,6 +7,59 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.2.0] - 2026-11-10
+
+Gagarine empêche maintenant les incidents à la source : un travail lourd ne peut plus échapper à la file depuis une
+session Claude, une annonce trop basse est corrigée, les programmes inactifs sont rangés, et le garde agit avant 95 %
+quand la mémoire s'emballe. Il se met à jour par `apt upgrade`.
+
+### Ajouté
+
+- **Mémoire apprise** par la file d'attente :
+  - le pic mémoire de chaque travail (RAM + swap) est relevé et retenu, avec les 5 derniers pics ;
+  - si un travail annonce bien moins que ce qu'il a déjà pris, la file le dit et corrige l'annonce, au plus à 60 % de la
+    RAM (réglage `file_ajuster`) ;
+  - `gagarine file appris [--json]` ; `pic_go` dans les événements de fin de travail.
+- **Notification de fin de travail** : terminé, échoué ou arrêté par sa limite, pour les travaux d'au moins 30 s
+  (réglages `notifications_fin`, `notification_fin_min`).
+- **Alertes sur le téléphone** par ntfy :
+  - programmes figés ou arrêtés, fin des travaux (réglage `ntfy`, vide par défaut) ;
+  - `gagarine ntfy essai SUJET`.
+- **Agir avant 95 %** :
+  - **anticipation** : au-delà de la vigilance, le programme qui remplirait la RAM jusqu'au seuil en moins de 15 s est
+    figé tout de suite (réglage `anticipation`) ;
+  - **pression** : le garde agit aussi quand le noyau passe plus de 20 % de son temps bloqué faute de mémoire
+    (`/proc/pressure/memory`, réglage `pression`) ;
+  - le champ `declencheur` des événements dit ce qui a fait agir.
+- **Historique** de 7 jours (une mesure par minute) :
+  - `gagarine historique [--depuis 5min|1h|24h|7j] [--json]` : RAM, incidents, plus gros programmes, travaux ;
+  - courbe sur 24 h et 7 jours dans l'interface.
+- **Ménage des programmes inactifs** : démons Gradle et Kotlin, modèles LM Studio et Ollama, serveurs de développement.
+  - `gagarine menage [--json]`, `gagarine menage arreter ID…` ;
+  - ménage automatique toutes les 2 minutes par un minuteur utilisateur (réglages `menage_auto`, `menage_delai`) ;
+  - les serveurs de développement ne sont jamais arrêtés tout seuls.
+- **Plafond mémoire des applications du bureau** (`MemoryHigh`) : `gagarine applications [--json]`,
+  `gagarine applications plafond ID GO|aucun`. L'application est freinée et rangée dans le swap, jamais arrêtée.
+- **Hook des sessions Claude Code** : `gagarine hook-claude [--tester "CMD"]`.
+  - Il donne les mêmes rappels que l'ancien hook du poste.
+  - Il **refuse** les travaux lourds lancés hors de la file (tests, compilations, `ffmpeg`, `make deb`…) et donne la
+    commande corrigée, avec la RAM apprise (réglage `claude_bloquer`).
+- **Dépôt APT signé** sur GitHub Pages (`https://mawena.github.io/gagarine/apt`) : le paquet installe sa source et sa
+  clé, puis `apt upgrade` suffit. Publication par `make apt` (`scripts/publier-apt.sh`).
+- **Site** refait (https://mawena.github.io/gagarine/), avec un script d'installation en une ligne.
+- **Interface** :
+  - Aperçu : courbe sur 24 h ou 7 jours ;
+  - Programmes : Ménage et Applications du bureau ;
+  - File d'attente : Mémoire apprise et Travaux passés ;
+  - Réglages : toutes les nouvelles clés, avec un essai ntfy ;
+  - Journal : les nouveaux événements.
+- **Indicateur** : entrée « Ménage » avec ses actions.
+
+### Modifié
+
+- Les commandes de `cli.py` peuvent venir de modules à part (extensions), ce qui garde chaque fonction dans son fichier.
+- `gagarine journal` affiche les nouveaux champs : déclencheur, pic, annonce corrigée, ménage.
+
 ## [1.1.1] - 2026-11-10
 
 ### Corrigé

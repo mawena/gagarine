@@ -78,6 +78,28 @@ def travaux_en_file(file_etat):
     return len(travaux) if isinstance(travaux, list) else None
 
 
+def candidats_menage(menage):
+    """Candidats valides de `menage --json` (id texte non vide et sans espace, ne commençant pas par un tiret),
+    les plus gros d'abord. Liste vide si la commande est absente ou la réponse inutilisable."""
+    liste = (menage or {}).get('candidats')
+    if not isinstance(liste, list):
+        return []
+    valides = []
+    for c in liste:
+        identifiant = str(c.get('id') if isinstance(c, dict) and c.get('id') is not None else '')
+        if identifiant and not identifiant.startswith('-') and not any(x.isspace() for x in identifiant):
+            valides.append(c)
+    return sorted(valides, key=lambda c: -_nombre(c.get('memoire_mo'), 0))
+
+
+def action_menage(candidat):
+    """« decharger » pour un modèle (LM Studio, Ollama) ou si le cœur le dit, sinon « arreter »."""
+    action = str(candidat.get('action') or '')
+    if 'decharg' in action.lower() or (not action and candidat.get('type') in ('lmstudio', 'ollama')):
+        return 'decharger'
+    return 'arreter'
+
+
 # --- Niveau, icône, libellés -------------------------------------------------------------------------------------------
 
 def niveau(pourcent, etat=None):
@@ -142,6 +164,43 @@ def ligne_file(nombre):
     return 'File d\'attente : %d %s' % (nombre, 'travaux' if nombre > 1 else 'travail')
 
 
+def duree(secondes):
+    """« 45 s », « 12 min », « 3 h 05 », « 2 j »."""
+    s = int(max(_nombre(secondes, 0), 0))
+    if s < 60:
+        return '%d s' % s
+    if s < 3600:
+        return '%d min' % (s // 60)
+    if s < 86400:
+        return '%d h %02d' % (s // 3600, s % 3600 // 60)
+    return '%d j' % (s // 86400)
+
+
+def ligne_menage(candidats):
+    """« Ménage : 2 inactifs (8,5 Go) » ; None s'il n'y a rien à nettoyer."""
+    if not candidats:
+        return None
+    total = sum(_nombre(c.get('memoire_mo'), 0) for c in candidats)
+    return 'Ménage : %d inactif%s (%s)' % (len(candidats), 's' if len(candidats) > 1 else '', taille_mo(total))
+
+
+def titre_candidat(c):
+    """« Arrêter Démon Gradle (3,0 Go, inactif depuis 44 min) »."""
+    verbe = 'Décharger' if action_menage(c) == 'decharger' else 'Arrêter'
+    texte = '%s %s (%s' % (verbe, c.get('nom') or '?', taille_mo(c.get('memoire_mo')))
+    if c.get('inactif_depuis_s') is not None:
+        texte += ', inactif depuis %s' % duree(c['inactif_depuis_s'])
+    return texte + ')'
+
+
+def commande_menage(identifiant, base=None):
+    """`gagarine menage arreter ID` (sans pkexec : le ménage ne touche que les programmes de l'utilisateur)."""
+    identifiant = str(identifiant)
+    if not identifiant or identifiant.startswith('-') or any(x.isspace() for x in identifiant):
+        raise ValueError('identifiant invalide : %r' % identifiant)
+    return list(base or ['gagarine']) + ['menage', 'arreter', identifiant]
+
+
 def tooltip(niv, nb_figes):
     if nb_figes:
         return 'Gagarine : %d programme%s figé%s' % (nb_figes, 's' if nb_figes > 1 else '', 's' if nb_figes > 1 else '')
@@ -155,8 +214,9 @@ def tooltip(niv, nb_figes):
 #   ('sep',)                              séparateur
 #   ('fige', pid, titre, direct)          sous-menu d'un programme figé (direct : l'utilisateur peut agir sans pkexec)
 #   ('action', identifiant, texte)        ligne cliquable
+#   ('menage', titre, ((id, titre, action), …))  sous-menu du ménage (une action par candidat, avec confirmation)
 
-def contenu_menu(pourcent, etat, file_etat, utilisateur=None):
+def contenu_menu(pourcent, etat, file_etat, utilisateur=None, menage=None):
     elements = [('info', ligne_ram(pourcent, etat))]
     swap = ligne_swap(etat)
     if swap:
@@ -171,6 +231,10 @@ def contenu_menu(pourcent, etat, file_etat, utilisateur=None):
     else:
         elements.append(('info', 'Aucun programme figé'))
     elements.append(('info', ligne_file(travaux_en_file(file_etat))))
+    candidats = candidats_menage(menage)
+    if candidats:
+        elements.append(('menage', ligne_menage(candidats),
+                         tuple((str(c['id']), titre_candidat(c), action_menage(c)) for c in candidats)))
     elements += [('sep',), ('action', 'ouvrir', 'Ouvrir Gagarine'), ('action', 'masquer', 'Masquer l\'indicateur')]
     return elements
 

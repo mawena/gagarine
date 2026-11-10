@@ -1,4 +1,4 @@
-.TH GAGARINE\-INTERFACE 1 "10 novembre 2026" "gagarine 1.1.1" "Commandes de l'utilisateur"
+.TH GAGARINE\-INTERFACE 1 "10 novembre 2026" "gagarine 1.2.0" "Commandes de l'utilisateur"
 .SH NOM
 gagarine\-interface \- interface graphique de Gagarine (GTK 4 et libadwaita)
 .SH SYNOPSIS
@@ -16,9 +16,15 @@ piloter à la souris : reprendre ou arrêter un programme figé, annuler ou lanc
 réglages, démarrer ou arrêter le service, lancer l'essai de la protection, afficher ou masquer l'indicateur de la barre
 du haut.
 .PP
+La page Aperçu montre la courbe de RAM sur 5 minutes, 24 heures ou 7 jours, avec les incidents marqués. La page Programmes
+propose le ménage (démons et modèles inactifs, à arrêter ou décharger) et le plafond de mémoire des applications du
+bureau. La page File d'attente montre la mémoire apprise de chaque travail et les travaux passés. La page Réglages
+couvre aussi l'anticipation, la pression, les notifications de fin, ntfy (avec un essai), la correction des annonces, le
+ménage automatique et le blocage des sessions Claude Code.
+.PP
 L'interface ne parle au cœur de Gagarine qu'à travers la commande
 .BR gagarine (8)
-(sorties \fB\-\-json\fR) et la lecture de /proc/meminfo ; elle tourne sous l'identité de l'utilisateur. Les actions qui
+(sorties \fB\-\-json\fR, dont \fBhistorique\fR, \fBmenage\fR, \fBapplications\fR et \fBfile appris\fR) et la lecture de /proc/meminfo ; elle tourne sous l'identité de l'utilisateur. Les actions qui
 demandent les droits d'administrateur (enregistrer les réglages, piloter le service, arrêter le programme d'un autre
 utilisateur) passent par
 .BR pkexec (1)
@@ -49,6 +55,9 @@ Sorties des travaux lancés avec « Nouveau travail… » (variable GAGARINE_SOR
 .TP
 .I ~/.config/autostart/io.github.mawena.Gagarine.Indicateur.desktop
 Surcharge de l'autostart de l'indicateur (Hidden=true quand il est masqué).
+.TP
+.I ~/.config/systemd/user/*.scope.d/50\-gagarine.conf
+Plafonds de mémoire des applications du bureau, écrits par le réglage de la page Programmes.
 .SH VOIR AUSSI
 .BR gagarine (8),
 .BR gagarine\-indicateur (1)

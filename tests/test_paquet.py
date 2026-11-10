@@ -28,6 +28,51 @@ class Paquet(unittest.TestCase):
             for module in glob.glob(os.path.join(RACINE, sous, '*.py')):
                 self.assertIn(module, installes, f'{module} n\'est pas dans debian/gagarine.install')
 
+    def test_fichiers_de_la_120_installes(self):
+        """Hook Claude, ménage (unités utilisateur), dépôt APT : installés au bon endroit, et rien d'autre de data/apt."""
+        installes = {os.path.normpath(s): d for s, d, *_ in lignes('gagarine.install')}
+        attendus = {
+            'data/claude/ressources-poste.sh': 'usr/share/gagarine/claude',
+            'data/systemd-user/gagarine-menage.service': 'usr/lib/systemd/user',
+            'data/systemd-user/gagarine-menage.timer': 'usr/lib/systemd/user',
+            'data/apt/gagarine.sources': 'etc/apt/sources.list.d',
+            'data/apt/gagarine.gpg': 'usr/share/keyrings',
+        }
+        for source, destination in attendus.items():
+            self.assertEqual(installes.get(source), destination, source)
+        self.assertNotIn('data/apt/LISEZMOI', installes)
+
+    def test_depot_apt_coherent(self):
+        """La source APT désigne la clé que le paquet installe."""
+        with open(os.path.join(RACINE, 'data/apt/gagarine.sources'), encoding='utf-8') as f:
+            texte = f.read()
+        self.assertIn('Signed-By: /usr/share/keyrings/gagarine.gpg', texte)
+        self.assertIn('https://mawena.github.io/gagarine/apt', texte)
+
+    def test_minuteur_du_menage_active_pour_tous(self):
+        """Le minuteur a une section [Install] (dh_installsystemduser l'active pour tous les utilisateurs)."""
+        with open(os.path.join(RACINE, 'data/systemd-user/gagarine-menage.timer'), encoding='utf-8') as f:
+            self.assertIn('WantedBy=timers.target', f.read())
+        with open(os.path.join(RACINE, 'data/systemd-user/gagarine-menage.service'), encoding='utf-8') as f:
+            self.assertIn('ExecStart=/usr/bin/gagarine menage auto', f.read())
+        with open(os.path.join(RACINE, 'debian/rules'), encoding='utf-8') as f:
+            self.assertNotIn('no-enable', f.read())
+
+    def test_manuel_documente_les_commandes_de_la_120(self):
+        with open(os.path.join(RACINE, 'man/gagarine.8'), encoding='utf-8') as f:
+            texte = f.read()
+        for mot in ('gagarine file appris', 'gagarine historique', 'gagarine menage', 'gagarine applications',
+                    'gagarine hook\\-claude', 'gagarine ntfy essai',
+                    'anticipation', 'pression', 'notifications_fin', 'notification_fin_min', 'file_ajuster',
+                    'menage_auto', 'menage_delai', 'claude_bloquer', 'travaux.json', 'gagarine.sources'):
+            self.assertTrue(mot in texte, f'{mot} absent de man/gagarine.8')
+
+    def test_description_a_jour(self):
+        with open(os.path.join(RACINE, 'debian/control'), encoding='utf-8') as f:
+            texte = f.read()
+        for mot in ('hook-claude', 'historique', 'menage', 'APT'):
+            self.assertTrue(mot in texte, f'{mot} absent de la description')
+
     def test_pages_de_manuel(self):
         pages = [p for p, *_ in lignes('gagarine.manpages')]
         for attendu in ('man/gagarine.8', 'man/gagarine-interface.1', 'man/gagarine-indicateur.1'):

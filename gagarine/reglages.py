@@ -10,7 +10,16 @@ CONFIG_SYSTEME = '/etc/gagarine.conf'
 ETAT_SYSTEME = '/var/lib/gagarine'
 # Clés qu'on peut écrire avec « gagarine reglages --ecrire » (« filtre » ne sert qu'aux essais)
 CLES_ECRITURE = ('seuil', 'urgence', 'vigilance', 'grace', 'vidage_max', 'delai_fige', 'reste_si_repris',
-                 'notifications', 'proteges')
+                 'notifications', 'proteges',
+                 # 1.2.0
+                 'anticipation', 'pression', 'notifications_fin', 'notification_fin_min', 'ntfy', 'file_ajuster',
+                 'menage_auto', 'menage_delai', 'claude_bloquer')
+# Réglages numériques pour lesquels 0 veut dire « désactivé »
+ZERO_PERMIS = ('anticipation', 'pression', 'notification_fin_min')
+# Réglages exprimés en pourcentage (100 au plus)
+POURCENTAGES = ('seuil', 'urgence', 'vigilance', 'pression')
+# ntfy : un sujet (servi par ntfy.sh) ou l'adresse complète d'un sujet sur un autre serveur
+MOTIF_NTFY = re.compile(r'[A-Za-z0-9_-]{1,64}|https?://[^\s/]+(/[^\s/]+)*/[A-Za-z0-9_-]{1,64}')
 
 
 @dataclass
@@ -25,6 +34,16 @@ class Reglages:
     notifications: bool = True
     proteges: str = ''           # expression régulière de noms à protéger en plus de la liste intégrée
     filtre: str = ''             # essais : ne viser que les programmes dont la ligne de commande correspond
+    # 1.2.0
+    anticipation: float = 15     # s : figer plus tôt un programme qui remplirait la RAM jusqu'au seuil dans ce délai (0 : non)
+    pression: float = 20         # % de « full avg10 » de /proc/pressure/memory qui fait agir au-delà de vigilance (0 : non)
+    notifications_fin: bool = True       # notification quand un travail de la file se termine
+    notification_fin_min: float = 30     # s : pas de notification de fin pour un travail plus court (0 : toujours)
+    ntfy: str = ''               # sujet ntfy (ou adresse complète) pour recevoir aussi les alertes sur le téléphone
+    file_ajuster: bool = True    # la file corrige d'elle-même une RAM annoncée bien plus basse que celle déjà mesurée
+    menage_auto: bool = True     # arrêter tout seul les démons et modèles inactifs depuis menage_delai
+    menage_delai: float = 30     # min d'inactivité avant le ménage automatique
+    claude_bloquer: bool = True  # le hook des sessions Claude refuse les travaux lourds lancés hors de la file
 
 
 def booleen(texte):
@@ -51,11 +70,14 @@ def convertir(nom, texte):
         return booleen(texte)
     if champ.type is float:
         v = float(texte)
-        if not 0 < v <= (100 if nom in ('seuil', 'urgence', 'vigilance') else 10 ** 9):
+        minimum_ok = v >= 0 if nom in ZERO_PERMIS else v > 0
+        if not (minimum_ok and v <= (100 if nom in POURCENTAGES else 10 ** 9)):
             raise ValueError('hors limites')
         return v
     if nom in ('proteges', 'filtre') and texte:
         re.compile(texte)
+    if nom == 'ntfy' and texte and not MOTIF_NTFY.fullmatch(texte):
+        raise ValueError('un sujet ntfy (lettres, chiffres, - et _) ou une adresse http(s)://serveur/sujet')
     return texte
 
 
