@@ -1,0 +1,55 @@
+.TH GAGARINE\-INDICATEUR 1 "10 novembre 2026" "gagarine 1.1.0" "Commandes de l'utilisateur"
+.SH NOM
+gagarine\-indicateur \- indicateur de Gagarine dans la barre du haut
+.SH SYNOPSIS
+.B gagarine\-indicateur
+.br
+.B gagarine\-indicateur
+.RB ( \-\-afficher " | " \-\-masquer )
+.br
+.B gagarine\-indicateur
+.RB ( \-h " | " \-\-aide )
+.SH DESCRIPTION
+.B gagarine\-indicateur
+affiche en permanence, dans la barre du haut du bureau, le pourcentage de RAM utilisée à côté d'une icône qui change de
+niveau : normal, vigilance (au\-delà du seuil de vigilance) et alerte (au\-delà du seuil d'intervention, ou programme
+figé). Son menu montre la RAM et le swap, les programmes figés (avec Reprendre et Arrêter), le nombre de travaux dans la
+file d'attente, « Ouvrir Gagarine » (lance
+.BR gagarine\-interface (1))
+et « Masquer l'indicateur ».
+.PP
+Il tourne dans son propre processus (GTK 3 et AyatanaAppIndicator3), sous l'identité de l'utilisateur, une seule fois
+par session. Il lit la RAM dans /proc/meminfo et le reste par la commande
+.BR gagarine (8)
+(\fBetat \-\-json\fR et \fBfile \-\-etat \-\-json\fR) toutes les 2 secondes, sans jamais bloquer ; quoi qu'il arrive à la
+commande, l'étiquette montre la RAM. Il a besoin d'une extension d'indicateurs dans le bureau (sous GNOME,
+« AppIndicator and KStatusNotifierItem Support », active par défaut sur Ubuntu) et de PyGObject, GTK 3 et
+AyatanaAppIndicator3 (paquets recommandés python3\-gi, gir1.2\-gtk\-3.0 et gir1.2\-ayatanaappindicator3\-0.1).
+.PP
+Le paquet installe son démarrage automatique dans /etc/xdg/autostart.
+.SH OPTIONS
+.TP
+.B \-\-masquer
+Ne plus lancer l'indicateur à l'ouverture de session : écrit la surcharge d'autostart de l'utilisateur
+(Hidden=true). N'arrête pas un indicateur déjà lancé.
+.TP
+.B \-\-afficher
+Le lancer de nouveau à l'ouverture de session : enlève la surcharge.
+.TP
+.BR \-h ", " \-\-aide
+Affiche l'aide.
+.SH ENVIRONNEMENT
+.TP
+.B GAGARINE_COMMANDE
+Remplace la commande \fBgagarine\fR (développement, tests).
+.SH FICHIERS
+.TP
+.I ~/.config/autostart/io.github.mawena.Gagarine.Indicateur.desktop
+Surcharge de l'autostart (Hidden=true quand l'indicateur est masqué). Le même fichier est écrit par l'interrupteur
+« Afficher dans la barre du haut » de
+.BR gagarine\-interface (1).
+.SH VOIR AUSSI
+.BR gagarine (8),
+.BR gagarine\-interface (1)
+.SH AUTEUR
+mawena. Licence MIT.

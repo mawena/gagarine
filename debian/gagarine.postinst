@@ -1,0 +1,24 @@
+#!/bin/sh
+# Met en service tout de suite le swap compressé en RAM (zram) et ses réglages du noyau, sans redémarrer.
+# Le swap disque existant n'est pas touché : il reste utilisé après le zram.
+set -e
+
+if [ "$1" = "configure" ]; then
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+        if ! swapon --show=NAME --noheadings 2>/dev/null | grep -qx /dev/zram0; then
+            modprobe zram 2>/dev/null || true
+            deb-systemd-invoke restart systemd-zram-setup@zram0.service 2>/dev/null \
+                && deb-systemd-invoke start dev-zram0.swap 2>/dev/null \
+                || echo "gagarine : le zram n'a pas pu être créé maintenant ; il le sera au prochain démarrage." >&2
+        fi
+    fi
+    # systemd-sysctl applique le fichier en respectant un éventuel fichier du même nom dans /etc/sysctl.d/
+    if [ -x /usr/lib/systemd/systemd-sysctl ]; then
+        /usr/lib/systemd/systemd-sysctl 90-gagarine.conf || true
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

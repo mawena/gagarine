@@ -7,6 +7,51 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.1.0] - 2026-11-10
+
+Gagarine réunit maintenant tout ce qui protège la mémoire du poste : le garde, la file d'attente des travaux lourds et le
+swap compressé en RAM, avec une interface graphique et un indicateur dans la barre du haut.
+
+### Ajouté
+
+- **Interface graphique** `gagarine-interface` (GTK 4 + libadwaita), application « Gagarine » du bureau, en cinq pages :
+  - Aperçu : jauge de la RAM avec ses repères, courbe des cinq dernières minutes, swap, état du service ;
+  - Programmes : programmes figés avec Reprendre et Arrêter, dix plus gros programmes ;
+  - File d'attente : travaux, Annuler, Voir la sortie, Nouveau travail ;
+  - Journal : filtre et recherche ;
+  - Réglages : réglages, service et essai.
+  Les actions d'administrateur passent par polkit (`pkexec`), et l'interface reste fluide même RAM pleine.
+- **Indicateur de la barre du haut** `gagarine-indicateur` (GTK 3 + AyatanaAppIndicator) :
+  - la RAM en %, avec une icône selon le niveau ;
+  - un menu pour reprendre ou arrêter les programmes figés et ouvrir Gagarine ;
+  - lancé à l'ouverture de session, `--masquer` / `--afficher`.
+- **File d'attente des travaux lourds** intégrée : `gagarine file "<nom>" <Go> <cœurs> [--apres PID] -- commande`,
+  `gagarine file --etat [--json]`, `gagarine file annuler`.
+  - Chaque travail attend son tour, puis tourne dans sa limite mémoire du noyau : max(2 × annoncé, annoncé + 2 Go), 512 Mo
+    de swap, code 137 s'il la dépasse.
+  - Les tickets sont compatibles avec l'outil `file-attente` et ses copies dans les projets.
+  - Les travaux sont notés dans le journal.
+- **Swap compressé en RAM** fourni par le paquet :
+  - zram de la taille de la RAM, en zstd, utilisé avant le swap disque ;
+  - réglages du noyau adaptés (`swappiness` 180, `page-cluster` 0, `watermark_scale_factor` 125,
+    `watermark_boost_factor` 0) ;
+  - appliqués dès l'installation, sans redémarrer.
+- Commandes :
+  - `gagarine etat --json` ;
+  - `gagarine journal [-n N] [--json]`, qui fusionne les journaux du service, de l'utilisateur et de la file ;
+  - `gagarine reglages [--json]` et `gagarine reglages --ecrire CLE=VALEUR…`, qui modifie `/etc/gagarine.conf` sur place en
+    gardant les commentaires ;
+  - `gagarine service demarrer|arreter|redemarrer|activer|desactiver`.
+- Rechargement des réglages sans redémarrer le service (SIGHUP, `systemctl reload gagarine`), sans perdre son état.
+- Notifications rattachées à l'application (nom, icône), icône originale, metainfo AppStream, pages de manuel
+  `gagarine-interface(1)` et `gagarine-indicateur(1)`.
+
+### Modifié
+
+- Le code est rangé en paquet Python `gagarine/`, un module par rôle (installé dans `/usr/share/gagarine`), au lieu d'un
+  seul fichier ; les commandes existantes ne changent pas.
+- Le paquet dépend de `systemd-zram-generator` et recommande les bibliothèques de l'interface et de l'indicateur.
+
 ## [1.0.0] - 2026-11-10
 
 Première version : un garde-RAM qui empêche la mémoire du poste de se remplir au point de le figer. Il reprend le

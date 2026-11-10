@@ -1,3 +1,17 @@
 bin/gagarine usr/bin
+bin/gagarine-interface usr/bin
+bin/gagarine-indicateur usr/bin
+gagarine/*.py usr/share/gagarine/gagarine
+gagarine/interface/*.py usr/share/gagarine/gagarine/interface
+gagarine/indicateur/*.py usr/share/gagarine/gagarine/indicateur
 etc/gagarine.conf etc
 systemd/gagarine.service usr/lib/systemd/system
+data/zram/50-gagarine.conf usr/lib/systemd/zram-generator.conf.d
+data/sysctl/90-gagarine.conf usr/lib/sysctl.d
+data/applications/io.github.mawena.Gagarine.desktop usr/share/applications
+data/icons/hicolor/scalable/apps/*.svg usr/share/icons/hicolor/scalable/apps
+data/icons/hicolor/scalable/status/*.svg usr/share/icons/hicolor/scalable/status
+data/icons/hicolor/symbolic/apps/*.svg usr/share/icons/hicolor/symbolic/apps
+data/metainfo/io.github.mawena.Gagarine.metainfo.xml usr/share/metainfo
+data/polkit/io.github.mawena.gagarine.policy usr/share/polkit-1/actions
+data/autostart/io.github.mawena.Gagarine.Indicateur.desktop etc/xdg/autostart

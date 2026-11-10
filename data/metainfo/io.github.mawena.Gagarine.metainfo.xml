@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mawena.Gagarine</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Gagarine</name>
+  <summary>Garde-RAM : empêche la mémoire de figer votre poste</summary>
+  <developer id="io.github.mawena">
+    <name>mawena</name>
+  </developer>
+  <description>
+    <p>Gagarine surveille la mémoire vive de votre ordinateur. Quand un programme grossit sans fin et menace de remplir la RAM, Gagarine le fige, le range dans le swap, puis l’arrête si la mémoire ne redescend pas. Le bureau et les services essentiels ne sont jamais touchés.</p>
+    <p>L’interface graphique montre l’état de la mémoire en temps réel et permet de :</p>
+    <ul>
+      <li>suivre la RAM, le swap et le service sur une courbe des cinq dernières minutes ;</li>
+      <li>reprendre ou arrêter un programme figé ;</li>
+      <li>gérer la file d’attente des travaux lourds, qui passent un par un dans une limite de mémoire ;</li>
+      <li>consulter le journal, modifier les réglages et vérifier la protection par un essai sans risque ;</li>
+      <li>afficher la RAM dans la barre du haut.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.mawena.Gagarine.desktop</launchable>
+  <provides>
+    <binary>gagarine</binary>
+    <binary>gagarine-interface</binary>
+  </provides>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/apercu.png</image>
+      <caption>Aperçu : jauge de la RAM, courbe des cinq dernières minutes, swap et service</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/programmes.png</image>
+      <caption>Programmes figés, à reprendre ou à arrêter, et plus gros programmes</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/file.png</image>
+      <caption>File d’attente des travaux lourds</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/journal.png</image>
+      <caption>Journal des événements, avec filtre et recherche</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/reglages.png</image>
+      <caption>Réglages, service et essai</caption>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/mawena/gagarine</url>
+  <url type="bugtracker">https://github.com/mawena/gagarine/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>System</category>
+    <category>Monitor</category>
+  </categories>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <releases>
+    <release version="1.1.0" date="2026-11-10">
+      <description>
+        <p>Interface graphique GNOME, file d’attente des travaux lourds et indicateur de la barre du haut.</p>
+      </description>
+    </release>
+  </releases>
+</component>

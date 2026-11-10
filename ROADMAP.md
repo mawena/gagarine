@@ -35,10 +35,55 @@ Il reprend le garde-RAM écrit le 10/11/2026 pour le poste, après deux redémar
 ## Phase 5 — Première version
 
 - [x] CHANGELOG, release git flow, tag, `main`, `develop` et tags poussés
-- [ ] Release GitHub avec le `.deb` et `SHA256SUMS`
+- [x] Release GitHub avec le `.deb` et `SHA256SUMS`
 
 ## Phase 6 — Mise en place sur le poste
 
-- [ ] Installation du `.deb` (`sudo apt install ./gagarine_<version>_all.deb`, par l'utilisateur)
-- [ ] Retrait du garde-RAM sous le compte utilisateur, hook des sessions Claude et consignes mis à jour
-- [ ] Vérification du service système (`sudo gagarine essai`)
+- [x] Installation du `.deb` (`sudo apt install ./gagarine_<version>_all.deb`, par l'utilisateur)
+- [x] Retrait du garde-RAM sous le compte utilisateur, hook des sessions Claude et consignes mis à jour
+- [x] Vérification du service système (`sudo gagarine essai` : figé, rangé dans le swap en 1 s, arrêté)
+- [x] Swap compressé en RAM (zram de la taille de la RAM, zstd, avant le swap disque) et réglages du noyau associés
+
+## Phase 7 — Code rangé et commandes pour l'interface (1.1.0)
+
+Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
+
+- [x] Paquet Python `gagarine/` (un module par rôle), lanceur `bin/gagarine`, tests adaptés, comportement inchangé
+- [x] `gagarine etat --json`, `gagarine journal [-n N] [--json]`
+- [x] `gagarine reglages [--json]` et `--ecrire CLE=VALEUR` (sur place, commentaires gardés), rechargement sur SIGHUP
+- [x] `gagarine service demarrer|arreter|redemarrer|activer|desactiver`
+- [x] Notifications rattachées à l'application (nom, icône, entrée de bureau)
+
+## Phase 8 — File d'attente des travaux lourds
+
+- [x] `gagarine file "<nom>" <Go> <cœurs> [--apres PID] -- commande`, limite mémoire du noyau, codes de sortie
+- [x] Compatibilité totale avec l'outil `file-attente` et les copies des projets (mêmes tickets, même dossier)
+- [x] `gagarine file --etat [--json]`, `gagarine file annuler`, journal des travaux
+- [x] Tests de la file
+
+## Phase 9 — Interface graphique
+
+- [x] Fenêtre GTK 4 + libadwaita : vue d'ensemble (jauge, courbe, swap, service)
+- [x] Programmes figés (Reprendre, Arrêter) et plus gros programmes
+- [x] File d'attente (travaux, Annuler, Voir la sortie, Nouveau travail)
+- [x] Journal (filtre, recherche)
+- [x] Réglages, service et essai, par `pkexec` et une politique polkit
+- [x] Icône, entrée de bureau, metainfo, À propos, captures d'écran
+
+## Phase 10 — Indicateur de la barre du haut
+
+- [x] Indicateur GTK 3 + AyatanaAppIndicator : RAM en %, icône selon le niveau, menu d'actions
+- [x] Démarrage automatique, masquer ou réafficher (aussi depuis l'interface)
+
+## Phase 11 — Paquet et documentation 1.1.0
+
+- [x] Paquet : nouveaux fichiers, dépendances recommandées, validation du `.desktop` et du metainfo, lintian
+- [x] Swap compressé en RAM (zram) et réglages du noyau fournis par le paquet, appliqués à l'installation
+- [x] README (file d'attente, interface, indicateur, captures), pages de manuel, CHANGELOG
+- [ ] Release git flow 1.1.0, release GitHub avec le `.deb`, « About » GitHub à jour
+
+## Phase 12 — Mise en place de la 1.1.0 sur le poste
+
+- [ ] Installation du `.deb` 1.1.0 (par l'utilisateur)
+- [ ] `~/.local/bin/file-attente` renvoie vers `gagarine file` ; hook et consignes des sessions Claude à jour
+- [ ] Plus rien d'éparpillé hors de Gagarine : ancien garde-RAM, script et réglages zram de `/etc` (remplacés par ceux du paquet) retirés

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Gagarine
+GenericName=Garde-RAM
+Comment=Surveille la mémoire, gère la file d’attente des travaux lourds
+Comment[fr]=Surveille la mémoire, gère la file d’attente des travaux lourds
+Exec=gagarine-interface
+Icon=io.github.mawena.Gagarine
+Terminal=false
+Categories=GNOME;GTK;System;Monitor;
+Keywords=mémoire;RAM;swap;moniteur;file;travaux;garde;
+StartupNotify=true
+StartupWMClass=io.github.mawena.Gagarine
+X-GNOME-UsesNotifications=true
