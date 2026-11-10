@@ -253,6 +253,7 @@ section + section { border-top: 1px solid var(--trait); }
   .compteur-unite { margin: 0; }
   .etapes { grid-template-columns: 1fr 1fr; }
   .seg span { display: none; }
+  .repere:not(.repere-seuil):last-of-type b { display: none; }   /* 98 se lirait collé à 95 : le trait suffit */
   .protection { grid-template-columns: 1fr; }
   .protection h3 { grid-row: auto; }
   .galerie { grid-template-columns: 1fr; }
