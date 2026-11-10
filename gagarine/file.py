@@ -119,17 +119,12 @@ class Poste:
     racine_cgroup = Path('/sys/fs/cgroup')
 
     def cgroup_scope(self, scope):
-        """Dossier cgroup du scope (ControlGroup de systemd), ou None s'il n'existe pas (encore). Un dossier trouvé est
-        gardé : la file le relit toutes les 5 s pour chaque travail en cours."""
-        connus = self.__dict__.setdefault('_cgroups', {})
-        if scope in connus and connus[scope].exists():
-            return connus[scope]
+        """Dossier cgroup du scope (ControlGroup de systemd), ou None s'il n'existe pas (encore)."""
         code, sortie = self.executer(['systemctl', '--user', 'show', scope, '-p', 'ControlGroup', '--value'])
         chemin = sortie.strip()
         if code != 0 or not chemin.startswith('/'):
             return None
-        connus[scope] = self.racine_cgroup / chemin.lstrip('/')
-        return connus[scope]
+        return self.racine_cgroup / chemin.lstrip('/')
 
     def memoire_cgroup(self, chemin):
         """Mémoire actuelle du cgroup, RAM + swap, en Go ; None si memory.current est illisible."""
