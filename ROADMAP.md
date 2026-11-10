@@ -56,19 +56,19 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 
 ## Phase 8 — File d'attente des travaux lourds
 
-- [ ] `gagarine file "<nom>" <Go> <cœurs> [--apres PID] -- commande`, limite mémoire du noyau, codes de sortie
-- [ ] Compatibilité totale avec l'outil `file-attente` et les copies des projets (mêmes tickets, même dossier)
-- [ ] `gagarine file --etat [--json]`, `gagarine file annuler`, journal des travaux
-- [ ] Tests de la file
+- [x] `gagarine file "<nom>" <Go> <cœurs> [--apres PID] -- commande`, limite mémoire du noyau, codes de sortie
+- [x] Compatibilité totale avec l'outil `file-attente` et les copies des projets (mêmes tickets, même dossier)
+- [x] `gagarine file --etat [--json]`, `gagarine file annuler`, journal des travaux
+- [x] Tests de la file
 
 ## Phase 9 — Interface graphique
 
-- [ ] Fenêtre GTK 4 + libadwaita : vue d'ensemble (jauge, courbe, swap, service)
-- [ ] Programmes figés (Reprendre, Arrêter) et plus gros programmes
-- [ ] File d'attente (travaux, Annuler, Voir la sortie, Nouveau travail)
-- [ ] Journal (filtre, recherche)
-- [ ] Réglages, service et essai, par `pkexec` et une politique polkit
-- [ ] Icône, entrée de bureau, metainfo, À propos, captures d'écran
+- [x] Fenêtre GTK 4 + libadwaita : vue d'ensemble (jauge, courbe, swap, service)
+- [x] Programmes figés (Reprendre, Arrêter) et plus gros programmes
+- [x] File d'attente (travaux, Annuler, Voir la sortie, Nouveau travail)
+- [x] Journal (filtre, recherche)
+- [x] Réglages, service et essai, par `pkexec` et une politique polkit
+- [x] Icône, entrée de bureau, metainfo, À propos, captures d'écran
 
 ## Phase 10 — Indicateur de la barre du haut
 
