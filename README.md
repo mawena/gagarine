@@ -109,10 +109,10 @@ Cinq pages :
 | Page | Contenu |
 |---|---|
 | **Aperçu** | jauge de la RAM avec les repères (vigilance, seuil, urgence), courbe sur 5 minutes, 24 heures ou 7 jours avec les incidents marqués, swap (zram et disque), état du service |
-| **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; **Ménage** des programmes inactifs ; **Applications du bureau** et leur plafond mémoire ; les dix plus gros programmes |
-| **File d'attente** | travaux en cours et en attente, **Annuler**, **Voir la sortie**, **Nouveau travail…** ; **Mémoire apprise** de chaque travail ; **Travaux passés** avec leur pic |
+| **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; **Fuites en cours** ; **Ménage** des programmes inactifs ; **Applications du bureau** et leur plafond mémoire ; les dix plus gros programmes |
+| **File d'attente** | travaux en cours (plusieurs à la fois) et en attente avec leur priorité et le motif de l'attente, **Annuler**, **Priorité…**, **Voir la sortie**, **Nouveau travail…** ; **Mémoire apprise** de chaque travail, avec sa tendance ; **Travaux passés** avec leur pic |
 | **Journal** | tous les événements (garde, file, ménage, service), filtre par type et recherche |
-| **Réglages** | seuils, anticipation et pression, délais, bridage, notifications (fin de travail, téléphone), file, ménage, sessions Claude, programmes protégés ; service ; essai ; affichage de l'indicateur |
+| **Réglages** | seuils, anticipation et pression, délais, bridage, notifications (fin de travail, téléphone), file (travaux en parallèle), fuites, ménage, sessions Claude, programmes protégés ; service ; essai ; affichage de l'indicateur |
 
 Les actions d'administrateur (réglages, service, essai en administrateur, programme d'un autre utilisateur) passent par
 la fenêtre de mot de passe du système (polkit), une seule fois pour quelques minutes. L'interface reste fluide même quand
@@ -142,8 +142,12 @@ gagarine file "rendu vidéo" 4 4 -- ffmpeg -i entree.mov sortie.mp4
 #             nom           Go cœurs  commande (plusieurs : sh -c "a && b")
 ```
 
-- Il attend son tour : aucun travail plus ancien dans la file, assez de RAM disponible, assez de cœurs libres
-  (`--apres PID` attend aussi la fin d'un autre processus).
+- Il attend son tour : assez de RAM disponible et de cœurs libres (`--apres PID` attend aussi la fin d'un autre
+  processus). **Plusieurs travaux tournent en même temps** quand ils tiennent tous (2 au plus par défaut, réglage
+  `file_paralleles` ; 1 = un seul à la fois) : la file réserve la mémoire que chaque travail en cours peut encore prendre.
+- **Priorités** : `--priorite urgent|normal|fond` (normal par défaut) ; `gagarine file priorite PID|TICKET NIVEAU` change
+  celle d'un travail en attente. Un travail ne double un autre que si celui-ci ne tient pas pour l'instant, et jamais un
+  travail qui attend depuis plus de 10 minutes. `gagarine file --etat` dit pourquoi chacun attend.
 - Il tourne ensuite dans sa propre **limite mémoire**, imposée par le noyau : max(2 × la RAM annoncée, RAM annoncée
   + 2 Go), et 512 Mo de swap au plus. S'il la dépasse, seul ce travail est arrêté (code 137), et le poste n'a rien. Il
   faut donc annoncer la RAM qu'il lui faut vraiment.
@@ -152,11 +156,21 @@ gagarine file "rendu vidéo" 4 4 -- ffmpeg -i entree.mov sortie.mp4
 - **Mémoire apprise** : la file relève le pic mémoire de chaque travail et le retient (`gagarine file appris`). Si un
   travail annonce bien moins que ce qu'il a déjà pris, elle le dit et corrige l'annonce (au plus 60 % de la RAM ; réglage
   `file_ajuster`).
+- **Fuite d'un lancement à l'autre** : si le pic d'un travail monte à chaque lancement (« 2,1 → 3,4 → 5,0 Go ») ou s'il
+  dépasse sa limite plusieurs fois de suite, la file le dit au lancement : fuite probable.
 - **Fin de travail** : une notification dit si un travail d'au moins 30 s s'est terminé, a échoué ou a dépassé sa
   limite (réglages `notifications_fin`, `notification_fin_min`, et `ntfy` pour le téléphone).
 
 La file est commune à tout le poste : ses tickets (`/tmp/file-attente-travaux-lourds`) sont les mêmes que ceux de l'ancien
 outil `file-attente` et de ses copies dans les projets, qui continuent de partager la même file.
+
+## Fuites de mémoire
+
+Gagarine repère un programme qui grossit régulièrement (au moins 100 Mo par minute depuis 5 minutes, réglage
+`fuite_seuil`) bien avant le seuil, et prévient : « python3 grossit de 210 Mo/min depuis 7 min : la RAM serait pleine
+vers 18:42 » (sur le bureau et, si réglé, sur le téléphone ; réglage `fuite_notifier`). Il ne touche pas au programme :
+le garde agit comme d'habitude si la RAM approche du seuil. `gagarine etat` liste les fuites en cours ; la page
+**Programmes** les montre aussi.
 
 ## Ménage des programmes inactifs
 
@@ -195,6 +209,14 @@ de la file (tests, compilations, `ffmpeg`, `make deb`…), en donnant la command
 de hook est installé dans `/usr/share/gagarine/claude/ressources-poste.sh` ; `gagarine hook-claude --tester "make deb"`
 montre le verdict. Réglage `claude_bloquer`.
 
+`gagarine ligne-etat` met l'état du poste dans la **ligne d'état** de chaque session (`statusLine` de
+`~/.claude/settings.json`) : `RAM 72 % · file 3 (2 en cours) · 1 figé · fuite : python3`, en couleur selon le niveau.
+`--avec "COMMANDE"` garde une ligne d'état existante et y ajoute celle de Gagarine :
+
+```json
+"statusLine": { "type": "command", "command": "gagarine ligne-etat --avec \"/usr/bin/claude-accounts statusline\"" }
+```
+
 ## Utilisation en ligne de commande
 
 | Commande | Effet |
@@ -202,7 +224,8 @@ montre le verdict. Réglage `claude_bloquer`.
 | `gagarine etat [--json]` | RAM, swap, service, programmes figés, plus gros programmes, file, derniers événements |
 | `gagarine reprendre PID` | relance un programme figé par Gagarine (il reste bridé) |
 | `gagarine arreter PID` | arrête un programme figé par Gagarine |
-| `gagarine file …` | file d'attente des travaux lourds (voir plus haut) ; `gagarine file appris` : mémoire apprise |
+| `gagarine file [--priorite NIVEAU] …` | file d'attente des travaux lourds (voir plus haut) ; `gagarine file appris` : mémoire apprise ; `gagarine file priorite PID\|TICKET NIVEAU` |
+| `gagarine ligne-etat [--avec "CMD"]` | ligne d'état des sessions Claude Code |
 | `gagarine menage [--json]`, `menage arreter ID…` | programmes inactifs, et leur arrêt |
 | `gagarine applications [--json]`, `applications plafond ID GO\|aucun` | applications du bureau et leur plafond |
 | `gagarine historique [--depuis 5min\|1h\|24h\|7j] [--json]` | RAM, incidents, plus gros programmes et travaux des derniers jours |
@@ -245,6 +268,9 @@ réglages sans perdre son état).
 | `menage_auto` | oui | ménage automatique des démons et modèles inactifs |
 | `menage_delai` | 30 | minutes d'inactivité avant le ménage automatique |
 | `claude_bloquer` | oui | le hook des sessions Claude refuse les travaux lourds hors de la file |
+| `file_paralleles` | 2 | travaux de la file qui peuvent tourner en même temps quand ils tiennent (1 : un seul) |
+| `fuite_seuil` | 100 | Mo/min : un programme qui grossit ainsi depuis 5 min est signalé comme fuite (0 : non) |
+| `fuite_notifier` | oui | notification (et ntfy) quand une fuite est repérée |
 
 Variables d'environnement (prioritaires sur le fichier) : `GAGARINE_CONFIG`, `GAGARINE_ETAT`, `GAGARINE_SEUIL`, etc. ;
 `FILE_ATTENTE_DOSSIER` pour le dossier des tickets de la file.
@@ -304,6 +330,7 @@ gagarine/                 le programme (paquet Python)
   applications.py         plafond mémoire des applications du bureau
   historique.py           historique de 7 jours
   claude.py               hook des sessions Claude Code
+  ligne.py                ligne d'état des sessions Claude Code
   ntfy.py                 alertes sur le téléphone
   systeme.py              accès au système (/proc, cgroups, appels système, notifications)
   reglages.py journal.py essai.py version.py
@@ -319,7 +346,7 @@ man/                      pages de manuel
 debian/                   paquet Debian
 scripts/build-deb.sh      construction du .deb dans dist/
 scripts/publier-apt.sh    publication du dépôt APT signé et du site (branche gh-pages)
-docs/                     conception des versions 1.1.0 et 1.2.0, captures
+docs/                     conception des versions 1.1.0, 1.2.0 et 1.3.0, captures
 tests/                    tests unitaires
 Makefile                  cibles test, deb, apt, clean
 ```
