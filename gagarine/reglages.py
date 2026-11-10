@@ -1,7 +1,6 @@
 """Réglages de Gagarine : lecture, validation et écriture sur place de gagarine.conf."""
 import os
 import re
-import tempfile
 from configparser import ConfigParser, Error as ErreurConfig
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -240,6 +239,7 @@ def ecrire_reglages(chemin, valeurs):
         cp.read_string(nouveau)
     except ErreurConfig as e:   # ne jamais écrire un fichier que le service ne saurait pas relire
         raise OSError(f'le fichier modifié ne serait pas lisible : {e}') from e
+    import tempfile
     fd, tmp = tempfile.mkstemp(dir=chemin.parent, prefix='.gagarine.conf.')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
