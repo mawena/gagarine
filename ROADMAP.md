@@ -161,6 +161,6 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 
 ## Phase 26 — Interface, paquet et release 1.3.0
 
-- [ ] Interface et indicateur (priorités, travaux en parallèle, fuites, nouveaux réglages)
+- [x] Interface et indicateur (priorités, travaux en parallèle, fuites, nouveaux réglages)
 - [ ] Paquet, pages de manuel, README, CHANGELOG, site ; release 1.3.0, GitHub et dépôt APT
 - [ ] Mise en place : ligne d'état de Claude Code branchée sur `gagarine ligne-etat`
