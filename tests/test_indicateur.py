@@ -73,6 +73,36 @@ class TestLibelles(unittest.TestCase):
         self.assertEqual(L.ligne_file(3), "File d'attente : 3 travaux")
         self.assertEqual(L.ligne_file(None), "File d'attente : inconnue")
 
+    def test_ligne_file_avec_travaux_en_cours(self):
+        self.assertEqual(L.ligne_file(3, 2), "File d'attente : 3 travaux (2 en cours)")
+        self.assertEqual(L.ligne_file(3, 0), "File d'attente : 3 travaux")
+        self.assertEqual(L.ligne_file(0, 2), "File d'attente : aucun travail")
+        self.assertEqual(L.en_cours_file({'en_cours': 2, 'travaux': []}), 2)
+        self.assertEqual(L.en_cours_file({'travaux': [{'etat': 'en cours'}, {'etat': 'en attente'}, {'etat': 'en cours'}]}), 2)
+        self.assertIsNone(L.en_cours_file({'travaux': [{'etat': 'en attente'}]}))
+        self.assertIsNone(L.en_cours_file(None))
+        self.assertIsNone(L.en_cours_file({'en_cours': 'x', 'travaux': 'x'}))
+
+    def test_fuites(self):
+        lente, rapide = {'pid': 2, 'nom': 'node', 'pente_mo_min': 120}, {'pid': 1, 'nom': 'python3', 'pente_mo_min': 210}
+        self.assertEqual(L.fuites({'fuites': [lente, rapide, {'nom': 'sans pid'}, 'x']}), [rapide, lente])
+        self.assertEqual(L.fuites({'fuites': 'x'}), [])
+        self.assertEqual(L.fuites(None), [])
+        self.assertEqual(L.ligne_fuite([rapide]), 'Fuite : python3 (+210 Mo/min)')
+        self.assertEqual(L.ligne_fuite([rapide, lente]), 'Fuite : python3 (+210 Mo/min) et 1 autre')
+        self.assertEqual(L.ligne_fuite([rapide, lente, lente]), 'Fuite : python3 (+210 Mo/min) et 2 autres')
+        self.assertEqual(L.ligne_fuite([{'pid': 1}]), 'Fuite : ?')
+        self.assertIsNone(L.ligne_fuite([]))
+
+    def test_menu_avec_fuite_et_file_parallele(self):
+        etat = dict(ETAT, fuites=[{'pid': 9, 'nom': 'python3', 'pente_mo_min': 210}])
+        menu = L.contenu_menu(75.2, etat, {'travaux': [{}, {}, {}], 'en_cours': 2})
+        self.assertIn(('info', 'Fuite : python3 (+210 Mo/min)'), menu)
+        self.assertIn(('info', "File d'attente : 3 travaux (2 en cours)"), menu)
+        sans = L.contenu_menu(75.2, ETAT, {'travaux': [{}]})      # cœur 1.2.x : menu inchangé
+        self.assertFalse([e for e in sans if e[0] == 'info' and e[1].startswith('Fuite')])
+        self.assertIn(('info', "File d'attente : 1 travail"), sans)
+
     def test_travaux_en_file(self):
         self.assertEqual(L.travaux_en_file({'travaux': [{}, {}]}), 2)
         self.assertIsNone(L.travaux_en_file({'travaux': 'x'}))
@@ -220,6 +250,16 @@ class TestFauxGagarine(unittest.TestCase):
         self.assertEqual(L.niveau(50, etat), L.ALERTE)
         self.assertEqual(L.niveau(90, L.lire_json(self.sortie('normal', 'etat', '--json').stdout)), L.VIGILANCE)
         self.assertEqual(L.travaux_en_file(L.lire_json(self.sortie('normal', 'file', '--etat', '--json').stdout)), 1)
+
+    def test_fuites_du_faux(self):
+        env = dict(os.environ, FAUX_GAGARINE_FUITE='oui')
+        etat = L.lire_json(subprocess.run([FAUX, 'etat', '--json'], env=env, capture_output=True, text=True).stdout)
+        fichier = L.lire_json(subprocess.run([FAUX, 'file', '--etat', '--json'], env=env, capture_output=True, text=True).stdout)
+        self.assertEqual(L.ligne_fuite(L.fuites(etat)), 'Fuite : python3 (+210 Mo/min) et 1 autre')
+        self.assertEqual(L.ligne_file(L.travaux_en_file(fichier), L.en_cours_file(fichier)),
+                         "File d'attente : 3 travaux (2 en cours)")
+        ancien = L.lire_json(self.sortie('normal', 'etat', '--json').stdout)       # sans la variable : cœur 1.2.x
+        self.assertEqual(L.fuites(ancien), [])
 
     def test_menage_du_faux(self):
         m = L.lire_json(self.sortie('normal', 'menage', '--json').stdout)

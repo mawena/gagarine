@@ -157,6 +157,10 @@ def lire_json(texte, nom='la commande'):
     return donnees
 
 
+def _entier(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
 def _liste(d, cle):
     v = d.get(cle)
     return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
@@ -181,6 +185,7 @@ def lire_etat(texte):
         'figes': _liste(d, 'figes'),
         'plus_gros': _liste(d, 'plus_gros'),
         'file': (d.get('file') or {}).get('travaux', 0) if isinstance(d.get('file'), dict) else 0,
+        'fuites': [f for f in _liste(d, 'fuites') if isinstance(f.get('pid'), int)],   # 1.3.0 : absent d'un cœur plus ancien
     }
 
 
@@ -188,7 +193,8 @@ def lire_file(texte):
     """Normalise `gagarine file --etat --json`."""
     d = lire_json(texte, 'gagarine file')
     return {'ram_disponible_go': d.get('ram_disponible_go'), 'charge': d.get('charge'), 'coeurs': d.get('coeurs'),
-            'dossier': d.get('dossier'), 'travaux': _liste(d, 'travaux')}
+            'dossier': d.get('dossier'), 'travaux': _liste(d, 'travaux'),
+            'paralleles': _entier(d.get('paralleles')), 'en_cours': _entier(d.get('en_cours'))}   # 1.3.0 : None si absents
 
 
 def lire_journal(texte):
@@ -271,6 +277,8 @@ _ACTIONS = {
     'demarrage': ('emblem-system-symbolic', 'service', 'service démarré'),
     'rechargement': ('view-refresh-symbolic', 'service', 'réglages rechargés'),
     'menage': ('user-trash-symbolic', 'menage', 'ménage'),
+    'fuite': ('go-up-symbolic', 'protection', 'fuite de mémoire'),
+    'fuite-travail': ('go-up-symbolic', 'file', 'fuite probable'),
 }
 
 CATEGORIES = [('tous', 'Tous les événements'), ('protection', 'Protection de la RAM'), ('file', 'File d’attente'),
@@ -280,6 +288,37 @@ DECLENCHEURS = {'seuil': 'seuil atteint', 'anticipation': 'croissance trop rapid
                 'urgence': 'urgence'}
 TYPES_MENAGE = {'gradle': 'Démon Gradle', 'kotlin': 'Démon de compilation Kotlin', 'lmstudio': 'Modèles de LM Studio',
                 'ollama': 'Modèle Ollama', 'serveur-dev': 'Serveur de développement'}
+
+
+TENDANCES = {'hausse': 'pic en hausse à chaque lancement', 'limite': 'arrêté par sa limite aux deux derniers lancements'}
+
+
+def formater_pente(mo_min):
+    """210 -> « 210 Mo/min » ; 1800 -> « 1,8 Go/min »."""
+    try:
+        return formater_taille_mo(float(mo_min)) + '/min'
+    except (TypeError, ValueError):
+        return '—'
+
+
+def prevision_pleine(secondes):
+    """« RAM pleine dans ~12 min », ou « la RAM ne serait pas pleine à ce rythme » si le cœur n'a pas de prévision."""
+    if not isinstance(secondes, (int, float)) or isinstance(secondes, bool):
+        return 'la RAM ne serait pas pleine à ce rythme'
+    if secondes < 60:
+        return 'RAM pleine dans moins d’une minute'
+    return f'RAM pleine dans ~{formater_duree(round(secondes / 60) * 60)}'
+
+
+def pics_texte(pics):
+    """[2.1, 3.4, 5.0] -> « 2,1 → 3,4 → 5 Go »."""
+    if not isinstance(pics, list) or not pics:
+        return ''
+    try:
+        nombres = [float(p) for p in pics]
+    except (TypeError, ValueError):
+        return ''
+    return ' → '.join(_decimal(n, 1).removesuffix(',0') for n in nombres) + ' Go'
 
 
 def categorie_evenement(ev):
@@ -341,6 +380,21 @@ def decrire_evenement(ev):
             morceaux.append(f'pic de mémoire : {formater_go(ev["pic_go"])}')
     elif action == 'travail-annule':
         titre = f'Travail « {nom} » annulé'
+    elif action == 'fuite':
+        titre = f'« {nom} » grossit sans cesse : fuite probable'
+        if ev.get('pente_mo_min') is not None:
+            morceaux.append(f'+{formater_pente(ev["pente_mo_min"])}')
+        morceaux.append(prevision_pleine(ev.get('prevision_s')))
+        if ev.get('memoire') is not None:
+            morceaux.append(f'{_memoire_evenement(ev["memoire"])} de mémoire')
+    elif action == 'fuite-travail':
+        titre = f'Travail « {nom} » : fuite probable'
+        texte = TENDANCES.get(ev.get('tendance'))
+        if texte:
+            morceaux.append(texte)
+        pics = pics_texte(ev.get('pics_go'))
+        if pics:
+            morceaux.append('pics : ' + pics)
     elif action == 'menage':
         decharge = ev.get('type') in ('lmstudio', 'ollama')
         titre = f'« {nom} » {"déchargé" if decharge else "arrêté"} par le ménage'
@@ -372,7 +426,7 @@ def decrire_evenement(ev):
         morceaux.append(f'RAM à {formater_pourcent(ev["ram"])}')
     if ev.get('declencheur') and action == 'arrete':
         morceaux.append('déclencheur : ' + DECLENCHEURS.get(ev['declencheur'], str(ev['declencheur'])))
-    if ev.get('commande') and action in ('fige', 'arrete', 'repris', 'travail-debut', 'limite'):
+    if ev.get('commande') and action in ('fige', 'arrete', 'repris', 'travail-debut', 'limite', 'fuite'):
         morceaux.append(tronquer(ev['commande'], 70))
     return icone, titre, ' · '.join(morceaux)
 
@@ -391,6 +445,83 @@ def filtrer_evenements(evenements, categorie='tous', recherche=''):
                 continue
         resultat.append(ev)
     return resultat
+
+
+# --- fuites de mémoire (1.3.0) -----------------------------------------------------------------------------------------
+
+def fuites_par_pid(fuites):
+    return {f['pid']: f for f in fuites or [] if isinstance(f, dict) and isinstance(f.get('pid'), int)}
+
+
+def detail_fuite(f, maintenant=None):
+    """(titre, détail) d'une fuite de `etat --json` : « python3 », « PID 4242 · +210 Mo/min · depuis 7 min »."""
+    morceaux = [f'PID {f.get("pid")}']
+    if f.get('pente_mo_min') is not None:
+        morceaux.append('+' + formater_pente(f['pente_mo_min']))
+    if f.get('depuis') is not None:
+        morceaux.append(depuis(f['depuis'], maintenant))
+    return f.get('nom') or 'programme', ' · '.join(morceaux)
+
+
+def badge_fuite(f):
+    """Texte court du badge d'un programme qui fuit : « fuite +210 Mo/min »."""
+    pente = (f or {}).get('pente_mo_min')
+    return 'fuite' + (f' +{formater_pente(pente)}' if pente is not None else '')
+
+
+def tendance_travail(t):
+    """(clé, texte) de la tendance d'un travail de `file appris --json` ; clé None si stable ou inconnue."""
+    cle = t.get('tendance')
+    if cle == 'hausse':
+        return 'hausse', 'pic en hausse : fuite probable'
+    if cle == 'limite':
+        return 'limite', 'dépasse sa limite'
+    return None, ''
+
+
+# --- file d'attente : priorités, parallélisme (1.3.0) -------------------------------------------------------------------
+
+# (clé de `--priorite`, libellé)
+PRIORITES = [('urgent', 'Urgent'), ('normal', 'Normal'), ('fond', 'En fond')]
+
+
+def libelle_priorite(cle):
+    return next((n for c, n in PRIORITES if c == cle), None)
+
+
+def entete_file(f):
+    """« 2 en cours sur 3 » ; None si le cœur ne donne pas `en_cours` et `paralleles` (1.2.x)."""
+    if not f or f.get('en_cours') is None or f.get('paralleles') is None:
+        return None
+    return f'{f["en_cours"]} en cours sur {f["paralleles"]}'
+
+
+def detail_travail_file(t, maintenant=None):
+    """Sous-titre d'un travail de la file : état, RAM, cœurs, durée, et pour un travail en attente le motif."""
+    en_cours = t.get('etat') == 'en cours'
+    morceaux = ['En cours' if en_cours else 'En attente']
+    ram = t.get('ram') if t.get('ram') is not None else t.get('besoin_go')
+    if ram is not None:
+        morceaux.append(f'{formater_go(ram)} de RAM')
+    if t.get('coeurs') is not None:
+        morceaux.append(pluriel(t['coeurs'], 'cœur'))
+    morceaux.append(depuis(t.get('depuis'), maintenant))
+    texte = ' · '.join(morceaux)
+    if not en_cours and t.get('motif'):
+        texte += '\nAttend : ' + str(t['motif'])
+    return texte
+
+
+def peut_changer_priorite(t):
+    """Seul un travail en attente a une priorité modifiable (jamais un travail en cours)."""
+    return t.get('etat') != 'en cours' and bool(t.get('ticket') or t.get('pid'))
+
+
+def arguments_priorite(base, cible, niveau):
+    """`gagarine file priorite TICKET NIVEAU` (sans pkexec : c'est le travail de l'utilisateur)."""
+    if niveau not in dict(PRIORITES):
+        raise ValueError(f'priorité inconnue : {niveau}')
+    return list(base) + ['file', 'priorite', str(cible), niveau]
 
 
 # --- nouveau travail ---------------------------------------------------------------------------------------------------
@@ -413,11 +544,15 @@ def dossier_sorties(environ=None):
     return os.path.join(base, 'gagarine', 'travaux')
 
 
-def arguments_travail(nom, ram_go, coeurs, commande, base=None):
-    """Arguments de `gagarine file` pour un travail de l'interface : ... file NOM RAM CŒURS -- sh -c COMMANDE."""
+def arguments_travail(nom, ram_go, coeurs, commande, base=None, priorite='normal'):
+    """Arguments de `gagarine file` pour un travail de l'interface : ... file [--priorite P] NOM RAM CŒURS -- sh -c COMMANDE.
+
+    `--priorite` n'est ajouté que s'il change quelque chose : un cœur 1.2.x ne le connaît pas.
+    """
     base = base or commande_gagarine()
     ram = f'{float(ram_go):g}'
-    return base + ['file', nom, ram, str(int(coeurs)), '--', 'sh', '-c', commande]
+    option = ['--priorite', priorite] if priorite in ('urgent', 'fond') else []
+    return base + ['file'] + option + [nom, ram, str(int(coeurs)), '--', 'sh', '-c', commande]
 
 
 def valider_travail(nom, ram_go, coeurs, commande):
@@ -474,6 +609,22 @@ REGLAGES_BOOLEENS = {
     'claude_bloquer': ('Bloquer les travaux lourds des sessions Claude', 'Un travail lourd lancé hors de la file par une '
                                                                         'session Claude est refusé, avec la commande corrigée.'),
 }
+# Nouveaux réglages de la 1.3.0.
+REGLAGES_FILE_130 = [
+    ('file_paralleles', 'Travaux en même temps', 'Nombre de travaux de la file qui tournent à la fois, tant que la RAM et '
+                                                 'les cœurs suffisent. 1 pour les faire passer un par un.', 'travaux', 1, 6),
+]
+REGLAGES_FUITES = [
+    ('fuite_seuil', 'Fuite de mémoire : pente', 'Un programme qui grossit d’au moins cette vitesse, de façon régulière, est '
+                                                'signalé comme fuite probable. 0 pour ne pas en chercher.', 'Mo/min', 0, 100000),
+]
+REGLAGES_BOOLEENS_130 = {
+    'fuite_notifier': ('Notifier les fuites de mémoire', 'Notification du bureau quand un programme semble fuir, avec '
+                                                        'l’heure à laquelle la RAM serait pleine. Gagarine n’agit pas '
+                                                        'pour autant.'),
+}
+REGLAGES_BOOLEENS.update(REGLAGES_BOOLEENS_130)
+DEFAUTS_130 = {'file_paralleles': 2, 'fuite_seuil': 100, 'fuite_notifier': True}
 DEFAUTS_120 = {'anticipation': 15, 'pression': 20, 'notifications_fin': True, 'notification_fin_min': 30, 'ntfy': '',
                'file_ajuster': True, 'menage_auto': True, 'menage_delai': 30, 'claude_bloquer': True}
 
@@ -481,7 +632,7 @@ DEFAUTS_120 = {'anticipation': 15, 'pression': 20, 'notifications_fin': True, 'n
 def reglages_complets(courants):
     """Réglages lus, complétés par les valeurs par défaut des clés que le service installé ne connaît pas encore."""
     complet = dict(courants)
-    for cle, defaut in DEFAUTS_120.items():
+    for cle, defaut in {**DEFAUTS_120, **DEFAUTS_130}.items():
         if complet.get(cle) is None:
             complet[cle] = defaut
     return complet

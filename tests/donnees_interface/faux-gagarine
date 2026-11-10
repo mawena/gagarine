@@ -5,6 +5,9 @@ Contrats de la 1.2.0 (docs/conception-1.2.0.md) : historique, menage, applicatio
 Variables : FAUX_MODE = normal (défaut) | vide (rien de figé, file vide, rien à nettoyer) | erreur (sortie invalide)
             | lent (dort 30 s) | ancien (cœur 1.1 : les commandes de la 1.2.0 sont inconnues, code 2)
             FAUX_RAM = pourcentage de RAM à annoncer (défaut : lu dans /proc/meminfo)
+Contrats de la 1.3.0 (docs/conception-1.3.0.md) : file parallèle et priorités (`paralleles`, `en_cours`, `priorite`, `besoin_go`,
+`motif`), `fuites` de `etat --json`, `tendance` de `file appris`, événements `fuite` et `fuite-travail`, `file priorite`.
+            | v12 (cœur 1.2.x : aucun champ ni commande de la 1.3.0 ; `file priorite` inconnue, code 2)
 Les actions (reprendre, arrêter, annuler, service, réglages, essai) ne font rien et le disent.
 """
 import json
@@ -39,7 +42,7 @@ def etat():
     figes = [] if mode == 'vide' else [{"pid": 4242, "nom": "python3", "depuis": maintenant - 185.5, "memoire_mo": 9100,
              "commande": "python3 -m pytest tests/lourds --maxfail=1", "utilisateur": "charles-gamligo", "bride": True}]
     return {
-        "version": "1.2.0", "date": iso(maintenant),
+        "version": "1.3.0", "date": iso(maintenant),
         "ram": {"pourcent": round(100 * (1 - dispo / total), 1), "total_mo": round(total), "disponible_mo": round(dispo)},
         "swap": [{"nom": "/dev/zram0", "type": "partition", "taille_mo": 15237, "utilise_mo": 1840, "priorite": 100, "zram": True},
                  {"nom": "/dev/nvme0n1p7", "type": "partition", "taille_mo": 10239, "utilise_mo": 6041, "priorite": -2, "zram": False}],
@@ -47,7 +50,7 @@ def etat():
                      "reste_si_repris": 256, "notifications": True, "proteges": "postgres|redis-server",
                      "anticipation": 15, "pression": 20, "notifications_fin": True, "notification_fin_min": 30,
                      "ntfy": "gagarine-mawena", "file_ajuster": True, "menage_auto": True, "menage_delai": 30,
-                     "claude_bloquer": True},
+                     "claude_bloquer": True, "file_paralleles": 3, "fuite_seuil": 100, "fuite_notifier": True},
         "fichier_reglages": "/etc/gagarine.conf",
         "service": {"etat": "active", "actif_au_demarrage": True},
         "dossier_etat": "/var/lib/gagarine",
@@ -63,22 +66,39 @@ def etat():
             {"pid": 7301, "nom": "firefox", "rss_mo": 350, "swap_mo": 40, "utilisateur": "charles-gamligo", "protege": False},
             {"pid": 7410, "nom": "slack", "rss_mo": 300, "swap_mo": 55, "utilisateur": "charles-gamligo", "protege": False},
             {"pid": 7500, "nom": "mysqld", "rss_mo": 280, "swap_mo": 0, "utilisateur": "mysql", "protege": False}],
-        "file": {"travaux": 0 if mode == 'vide' else 2},
+        "file": {"travaux": 0 if mode == 'vide' else 4},
+        "fuites": [] if mode == 'vide' else [
+            {"pid": 6001, "nom": "node", "pente_mo_min": 210, "depuis": iso(maintenant - 420)},
+            {"pid": 7301, "nom": "firefox", "pente_mo_min": 130, "depuis": iso(maintenant - 180)}],
     }
 
 
 def fichier_etat():
     total, dispo = meminfo()
+    sortie = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sortie-exemple.log')
     travaux = [] if mode == 'vide' else [
         {"ticket": "1762785000000-1234.json", "position": 1, "nom": "rendu vidéo", "pid": 1234, "depuis": iso(maintenant - 754, True),
-         "etat": "en cours", "ram": 4, "coeurs": 4, "commande": "ffmpeg -i montage.mkv -c:v libx264 -crf 18 sortie.mp4",
-         "unite": "gagarine-travail-1762785000000-1234.scope",
-         "sortie": os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sortie-exemple.log'), "source": "gagarine"},
-        {"ticket": "1762785100000-1301.json", "position": 2, "nom": "tests de non-régression", "pid": 1301,
-         "depuis": iso(maintenant - 95, True), "etat": "en attente", "ram": 6, "coeurs": 8,
-         "commande": "python3 -m unittest discover -s tests -t .", "unite": None, "sortie": None, "source": "autre"}]
+         "etat": "en cours", "ram": 4, "besoin_go": 4, "coeurs": 4, "priorite": "urgent",
+         "commande": "ffmpeg -i montage.mkv -c:v libx264 -crf 18 sortie.mp4",
+         "unite": "gagarine-travail-1762785000000-1234.scope", "sortie": sortie, "source": "gagarine"},
+        {"ticket": "1762785050000-1280.json", "position": 2, "nom": "tests voix", "pid": 1280, "depuis": iso(maintenant - 312, True),
+         "etat": "en cours", "ram": 3, "besoin_go": 3, "coeurs": 2, "priorite": "fond",
+         "commande": "python3 -m unittest discover -s tests",
+         "unite": "gagarine-travail-1762785050000-1280.scope", "sortie": sortie, "source": "gagarine"},
+        {"ticket": "1762785100000-1301.json", "position": 3, "nom": "tests de non-régression", "pid": 1301,
+         "depuis": iso(maintenant - 95, True), "etat": "en attente", "ram": 6, "besoin_go": 6, "coeurs": 8, "priorite": "normal",
+         "motif": "mémoire : 1,8 Go libres, il en faut 6",
+         "commande": "python3 -m unittest discover -s tests -t .", "unite": None, "sortie": None, "source": "gagarine"},
+        {"ticket": "1762785200000-1344.json", "position": 4, "nom": "export PDF", "pid": 1344,
+         "depuis": iso(maintenant - 40, True), "etat": "en attente", "ram": 1, "besoin_go": 1, "coeurs": 1, "priorite": "fond",
+         "motif": "derrière « tests de non-régression » (normal)",
+         "commande": "libreoffice --convert-to pdf rapport.odt", "unite": None, "sortie": None, "source": "gagarine"},
+        {"ticket": "1762785300000-1400.json", "position": 5, "nom": "ancien outil", "pid": 1400,
+         "depuis": iso(maintenant - 20, True), "etat": "en attente", "ram": None, "coeurs": 2,
+         "commande": "make test", "unite": None, "sortie": None, "source": "autre"}]
     return {"ram_disponible_go": round(dispo / 1024, 1), "charge": 2.1, "coeurs": 14,
-            "dossier": "/tmp/file-attente-travaux-lourds", "travaux": travaux}
+            "dossier": "/tmp/file-attente-travaux-lourds", "travaux": travaux,
+            "paralleles": 3, "en_cours": sum(1 for t in travaux if t["etat"] == "en cours")}
 
 
 def journal(n):
@@ -89,6 +109,12 @@ def journal(n):
         (170, "fige", {"pid": 4242, "nom": "python3", "ram": 95.4, "memoire": 9100 * 1048576, "declencheur": "anticipation",
                        "commande": "python3 -m pytest tests/lourds"}),
         (160, "repris", {"pid": 4242, "nom": "python3", "ram": 71.0, "commande": "python3 -m pytest tests/lourds"}),
+        (45, "fuite", {"pid": 6001, "nom": "node", "pente_mo_min": 210, "memoire": 2600 * 1048576, "prevision_s": 720,
+                      "utilisateur": "charles-gamligo", "commande": "node build.js --watch"}),
+        (90, "fuite", {"pid": 7301, "nom": "firefox", "pente_mo_min": 90, "memoire": 900 * 1048576, "prevision_s": None,
+                      "utilisateur": "charles-gamligo", "commande": "/usr/lib/firefox/firefox"}),
+        (280, "fuite-travail", {"nom": "tests voix", "tendance": "hausse", "pics_go": [2.1, 4.2, 9.0], "source": "file"}),
+        (290, "fuite-travail", {"nom": "gradle build", "tendance": "limite", "pics_go": [5.1, 8.0], "source": "file"}),
         (300, "travail-debut", {"nom": "tests voix", "pid": 1500, "source": "file", "ajuste": True, "annonce_initiale": 1,
                                 "declare": 11, "commande": "python3 -m unittest"}),
         (330, "travail-debut", {"nom": "rendu vidéo", "pid": 1234, "source": "file", "commande": "ffmpeg -i montage.mkv"}),
@@ -171,13 +197,36 @@ def applications():
 
 def appris():
     return {"travaux": [] if mode == 'vide' else [
-        {"nom": "tests de non-régression", "executions": 5, "pic_go": 6.3, "annonce_go": 6, "derniere": iso(maintenant - 30000)},
-        {"nom": "rendu vidéo", "executions": 3, "pic_go": 3.8, "annonce_go": 4, "derniere": iso(maintenant - 7200)},
-        {"nom": "tests voix", "executions": 2, "pic_go": 9.0, "annonce_go": 1, "derniere": iso(maintenant - 90000)},
-        {"nom": "gradle build", "executions": 4, "pic_go": 5.1, "annonce_go": 6, "derniere": iso(maintenant - 200000)}]}
+        {"nom": "tests de non-régression", "executions": 5, "pic_go": 6.3, "annonce_go": 6, "derniere": iso(maintenant - 30000),
+         "tendance": "stable"},
+        {"nom": "rendu vidéo", "executions": 3, "pic_go": 3.8, "annonce_go": 4, "derniere": iso(maintenant - 7200), "tendance": "stable"},
+        {"nom": "tests voix", "executions": 2, "pic_go": 9.0, "annonce_go": 1, "derniere": iso(maintenant - 90000),
+         "tendance": "hausse"},
+        {"nom": "gradle build", "executions": 4, "pic_go": 8.0, "annonce_go": 6, "derniere": iso(maintenant - 200000),
+         "tendance": "limite"}]}
 
 
 NOUVELLES = ('historique', 'menage', 'applications')
+
+
+CHAMPS_130 = ('fuites', 'paralleles', 'en_cours', 'priorite', 'besoin_go', 'motif', 'tendance')
+
+
+def retro(valeur):
+    """Rend ce que dirait un cœur 1.2.x : sans aucun champ de la 1.3.0."""
+    if isinstance(valeur, dict):
+        r = {k: retro(v) for k, v in valeur.items() if k not in CHAMPS_130}
+        if 'file_paralleles' in r:
+            for k in ('file_paralleles', 'fuite_seuil', 'fuite_notifier'):
+                r.pop(k, None)
+        return r
+    if isinstance(valeur, list):
+        return [retro(v) for v in valeur if not (isinstance(v, dict) and v.get('action') in ('fuite', 'fuite-travail'))]
+    return valeur
+
+
+def sortir(valeur):
+    print(json.dumps(retro(valeur) if mode in ('v12', 'ancien') else valeur))
 
 
 def main():
@@ -189,29 +238,33 @@ def main():
     if not args:
         print('faux gagarine'); return 0
     c = args[0]
+    if mode == 'v12' and c == 'file' and args[1:2] == ['priorite']:
+        print('commande inconnue', file=sys.stderr); return 2
+    if c == 'file' and args[1:2] == ['priorite']:
+        print(f'Priorité de {args[2]} : {args[3]} (faux).'); return 0
     if mode == 'ancien' and (c in NOUVELLES or (c == 'file' and args[1:2] == ['appris']) or c == 'ntfy'):
         print('commande inconnue', file=sys.stderr); return 2
     if c == 'historique':
-        print(json.dumps(historique(args[args.index('--depuis') + 1] if '--depuis' in args else '24h'))); return 0
+        sortir(historique(args[args.index('--depuis') + 1] if '--depuis' in args else '24h')); return 0
     if c == 'menage' and len(args) > 1 and args[1] == 'arreter':
         print(f'Ménage : {" ".join(args[2:])} arrêté (faux).'); return 0
     if c == 'menage':
-        print(json.dumps(menage())); return 0
+        sortir(menage()); return 0
     if c == 'applications' and len(args) > 1 and args[1] == 'plafond':
         print(f'Plafond de {args[2]} : {args[3]} (faux).'); return 0
     if c == 'applications':
-        print(json.dumps(applications())); return 0
+        sortir(applications()); return 0
     if c == 'file' and args[1:2] == ['appris']:
-        print(json.dumps(appris())); return 0
+        sortir(appris()); return 0
     if c == 'ntfy' and args[1:2] == ['essai']:
         print('Message d’essai envoyé (faux) à ' + ' '.join(args[2:])); return 0
     if c == 'etat':
-        print(json.dumps(etat())); return 0
+        sortir(etat()); return 0
     if c == 'journal':
         n = int(args[args.index('-n') + 1]) if '-n' in args else 50
-        print(json.dumps(journal(n))); return 0
+        sortir(journal(n)); return 0
     if c == 'file' and '--etat' in args:
-        print(json.dumps(fichier_etat())); return 0
+        sortir(fichier_etat()); return 0
     if c == 'file' and len(args) > 1 and args[1] == 'annuler':
         print(f'Travail {args[2]} annulé (faux).'); return 0
     if c == 'file':
@@ -220,7 +273,7 @@ def main():
     if c == 'reglages':
         if '--ecrire' in args:
             print('Réglages enregistrés (faux) : ' + ' '.join(args[args.index('--ecrire') + 1:])); return 0
-        print(json.dumps({"fichier": "/etc/gagarine.conf", "reglages": etat()["reglages"]})); return 0
+        sortir({"fichier": "/etc/gagarine.conf", "reglages": etat()["reglages"]}); return 0
     if c in ('reprendre', 'arreter', 'service'):
         print(f'{c} {" ".join(args[1:])} : fait (faux).'); return 0
     if c == 'essai':

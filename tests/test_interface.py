@@ -71,12 +71,12 @@ class Ram(unittest.TestCase):
 class LectureJson(unittest.TestCase):
     def test_etat_du_faux(self):
         e = d.lire_etat(faux('etat', '--json'))
-        self.assertEqual(e['version'], '1.2.0')
+        self.assertEqual(e['version'], '1.3.0')
         self.assertEqual(len(e['swap']), 2)
         self.assertTrue(e['swap'][0]['zram'])
         self.assertEqual(e['figes'][0]['pid'], 4242)
         self.assertEqual(len(e['plus_gros']), 10)
-        self.assertEqual(e['file'], 2)
+        self.assertEqual(e['file'], 4)
         self.assertEqual(e['service']['etat'], 'active')
 
     def test_etat_minimal_ou_incomplet(self):
@@ -93,8 +93,8 @@ class LectureJson(unittest.TestCase):
 
     def test_file_du_faux(self):
         f = d.lire_file(faux('file', '--etat', '--json'))
-        self.assertEqual([t['position'] for t in f['travaux']], [1, 2])
-        self.assertEqual(f['travaux'][1]['source'], 'autre')
+        self.assertEqual([t['position'] for t in f['travaux']], [1, 2, 3, 4, 5])
+        self.assertEqual(f['travaux'][4]['source'], 'autre')
         self.assertEqual(d.lire_file(faux('file', '--etat', '--json', mode='vide'))['travaux'], [])
 
     def test_journal_du_faux(self):
@@ -143,8 +143,8 @@ class Evenements(unittest.TestCase):
     def test_filtre(self):
         self.assertEqual(len(d.filtrer_evenements(self.ev)), len(self.ev))
         prot = d.filtrer_evenements(self.ev, 'protection')
-        self.assertTrue(prot and all(e['action'] in ('fige', 'repris', 'arrete', 'bridage-impossible') for e in prot))
-        self.assertTrue(all(e['action'].startswith('travail') or e['action'] == 'limite'
+        self.assertTrue(prot and all(e['action'] in ('fige', 'repris', 'arrete', 'bridage-impossible', 'fuite') for e in prot))
+        self.assertTrue(all(e['action'].startswith('travail') or e['action'] in ('limite', 'fuite-travail')
                             for e in d.filtrer_evenements(self.ev, 'file')))
         chrome = d.filtrer_evenements(self.ev, 'tous', 'CHROME')
         self.assertTrue(chrome and all('chrome' in json.dumps(e) for e in chrome))
@@ -288,7 +288,7 @@ class Reglages120(unittest.TestCase):
         self.assertTrue(complet['menage_auto'])
         self.assertEqual(complet['ntfy'], '')
         # un enregistrement sans modification ne réécrit pas les clés que le service ne connaît pas encore
-        self.assertIsNone(d.arguments_reglages(['g'], complet, dict(d.DEFAUTS_120, anticipation=0)))
+        self.assertIsNone(d.arguments_reglages(['g'], complet, dict(d.DEFAUTS_120, **d.DEFAUTS_130, anticipation=0)))
 
     def test_enregistrement_des_seules_cles_modifiees(self):
         courants = d.reglages_complets({})
@@ -299,10 +299,11 @@ class Reglages120(unittest.TestCase):
                           'ntfy=gagarine-test', 'menage_delai=45', 'claude_bloquer=non'])
 
     def test_definitions_completes(self):
-        cles = ([c[0] for c in d.REGLAGES_ANTICIPATION + d.REGLAGES_NOTIFICATIONS + d.REGLAGES_MENAGE] +
-                list(d.REGLAGES_BOOLEENS) + ['ntfy'])
-        self.assertEqual(sorted(set(cles) - {'notifications'}), sorted(d.DEFAUTS_120))
-        for _, _, aide, _, mini, maxi in d.REGLAGES_ANTICIPATION + d.REGLAGES_NOTIFICATIONS + d.REGLAGES_MENAGE:
+        cles = ([c[0] for c in d.REGLAGES_ANTICIPATION + d.REGLAGES_NOTIFICATIONS + d.REGLAGES_MENAGE + d.REGLAGES_FILE_130 +
+                 d.REGLAGES_FUITES] + list(d.REGLAGES_BOOLEENS) + ['ntfy'])
+        self.assertEqual(sorted(set(cles) - {'notifications'}), sorted({**d.DEFAUTS_120, **d.DEFAUTS_130}))
+        for _, _, aide, _, mini, maxi in (d.REGLAGES_ANTICIPATION + d.REGLAGES_NOTIFICATIONS + d.REGLAGES_MENAGE +
+                                          d.REGLAGES_FILE_130 + d.REGLAGES_FUITES):
             self.assertTrue(aide.endswith('.'))
             self.assertLess(mini, maxi)
 
@@ -314,6 +315,110 @@ class Reglages120(unittest.TestCase):
     def test_essai_ntfy(self):
         self.assertEqual(d.commande_essai_ntfy(['g'], ' sujet '), ['g', 'ntfy', 'essai', 'sujet'])
         self.assertIn('essai envoyé', faux('ntfy', 'essai', 'sujet'))
+
+
+class Interface130(unittest.TestCase):
+    def test_lecture_file_et_etat(self):
+        f = d.lire_file(faux('file', '--etat', '--json'))
+        self.assertEqual((f['paralleles'], f['en_cours']), (3, 2))
+        self.assertEqual(d.entete_file(f), '2 en cours sur 3')
+        ancien = d.lire_file(faux('file', '--etat', '--json', mode='v12'))
+        self.assertEqual((ancien['paralleles'], ancien['en_cours']), (None, None))
+        self.assertIsNone(d.entete_file(ancien))
+        self.assertEqual([x['pid'] for x in d.lire_etat(faux('etat', '--json'))['fuites']], [6001, 7301])
+        self.assertEqual(d.lire_etat(faux('etat', '--json', mode='v12'))['fuites'], [])
+        self.assertEqual(d.lire_etat('{"fuites": [{"nom": "sans pid"}, 3]}')['fuites'], [])
+
+    def test_detail_travail_et_motif(self):
+        t = {'etat': 'en attente', 'ram': 6, 'besoin_go': 6, 'coeurs': 8, 'depuis': None, 'motif': '2 travaux en cours'}
+        self.assertEqual(d.detail_travail_file(t), 'En attente · 6 Go de RAM · 8 cœurs · —\nAttend : 2 travaux en cours')
+        self.assertNotIn('Attend', d.detail_travail_file(dict(t, etat='en cours')))
+        self.assertIn('4 Go de RAM', d.detail_travail_file({'etat': 'en attente', 'besoin_go': 4}))   # besoin sans `ram`
+        self.assertNotIn('None', d.detail_travail_file({'etat': 'en attente'}))
+
+    def test_priorites(self):
+        self.assertEqual([c for c, _ in d.PRIORITES], ['urgent', 'normal', 'fond'])
+        self.assertEqual(d.libelle_priorite('fond'), 'En fond')
+        self.assertIsNone(d.libelle_priorite(None))
+        self.assertIsNone(d.libelle_priorite('inconnue'))
+        self.assertTrue(d.peut_changer_priorite({'etat': 'en attente', 'ticket': 'a.json'}))
+        self.assertFalse(d.peut_changer_priorite({'etat': 'en cours', 'ticket': 'a.json'}))
+        self.assertEqual(d.arguments_priorite(['g'], 'a.json', 'urgent'), ['g', 'file', 'priorite', 'a.json', 'urgent'])
+        with self.assertRaises(ValueError):
+            d.arguments_priorite(['g'], 'a.json', '--force')
+        self.assertIn('Priorité', faux('file', 'priorite', 'a.json', 'fond'))
+        self.assertEqual(subprocess.run([sys.executable, str(FAUX), 'file', 'priorite', 'a', 'fond'], env=dict(os.environ, FAUX_MODE='v12'),
+                                        capture_output=True).returncode, 2)
+
+    def test_arguments_travail_avec_priorite(self):
+        self.assertEqual(d.arguments_travail('x', 2, 1, 'ls', base=['g'], priorite='urgent'),
+                         ['g', 'file', '--priorite', 'urgent', 'x', '2', '1', '--', 'sh', '-c', 'ls'])
+        self.assertEqual(d.arguments_travail('x', 2, 1, 'ls', base=['g'], priorite='fond')[2:5], ['--priorite', 'fond', 'x'])
+        # normal : rien d'ajouté, pour qu'un cœur 1.2.x ne refuse pas la ligne
+        self.assertNotIn('--priorite', d.arguments_travail('x', 2, 1, 'ls', base=['g'], priorite='normal'))
+
+    def test_fuites(self):
+        fuites = d.fuites_par_pid(d.lire_etat(faux('etat', '--json'))['fuites'])
+        self.assertEqual(d.detail_fuite(fuites[6001], maintenant=d.en_timestamp(fuites[6001]['depuis']) + 420),
+                         ('node', 'PID 6001 · +210 Mo/min · depuis 7 min'))
+        self.assertEqual(d.badge_fuite(fuites[6001]), 'fuite +210 Mo/min')
+        self.assertEqual(d.badge_fuite({'pid': 1}), 'fuite')
+        self.assertEqual(d.formater_pente(1800), '1,8 Go/min')
+        self.assertEqual(d.fuites_par_pid(None), {})
+
+    def test_tendance(self):
+        self.assertEqual(d.tendance_travail({'tendance': 'hausse'}), ('hausse', 'pic en hausse : fuite probable'))
+        self.assertEqual(d.tendance_travail({'tendance': 'limite'}), ('limite', 'dépasse sa limite'))
+        for t in ({'tendance': 'stable'}, {}, {'tendance': 'inconnue'}):
+            self.assertEqual(d.tendance_travail(t)[0], None)
+        appris = d.lire_appris(faux('file', 'appris', '--json'))['travaux']
+        self.assertEqual({t['nom']: t.get('tendance') for t in appris}['tests voix'], 'hausse')
+
+    def test_evenements_fuite(self):
+        icone, titre, detail = d.decrire_evenement({'action': 'fuite', 'nom': 'python3', 'pid': 7, 'pente_mo_min': 210,
+                                                    'memoire': 2600 * 2 ** 20, 'prevision_s': 720, 'commande': 'python3 x.py'})
+        self.assertEqual(icone, 'go-up-symbolic')
+        self.assertIn('python3', titre)
+        self.assertIn('+210 Mo/min', detail)
+        self.assertIn('RAM pleine dans ~12 min', detail)
+        self.assertIn('2,5 Go de mémoire', detail)
+        self.assertIn('processus 7', detail)
+        _, _, detail = d.decrire_evenement({'action': 'fuite', 'nom': 'x', 'pente_mo_min': 150, 'prevision_s': None})
+        self.assertIn('la RAM ne serait pas pleine à ce rythme', detail)
+        _, _, detail = d.decrire_evenement({'action': 'fuite', 'nom': 'x', 'pente_mo_min': 150, 'prevision_s': 30})
+        self.assertIn('moins d’une minute', detail)
+        _, titre, detail = d.decrire_evenement({'action': 'fuite-travail', 'nom': 'tests voix', 'tendance': 'hausse',
+                                                'pics_go': [2.1, 3.4, 5.0]})
+        self.assertEqual(titre, 'Travail « tests voix » : fuite probable')
+        self.assertIn('pic en hausse à chaque lancement', detail)
+        self.assertIn('pics : 2,1 → 3,4 → 5 Go', detail)
+        _, _, detail = d.decrire_evenement({'action': 'fuite-travail', 'nom': 'x', 'tendance': 'limite'})
+        self.assertIn('limite', detail)
+        self.assertNotIn('None', detail)
+        _, _, detail = d.decrire_evenement({'action': 'fuite-travail', 'nom': 'x'})      # champs absents : rien d'inventé
+        self.assertNotIn('None', detail)
+        self.assertEqual(d.categorie_evenement({'action': 'fuite'}), 'protection')
+        self.assertEqual(d.categorie_evenement({'action': 'fuite-travail'}), 'file')
+
+    def test_journal_du_faux_et_cœur_ancien(self):
+        ev = d.lire_journal(faux('journal', '--json', '-n', '200'))
+        self.assertEqual(sum(1 for e in ev if e['action'] == 'fuite'), 2)
+        self.assertEqual(len(d.filtrer_evenements(ev, 'file', 'fuite probable')), 2)
+        self.assertEqual(len(d.filtrer_evenements(ev, 'tous', 'fuite')), 4)
+        ancien = d.lire_journal(faux('journal', '--json', '-n', '200', mode='v12'))
+        self.assertFalse([e for e in ancien if e['action'].startswith('fuite')])
+
+    def test_reglages_130(self):
+        r = d.lire_reglages(faux('reglages', '--json'))['reglages']
+        for cle in d.DEFAUTS_130:
+            self.assertIn(cle, r)
+        self.assertNotIn('file_paralleles', d.lire_reglages(faux('reglages', '--json', mode='v12'))['reglages'])
+        complet = d.reglages_complets({'seuil': 95, 'fuite_seuil': 0})
+        self.assertEqual((complet['file_paralleles'], complet['fuite_seuil'], complet['fuite_notifier']), (2, 0, True))
+        nouveaux = dict(complet, file_paralleles=4, fuite_seuil=250, fuite_notifier=False)
+        self.assertEqual(sorted(d.arguments_reglages(['pkexec', 'g'], complet, nouveaux)[4:]),
+                         ['file_paralleles=4', 'fuite_notifier=non', 'fuite_seuil=250'])
+        self.assertEqual(d.REGLAGES_FILE_130[0][4:], (1, 6))
 
 
 class EvenementsJournal120(unittest.TestCase):
