@@ -50,6 +50,13 @@ sudo apt install gagarine</pre>
 </body></html>
 H
 
+# Idempotence : rien de nouveau (paquets, clé, page) -> on ne régénère pas les index (Date change à chaque fois)
+git -C "$WT" add -A
+if git -C "$WT" diff --cached --quiet && [ -f "$APT/dists/stable/InRelease" ]; then
+  echo "Dépôt APT déjà à jour."
+  exit 0
+fi
+
 (
   cd "$APT"
   D=dists/stable/main
