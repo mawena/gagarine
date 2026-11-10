@@ -333,7 +333,7 @@ class TestLimite(BancFile):
         vu = {}
         lancer = self.poste.lancer
 
-        def espion(argv, env):
+        def espion(argv, env, pendant=None):
             vu.update(json.loads((self.tickets / env['FILE_ATTENTE_TICKET']).read_text()))
             return lancer(argv, env)
         self.poste.lancer = espion
@@ -393,7 +393,7 @@ class TestCodes(BancFile):
         vu = {}
         lancer = self.poste.lancer
 
-        def espion(argv, e):
+        def espion(argv, e, pendant=None):
             vu.update(json.loads((self.tickets / e['FILE_ATTENTE_TICKET']).read_text()))
             return lancer(argv, e)
         self.poste.lancer = espion
