@@ -7,6 +7,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.2.0] - 2026-11-10
+
 Gagarine empêche maintenant les incidents à la source : un travail lourd ne peut plus échapper à la file depuis une
 session Claude, une annonce trop basse est corrigée, les programmes inactifs sont rangés, et le garde agit avant 95 %
 quand la mémoire s'emballe. Il se met à jour par `apt upgrade`.
