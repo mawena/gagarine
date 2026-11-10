@@ -229,10 +229,24 @@ GTK 3 + AyatanaAppIndicator3 (l'extension « Ubuntu AppIndicators » est active 
 
 ## 6. Paquet
 
-Un seul paquet `gagarine` 1.1.0 : `Depends` inchangés (cœur) ; `Recommends: python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
-(>= 1.5), gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1, pkexec` ; `Suggests: systemd-zram-generator`. Si une
+Un seul paquet `gagarine` 1.1.0 : `Depends` du cœur, plus `systemd-zram-generator` ; `Recommends: python3-gi,
+gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5), gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1, pkexec`. Si une
 dépendance graphique manque, `gagarine-interface` et `gagarine-indicateur` le disent clairement (nom du paquet à
 installer). Pages de manuel à jour. `make deb` valide aussi le `.desktop` et le metainfo.
+
+### Swap compressé en RAM (zram), fourni par le paquet
+
+Tout ce qui protège la mémoire du poste vit dans Gagarine, y compris le swap (demande du 10/11/2026). Le paquet installe :
+
+- `/usr/lib/systemd/zram-generator.conf.d/50-gagarine.conf` : `[zram0]`, `zram-size = ram`, `compression-algorithm =
+  zstd`, `swap-priority = 100` (le dossier prévu pour les paquets ; un fichier de l'administrateur dans
+  `/etc/systemd/zram-generator.conf.d/` passe devant) ;
+- `/usr/lib/sysctl.d/90-gagarine.conf` : `vm.swappiness = 180`, `vm.watermark_scale_factor = 125`,
+  `vm.watermark_boost_factor = 0`, `vm.page-cluster = 0` (réglages pour un swap en RAM, ceux de Pop!_OS) ;
+- à l'installation, le zram est créé et les réglages appliqués tout de suite, sans redémarrer, sans toucher au swap
+  disque existant (utilisé après le zram) ; à la suppression, les réglages du noyau reviennent aux valeurs par défaut
+  au prochain démarrage ;
+- `gagarine etat` (texte et JSON) signale les zones zram (déjà dans `swap[].zram`), l'interface les montre.
 
 ## 7. Ce qui est laissé au choix de chaque chantier
 
