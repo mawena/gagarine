@@ -15,6 +15,20 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .B gagarine arreter
 .I PID
 .br
+.B gagarine file
+.I NOM GO COEURS
+.RB [ \-\-apres
+.IR PID ]
+.B \-\-
+.IR COMMANDE\ ...
+.br
+.B gagarine file
+.RB ( \-\-etat " | " etat )
+.RB [ \-\-json ]
+.br
+.B gagarine file annuler
+.IR PID | TICKET
+.br
 .B gagarine journal
 .RB [ \-n
 .IR N ]
@@ -75,6 +89,21 @@ Relance un programme figé. Il reste bridé.
 .BI arreter " PID"
 Arrête un programme figé.
 .TP
+.BR file " \fINOM GO COEURS\fR [" \-\-apres " \fIPID\fR] " \-\- " \fICOMMANDE\fR..."
+File d'attente des travaux lourds (voir \fBFILE D'ATTENTE\fR) : attend son tour, puis lance \fICOMMANDE\fR dans sa limite
+mémoire et rend son code de sortie.
+.TP
+.BR file " (" \-\-etat " | " etat ") [" \-\-json ]
+Affiche la mémoire disponible, la charge et les travaux en file. Avec \fB\-\-json\fR, un seul objet JSON :
+\fBram_disponible_go\fR, \fBcharge\fR, \fBcoeurs\fR, \fBdossier\fR et \fBtravaux\fR (ticket, position, nom, pid, depuis,
+etat, ram, coeurs, commande, unite, sortie, source). Pour un ticket d'un ancien outil, les champs absents valent
+\fBnull\fR et \fBsource\fR vaut \fB"autre"\fR. Cette lecture ne supprime aucun ticket.
+.TP
+.BI file " annuler PID|TICKET"
+Annule un travail de la file : en attente, il quitte la file ; en cours, il est arrêté. Seuls les travaux de l'utilisateur
+(l'administrateur : tous) ; un processus qui n'est pas dans la file n'est jamais touché. Code 1 si le travail est inconnu
+ou n'appartient pas à l'utilisateur.
+.TP
 .BR journal " [" \-n " \fIN\fR] [" \-\-json ]
 Affiche les \fIN\fR derniers événements (50 par défaut), triés par date, fusionnés depuis le journal du service
 (\fI/var/lib/gagarine/evenements.jsonl\fR), celui de l'utilisateur (\fI~/.local/state/gagarine/evenements.jsonl\fR) et
@@ -105,6 +134,28 @@ Affiche « gagarine 1.0.0 ».
 .TP
 .BR \-h ", " \-\-help
 Affiche l'aide.
+.SH FILE D'ATTENTE
+\fBgagarine file\fR met les travaux lourds (rendu vidéo, compilation, longue suite de tests, modèle local…) à la queue :
+un seul à la fois, dans l'ordre d'arrivée, et seulement quand la mémoire et les processeurs suffisent. Chaque travail
+dépose un ticket \fI<millisecondes>\-<pid>.json\fR dans \fI/tmp/file\-attente\-travaux\-lourds\fR (variable
+\fBFILE_ATTENTE_DOSSIER\fR). La file est la même que celle de l'ancien outil \fBfile\-attente\fR et de ses copies : les
+deux se voient et s'attendent. Un ticket dont le processus est mort est supprimé.
+.PP
+Son tour vient quand aucun travail vivant n'est plus ancien, que \fBMemAvailable\fR atteint les \fIGO\fR annoncés, que les
+cœurs libres (cœurs moins charge sur 1 minute) atteignent \fICOEURS\fR et que le processus de \fB\-\-apres\fR est terminé.
+La vérification a lieu toutes les 5 secondes, avec un message à chaque changement de raison d'attendre.
+.PP
+Le travail est lancé dans un scope systemd utilisateur (\fBsystemd\-run \-\-user \-\-scope\fR) dont la mémoire est limitée à
+max(2 × \fIGO\fR, \fIGO\fR + 2) Go, avec 512 Mo de swap au plus. S'il dépasse cette limite, le noyau n'arrête que lui :
+message en français, événement \fBlimite\fR, code 137. Il faut donc annoncer la RAM qu'il lui faut vraiment. Sans systemd
+utilisateur, le travail est lancé sans limite. Un travail lancé par un autre qui a déjà son tour hérite de son ticket
+(variable \fBFILE_ATTENTE_TICKET\fR) et passe directement. Variable \fBGAGARINE_SORTIE\fR : fichier de sortie du travail,
+recopié dans son ticket et dans le journal.
+.PP
+Code de sortie : celui de la commande ; 128 + \fIn\fR si elle est tuée par le signal \fIn\fR ; 137 si la limite mémoire l'a
+arrêtée ; 2 si les arguments sont invalides. SIGTERM ou SIGINT reçu pendant l'attente (ticket retiré) ou l'exécution (le
+scope est arrêté) donne 143 ou 130. Le journal de l'utilisateur (\fI~/.local/state/gagarine/evenements.jsonl\fR, source
+\fBfile\fR) note \fBtravail\-debut\fR, \fBtravail\-fin\fR, \fBtravail\-annule\fR et \fBlimite\fR.
 .SH RÉGLAGES
 Fichier \fI/etc/gagarine.conf\fR, au format INI, section \fB[gagarine]\fR. Il est conservé aux mises à jour du paquet.
 Le service relit ses réglages sur le signal SIGHUP, sans perdre son état (programmes figés, historique) : après une
@@ -191,6 +242,16 @@ sudo gagarine reprendre 4242
 .PP
 Protéger un programme de plus : dans \fI/etc/gagarine.conf\fR, \fBproteges=^(mon\-rendu|calcul.*)$\fR, puis
 \fBsudo systemctl reload gagarine\fR.
+.PP
+Lancer un rendu à la queue, voir la file, puis annuler un travail (processus 4242) :
+.PP
+.RS
+.nf
+gagarine file "rendu vidéo" 4 4 \-\- ffmpeg \-i a.mkv b.mp4
+gagarine file \-\-etat
+gagarine file annuler 4242
+.fi
+.RE
 .SH VOIR AUSSI
 .BR systemd\-oomd (8),
 .BR earlyoom (1),
