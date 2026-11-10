@@ -4,35 +4,35 @@ Hash: SHA512
 Architectures: all amd64
 Codename: stable
 Components: main
-Date: Tue, 10 Nov 2026 18:17:28 +0000
+Date: Tue, 10 Nov 2026 19:35:37 +0000
 Description: Gagarine, garde-RAM Linux
 Label: Gagarine
 Origin: Gagarine
 Suite: stable
 MD5Sum:
- 6d62827df8d1685b865517e6328b2acb            11458 main/binary-all/Packages
- 59ddff5623fade58bf2e0e381986f81e             2112 main/binary-all/Packages.gz
+ 4bf4696e44ba412d40179725c5d3ec26            14874 main/binary-all/Packages
+ 8d3ff1cdd5a14cadfee4131444cfb849             2410 main/binary-all/Packages.gz
  d41d8cd98f00b204e9800998ecf8427e                0 main/binary-amd64/Packages
  4a4dd3598707603b3f76a2378a4504aa               20 main/binary-amd64/Packages.gz
 SHA1:
- defa0dd9dffa8b0529a76298c00580587a8c2db7            11458 main/binary-all/Packages
- 60ead33e4fdbb1fb1fb792bd39424cc6b6dfa8c8             2112 main/binary-all/Packages.gz
+ f5b62dfa1679338dc252ad44b4f47975daeb496d            14874 main/binary-all/Packages
+ 33f25f8c6e68f6662796516c42578636fc88b7af             2410 main/binary-all/Packages.gz
  da39a3ee5e6b4b0d3255bfef95601890afd80709                0 main/binary-amd64/Packages
  a0fddd5458378c1bf3c10dd2f5c060d1347741ed               20 main/binary-amd64/Packages.gz
 SHA256:
- 2437116ddc0ebeaad40a892ba1e7f539529dac2af63eb845a4f6b76e434a4b6e            11458 main/binary-all/Packages
- 997ad3b7cf6e0b2104524594a31f469a63aab21208d1614caf547eaa7db3ae64             2112 main/binary-all/Packages.gz
+ 54d37d9c61d3cc7a10c7e71f30e146a633a4f4994c66582b291458f66b9e7599            14874 main/binary-all/Packages
+ 4a6dbdfcc4ffda515443eb80ae8f7dd2b5004648dbe8b721ad3f1e01dfe3421f             2410 main/binary-all/Packages.gz
  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855                0 main/binary-amd64/Packages
  f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec               20 main/binary-amd64/Packages.gz
 SHA512:
- aa7bfc63e8e189452d2dfbfa8d81ef1bef06ce8665a5217ccfa8c3e8c660bf1bfdcf3c6dbb0f729fbc591e67d2c48a2639c5d053b922367dff91f5f9fa5d253c            11458 main/binary-all/Packages
- 4f47de299a20a8ea0840decb1c362cfda5b6f8048273174b3b717f701e9c0fe3616b16bdbc2a076aa008a9a30e33bfb9e0bca0ad09c06b1660c2912f266378a1             2112 main/binary-all/Packages.gz
+ cba0a2b7175350640635ad4f3a6fd390e52981b0b2ebb00662cc41c179e7736abb6559b38b5bc2be9c013646f8019e7094a0871be21bf8c4b7603670853ab68f            14874 main/binary-all/Packages
+ 06d567664275b10fee18c76e08e41670785d06b9a84c9abbc5fcc7468ffb917710733c1df53952999d60de7101b8c2173c5be2b919a1f29002dd43139a44a7b2             2410 main/binary-all/Packages.gz
  cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e                0 main/binary-amd64/Packages
  1b46b9b08d5b338be9d732a1724795b2eab63daffde377218727c90857b79fe6a47bceed495117fcde60f7339812ef75ef4c69f82dd79fb69b6cbf8006b521f2               20 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQT+ZrWpAMvo6/uPsHn8p+jgxVE7kwUCavNfuAAKCRD8p+jgxVE7
-k5K5AP92E1tG+qtgk2jN/aY4COVzyWpLjtESoMIk/kQmAwap6gEAty/XRalRC8Qe
-+tFJidXAKDGxo1BqR2JjnxPS4CVeqAo=
-=zpw/
+iHUEARYKAB0WIQT+ZrWpAMvo6/uPsHn8p+jgxVE7kwUCavNyCQAKCRD8p+jgxVE7
+k49pAQD25RordfMRa5k0cCOlIgWv6bnNksiW8DSqnp0c37hzHgD/RWC1P6LmwNMF
+tuJaIxdM7fetLfwl18hTRHBh3ob4lQk=
+=x008
 -----END PGP SIGNATURE-----

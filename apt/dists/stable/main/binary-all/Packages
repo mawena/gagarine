@@ -218,3 +218,67 @@ Description: RAM guard that freezes the program filling the memory
  .
  Complements systemd-oomd and earlyoom.
 
+Package: gagarine
+Version: 1.3.0
+Architecture: all
+Maintainer: mawena <57989130+mawena@users.noreply.github.com>
+Installed-Size: 511
+Depends: init-system-helpers (>= 1.52), python3 (>= 3.10), libnotify-bin, systemd, util-linux (>= 2.37), systemd-zram-generator
+Recommends: python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5), gir1.2-gtk-3.0, gir1.2-ayatanaappindicator3-0.1, pkexec
+Filename: pool/main/gagarine_1.3.0_all.deb
+Size: 129358
+MD5sum: 304324f16e026d111763025f9733f0ab
+SHA1: 7137347983827c71ccdf6d42aef5514b7fc2dab8
+SHA256: a8d51afcae1824bd1435d3fcde52fa1b6a3ecf31685e71ca560f274205f91cd7
+Section: admin
+Priority: optional
+Homepage: https://github.com/mawena/gagarine
+Description: RAM guard that freezes the program filling the memory
+ Gagarine keeps a Linux machine from freezing when its memory fills up. It
+ measures the RAM every second (four times per second above 85 %). At 95 %
+ it freezes (SIGSTOP) the program that grows the fastest, throttles it (if
+ resumed, it can only grow by a small amount), pushes it into swap, then
+ stops it if the RAM does not go down once the swap-out is done, if the RAM
+ reaches 98 %, or if it stays frozen for 10 minutes.
+ .
+ It runs as a system service (root), never touches the desktop or critical
+ services, and sends desktop notifications offering to stop or resume the
+ frozen program. The "gagarine essai" command checks the whole chain safely.
+ .
+ It also sets up a compressed swap in RAM (zram, the size of the RAM, zstd,
+ used before the disk swap) with matching kernel settings, so that frozen
+ programs are pushed out fast and the machine never thrashes the disk.
+ .
+ It includes a queue for heavy jobs ("gagarine file"): several jobs can run
+ together when the RAM and the cores allow it, ordered by priority, each one
+ locked into a kernel memory limit, so a runaway job cannot take the machine
+ down. The queue remembers the memory each job really used
+ and corrects announcements that are too low, and it notifies on the desktop
+ (and optionally on the phone through ntfy) when a job ends.
+ .
+ Gagarine also acts before the threshold: it freezes a program that would
+ fill the RAM within seconds, or when the kernel is already stalling on
+ memory pressure. It keeps a 7-day history of the RAM and of the biggest
+ programs ("gagarine historique"), and cleans up idle memory hogs (Gradle and
+ Kotlin daemons, models loaded in LM Studio or Ollama) with a user timer
+ ("gagarine menage"). It can cap the memory of desktop applications such as
+ Chrome or VS Code ("gagarine applications").
+ .
+ It also spots memory leaks (a program whose memory climbs steadily, or a job
+ whose peak grows from one run to the next) and warns before the threshold.
+ .
+ A hook for Claude Code sessions ("gagarine hook-claude") refuses heavy jobs
+ launched outside the queue and suggests the right command, and a status line
+ ("gagarine ligne-etat") shows the state of the machine in Claude Code.
+ .
+ The package installs a signed APT repository entry, so "apt upgrade" keeps
+ Gagarine up to date.
+ .
+ A GNOME graphical interface ("gagarine-interface", GTK 4 and libadwaita)
+ shows the RAM, the swap, the frozen programs, the job queue, the journal
+ and the settings, and drives the service. A panel indicator
+ ("gagarine-indicateur") shows the RAM in the top bar at all times. Both are
+ optional: they need the recommended packages.
+ .
+ Complements systemd-oomd and earlyoom.
+
