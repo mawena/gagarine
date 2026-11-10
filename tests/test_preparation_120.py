@@ -126,3 +126,19 @@ class TestExtensions(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestReglages130(unittest.TestCase):
+    def test_valeurs_par_defaut(self):
+        r = rg.Reglages()
+        self.assertEqual((r.file_paralleles, r.fuite_seuil, r.fuite_notifier), (2, 100, True))
+
+    def test_validation(self):
+        self.assertEqual(rg.valider_ecriture({'file_paralleles': '3', 'fuite_seuil': '0', 'fuite_notifier': 'non'}),
+                         {'file_paralleles': '3', 'fuite_seuil': '0', 'fuite_notifier': 'non'})
+        for mauvais in ({'file_paralleles': '0'}, {'file_paralleles': '1.5'}, {'fuite_seuil': '-1'}):
+            with self.assertRaises(rg.ErreurReglages, msg=mauvais):
+                rg.valider_ecriture(mauvais)
+
+    def test_extension_ligne_declaree(self):
+        self.assertIn('ligne', cli.EXTENSIONS)
