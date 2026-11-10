@@ -33,11 +33,11 @@ class TestEssaiEtCommandes(unittest.TestCase):
         self.assertEqual([ok for _, ok, _ in v], [False, False, False])
 
     def test_version_et_aide(self):
-        self.assertEqual(ve.VERSION, '1.0.0')
+        self.assertEqual(ve.VERSION, '1.1.0')
         import subprocess
         for a in ('version', '--version'):
             r = subprocess.run([str(CHEMIN), a], capture_output=True, text=True)
-            self.assertEqual(r.stdout, 'gagarine 1.0.0\n')
+            self.assertEqual(r.stdout, 'gagarine 1.1.0\n')
         r = subprocess.run([str(CHEMIN), '--help'], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
         for mot in ('surveiller', 'etat', 'reprendre', 'arreter', 'essai', 'version'):
