@@ -104,9 +104,9 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 15 — Garde : agir plus tôt, historique
 
-- [ ] Anticipation (temps avant saturation) et pression mémoire du noyau
-- [ ] Historique de 7 jours, `gagarine historique`
-- [ ] Alertes ntfy des programmes figés ou arrêtés ; journal lisible pour les nouveaux événements
+- [x] Anticipation (temps avant saturation) et pression mémoire du noyau
+- [x] Historique de 7 jours, `gagarine historique`
+- [x] Alertes ntfy des programmes figés ou arrêtés ; journal lisible pour les nouveaux événements
 
 ## Phase 16 — Ménage des inactifs
 
@@ -125,8 +125,8 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 19 — Interface et indicateur 1.2.0
 
-- [ ] Réglages, historique sur la courbe, ménage, applications, mémoire apprise, travaux passés, journal
-- [ ] Indicateur : ménage
+- [x] Réglages, historique sur la courbe, ménage, applications, mémoire apprise, travaux passés, journal
+- [x] Indicateur : ménage
 
 ## Phase 20 — Paquet, documentation et release 1.2.0
 
