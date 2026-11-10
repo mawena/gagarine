@@ -1,3 +1,12 @@
+gagarine (1.1.1) unstable; urgency=medium
+
+  * « gagarine journal » affiche les événements de la file avec leurs
+    unités (Go annoncés, cœurs, limite, code, durée) au lieu d'un faux
+    pourcentage de RAM.
+  * Un travail annulé ou arrêté dans la file l'écrit dans sa sortie.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 15:16:14 +0000
+
 gagarine (1.1.0) unstable; urgency=medium
 
   * Interface graphique gagarine-interface (GTK 4 + libadwaita) : aperçu

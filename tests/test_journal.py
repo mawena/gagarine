@@ -46,3 +46,33 @@ class TestJournal(unittest.TestCase):
         sortie = io.StringIO()
         jn.Journal(self.d, sortie=sortie).ecrire('demarrage')
         self.assertEqual(json.loads(sortie.getvalue())['action'], 'demarrage')
+
+
+class TestLigneLisible(unittest.TestCase):
+    """Texte de « gagarine journal » : chaque type d'événement avec ses propres unités."""
+
+    def ligne(self, **e):
+        return jn.ligne_lisible({'date': '2026-11-10T15:13:18+0000', **e})
+
+    def test_fige_garde_le_pourcentage_de_ram(self):
+        l = self.ligne(action='fige', source='gagarine', nom='python3', pid=42, ram=96.2)
+        self.assertIn('python3 42 (RAM 96.2 %)', l)
+
+    def test_travail_debut_montre_la_ram_annoncee_en_go(self):
+        l = self.ligne(action='travail-debut', source='file', nom='rendu', pid=7, ram=0.5, coeurs=1, limite=2.5)
+        self.assertIn('rendu 7 (0.5 Go annoncés, 1 cœur, limite 2.5 Go)', l)
+        self.assertNotIn('%', l)
+
+    def test_travail_fin_montre_le_code_et_la_duree(self):
+        l = self.ligne(action='travail-fin', source='file', nom='rendu', pid=7, code=0, duree=40.1)
+        self.assertIn('rendu 7 (code 0, 40 s)', l)
+
+    def test_travail_annule_dit_s_il_attendait(self):
+        self.assertIn('(annulé en attente)', self.ligne(action='travail-annule', source='file', nom='a', pid=1,
+                                                        signal=15, en_cours=False))
+        self.assertIn('(arrêté en cours)', self.ligne(action='travail-annule', source='file', nom='a', pid=1,
+                                                      signal=15, en_cours=True))
+
+    def test_limite_montre_l_annonce_et_la_limite(self):
+        l = self.ligne(action='limite', source='file', nom='tests', declare=4, limite=8)
+        self.assertIn('tests (annoncé 4 Go, limite 8 Go dépassée)', l)

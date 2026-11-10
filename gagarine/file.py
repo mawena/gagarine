@@ -368,6 +368,8 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
                 poste.executer(['systemctl', '--user', 'reset-failed', f'{unite}.scope'])
         note('travail-annule', nom=nom, pid=poste.pid(), ticket=None if ticket in (None, 'herite') else ticket,
                        signal=e.numero, en_cours=debut is not None)
+        print(f'  file d\'attente ({nom}) : travail {"arrêté" if debut is not None else "annulé"} '
+              f'(signal {e.numero})', file=erreur, flush=True)
         return 128 + e.numero
     finally:
         if ticket and ticket != 'herite':
