@@ -72,7 +72,7 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 
 ## Phase 10 — Indicateur de la barre du haut
 
-- [ ] Indicateur GTK 3 + AyatanaAppIndicator : RAM en %, icône selon le niveau, menu d'actions
+- [x] Indicateur GTK 3 + AyatanaAppIndicator : RAM en %, icône selon le niveau, menu d'actions
 - [ ] Démarrage automatique, masquer ou réafficher (aussi depuis l'interface)
 
 ## Phase 11 — Paquet et documentation 1.1.0
