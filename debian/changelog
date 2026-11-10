@@ -1,3 +1,23 @@
+gagarine (1.2.0) unstable; urgency=medium
+
+  * Mémoire apprise par la file d'attente : pic de chaque travail retenu,
+    annonces trop basses corrigées (gagarine file appris) ; notification à
+    la fin des travaux.
+  * Le garde agit avant 95 % : anticipation (temps avant saturation) et
+    pression mémoire du noyau ; historique de 7 jours (gagarine
+    historique).
+  * Ménage des démons et modèles inactifs (gagarine menage), automatique
+    par un minuteur utilisateur.
+  * Plafond mémoire des applications du bureau (gagarine applications).
+  * Hook des sessions Claude Code qui refuse les travaux lourds hors de la
+    file (gagarine hook-claude).
+  * Alertes sur le téléphone par ntfy (gagarine ntfy essai).
+  * Dépôt APT signé : le paquet ajoute sa source et sa clé, apt upgrade
+    suffit ensuite.
+  * Interface et indicateur pour toutes ces fonctions.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 17:23:32 +0000
+
 gagarine (1.1.1) unstable; urgency=medium
 
   * « gagarine journal » affiche les événements de la file avec leurs
