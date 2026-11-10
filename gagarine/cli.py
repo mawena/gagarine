@@ -381,7 +381,7 @@ def commande_service(args, ctx):
 #   COMMANDES = {'nom': fonction(args, ctx) -> code de sortie}
 #   AIDE_COMMANDES = '  nom ARGUMENTS…                description\n…'   (lignes ajoutées à l'aide)
 # Un module absent est ignoré ; un module présent mais cassé fait échouer la commande avec son erreur.
-EXTENSIONS = ('claude', 'menage', 'historique', 'applications')
+EXTENSIONS = ('claude', 'menage', 'historique', 'applications', 'ntfy')
 
 
 def charger_extensions(noms=EXTENSIONS, importer=importlib.import_module):

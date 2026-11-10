@@ -211,6 +211,37 @@ class TestHook(unittest.TestCase):
         self.assertIn('cd x && gagarine file "make-deb" 2 4 -- make deb', s['permissionDecisionReason'])
         self.assertEqual(set(s), {'hookEventName', 'permissionDecision', 'permissionDecisionReason'})
 
+    def ecrire_appris(self, travaux):
+        (self.dossier / 'travaux.json').write_text(json.dumps(travaux))
+
+    def test_refus_avec_la_ram_apprise(self):
+        """La file connaît « make-deb » (pic 6,3 Go) : 1,2 × 6,3 = 7,56 -> 8 Go, au lieu des 2 Go fixes."""
+        self.ecrire_appris({'make-deb': {'executions': 2, 'pics_go': [5.0, 6.3], 'annonce_go': 2}})
+        _, sortie = lancer_hook(self.bash('cd x && make deb'), FauxCtx(self.env))
+        raison = json.loads(sortie)['hookSpecificOutput']['permissionDecisionReason']
+        self.assertIn('cd x && gagarine file "make-deb" 8 4 -- make deb', raison)
+
+    def test_ram_apprise_arrondie_au_demi_go_superieur(self):
+        self.ecrire_appris({'tests': {'executions': 1, 'pics_go': [1.0], 'annonce_go': 2}})
+        _, sortie = lancer_hook(self.bash('pytest'), FauxCtx(self.env))
+        self.assertIn('gagarine file "tests" 1.5 2 -- pytest',
+                      json.loads(sortie)['hookSpecificOutput']['permissionDecisionReason'])
+
+    def test_travail_inconnu_ou_memoire_abimee_garde_la_valeur_fixe(self):
+        for contenu in ('{"autre": {"pics_go": [3]}}', 'pas du json', '[]'):
+            with self.subTest(contenu=contenu):
+                (self.dossier / 'travaux.json').write_text(contenu)
+                _, sortie = lancer_hook(self.bash('make deb'), FauxCtx(self.env))
+                self.assertIn('gagarine file "make-deb" 2 4 -- make deb',
+                              json.loads(sortie)['hookSpecificOutput']['permissionDecisionReason'])
+
+    def test_tester_avec_la_ram_apprise(self):
+        self.ecrire_appris({'tests': {'executions': 1, 'pics_go': [3.0], 'annonce_go': 2}})
+        sortie = io.StringIO()
+        with redirect_stdout(sortie):
+            cl.commande_hook_claude(['--tester', 'pytest'], FauxCtx(self.env))
+        self.assertIn('gagarine file "tests" 4 2 -- pytest', sortie.getvalue())
+
     def test_commande_legere_poste_tranquille_sortie_vide(self):
         self.assertEqual(lancer_hook(self.bash('ls'), FauxCtx(self.env)), (0, ''))
 
@@ -314,12 +345,14 @@ class TestRappels(unittest.TestCase):
 class TestLigneDeCommande(unittest.TestCase):
     def test_tester(self):
         sortie = io.StringIO()
-        with redirect_stdout(sortie):
+        vide = tempfile.TemporaryDirectory()
+        self.addCleanup(vide.cleanup)
+        with redirect_stdout(sortie), mock.patch.dict(os.environ, {'GAGARINE_ETAT': vide.name}):
             self.assertEqual(main(['hook-claude', '--tester', 'cd x && make test']), 0)
         self.assertEqual(sortie.getvalue().splitlines(),
                          ['lourd : make test', 'commande corrigée : cd x && gagarine file "tests" 2 2 -- make test'])
         sortie = io.StringIO()
-        with redirect_stdout(sortie):
+        with redirect_stdout(sortie), mock.patch.dict(os.environ, {'GAGARINE_ETAT': vide.name}):
             main(['hook-claude', '--tester', 'echo pytest'])
         self.assertTrue(sortie.getvalue().startswith('libre : '))
 
