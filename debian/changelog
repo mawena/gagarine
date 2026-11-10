@@ -1,3 +1,11 @@
+gagarine (1.2.1) unstable; urgency=medium
+
+  * gagarine applications : une seule ligne par application quand GNOME la
+    lance dans deux familles de scopes (Chrome, VS Code), et le plafond
+    vaut pour toutes ; plafonds affichés avec une virgule (1,5 Go).
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 17:30:17 +0000
+
 gagarine (1.2.0) unstable; urgency=medium
 
   * Mémoire apprise par la file d'attente : pic de chaque travail retenu,

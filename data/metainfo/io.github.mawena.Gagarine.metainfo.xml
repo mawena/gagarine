@@ -62,6 +62,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="1.2.1" date="2026-11-10">
+      <description>
+        <p>Une seule ligne par application du bureau, plafond appliqué à toutes ses familles de scopes ; plafonds affichés avec une virgule.</p>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-11-10">
       <description>
         <p>Mémoire apprise par la file, notification de fin, anticipation et pression mémoire, historique de 7 jours, ménage des programmes inactifs, plafond des applications, alertes ntfy, mises à jour par APT.</p>
