@@ -1,0 +1,3 @@
+bin/gagarine usr/bin
+etc/gagarine.conf etc
+systemd/gagarine.service usr/lib/systemd/system

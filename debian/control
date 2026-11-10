@@ -1,0 +1,31 @@
+Source: gagarine
+Section: admin
+Priority: optional
+Maintainer: mawena <57989130+mawena@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/mawena/gagarine
+Rules-Requires-Root: no
+
+Package: gagarine
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.10),
+         libnotify-bin,
+         systemd,
+         util-linux (>= 2.37)
+Suggests: systemd-zram-generator
+Description: RAM guard that freezes the program filling the memory
+ Gagarine keeps a Linux machine from freezing when its memory fills up. It
+ measures the RAM every second (four times per second above 85 %). At 95 %
+ it freezes (SIGSTOP) the program that grows the fastest, throttles it (if
+ resumed, it can only grow by a small amount), pushes it into swap, then
+ stops it if the RAM does not go down once the swap-out is done, if the RAM
+ reaches 98 %, or if it stays frozen for 10 minutes.
+ .
+ It runs as a system service (root), never touches the desktop or critical
+ services, and sends desktop notifications offering to stop or resume the
+ frozen program. The "gagarine essai" command checks the whole chain safely.
+ .
+ Complements systemd-oomd and earlyoom; a zram swap (systemd-zram-generator,
+ suggested) gives it a fast place to push the frozen program.
