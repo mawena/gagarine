@@ -1,3 +1,22 @@
+gagarine (1.1.0) unstable; urgency=medium
+
+  * Interface graphique gagarine-interface (GTK 4 + libadwaita) : aperçu
+    (jauge, courbe, swap, service), programmes figés, file d'attente,
+    journal, réglages, service et essai ; actions d'administrateur par
+    polkit.
+  * Indicateur gagarine-indicateur dans la barre du haut (RAM en %,
+    programmes figés, ouverture de l'interface), lancé à l'ouverture de
+    session.
+  * File d'attente des travaux lourds intégrée (gagarine file), compatible
+    avec l'outil file-attente.
+  * Swap compressé en RAM (zram, zstd, taille de la RAM) et réglages du
+    noyau fournis et appliqués à l'installation.
+  * Commandes etat --json, journal, reglages, service ; rechargement des
+    réglages sur SIGHUP.
+  * Code rangé en paquet Python dans /usr/share/gagarine.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 15:07:49 +0000
+
 gagarine (1.0.0) unstable; urgency=medium
 
   * Première version : garde-RAM en service système (root) qui fige le
