@@ -102,3 +102,25 @@ Version : **1.3.0** (fonctions nouvelles, rien d'incompatible).
 | Assemblage | `debian/`, `man/`, `README.md`, `CHANGELOG.md`, `site/`, `docs/` |
 
 Personne d'autre ne touche `gagarine/reglages.py`, `gagarine/ntfy.py`, `etc/gagarine.conf`, `tests/commun.py`.
+
+## Précisions apportées pendant les chantiers
+
+- **File** : un travail **seul** (aucun autre en cours) démarre dès que `MemAvailable` ≥ son besoin, sans la marge de 1 Go
+  (sinon un travail dont le besoin atteint la mémoire disponible n'aurait jamais démarré, alors que l'ancienne règle le
+  laissait partir) ; la marge et les réserves s'appliquent dès qu'un travail tourne. Avec `file_paralleles=1`, l'ancienne
+  règle et ses textes sont gardés tels quels. La garde « jamais devant un travail qui attend depuis plus de 10 min » vaut
+  pour un travail de rang plus haut (un travail `fond` qui attend ne bloque pas un `urgent`), et pas pour un travail
+  lui-même retenu par un ticket d'ancien outil (pas d'interblocage). Un ticket de Gagarine 1.2 (sans `priorite`) ou
+  illisible en attente est traité comme un ancien outil. Le ticket porte aussi `debut` (calcul des cœurs récents). Le
+  champ `etat` d'un ticket Node reste `null` : seul `en_cours` compte le ticket Node qui a la main. `travaux.json` porte
+  une liste `limites` (les lancements d'avant la 1.3.0 comptent comme non arrêtés).
+- **Fuites en direct** : il faut au moins 290 s de mesures ; pente par moindres carrés ; un intervalle compte « en
+  hausse » si la mémoire dépasse strictement la mesure précédente. `prevision_s` vaut 0 si la RAM est déjà au seuil,
+  `null` si la RAM totale est inconnue ou si la prévision dépasse 24 h ; `Journal.ecrire` omet les champs `None`, donc
+  `prevision_s` peut manquer dans l'événement (présent avec `null` dans `fuites.json` et `etat --json`). `fuites[].depuis`
+  est l'instant du premier repérage. Une fuite qui se stabilise disparaît de `fuites` à la mesure suivante. Constantes
+  `FUITE_*` en tête de `garde.py` (500 Mo, 80 %, 30 min). `fuites.json` est écrit à côté de `figes.json` (0644,
+  atomique, seulement quand la liste change, vidé au démarrage du service).
+- **Ligne d'état** : `--avec` découpe la commande avec `shlex` (pas de shell : ni tube ni redirection) et tue tout son
+  groupe de processus au-delà de 1 s ; `--sans-couleur` et `NO_COLOR` retirent les couleurs.
+
