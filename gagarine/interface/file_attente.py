@@ -74,7 +74,7 @@ class PageFile(Adw.PreferencesPage):
         ligne.position.set_label(str(t.get('position') or ''))
         morceaux = ['En cours' if en_cours else 'En attente']
         if t.get('ram') is not None:
-            morceaux.append(f'{donnees.formater_go(t["ram"])} de RAM annoncés')
+            morceaux.append(f'{donnees.formater_go(t["ram"])} de RAM')
         if t.get('coeurs') is not None:
             morceaux.append(donnees.pluriel(t['coeurs'], 'cœur'))
         morceaux.append(donnees.depuis(t.get('depuis')))

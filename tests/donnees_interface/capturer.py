@@ -60,11 +60,35 @@ def photographier(fenetre, nom):
     print('capture', chemin, f'{w}x{h}', flush=True)
 
 
+def bas(page):
+    """Fait défiler une page jusqu'en bas."""
+    GLib.idle_add(lambda: [a.set_value(a.get_upper()) for a in [_defileur(page).get_vadjustment()]] and False)
+
+
+def _defileur(w):
+    pile = [w]
+    while pile:
+        n = pile.pop()
+        if isinstance(n, Gtk.ScrolledWindow):
+            return n
+        c = n.get_first_child()
+        while c:
+            pile.append(c)
+            c = c.get_next_sibling()
+
+
 def main():
     os.makedirs(DOSSIER, exist_ok=True)
     app = Application()
-    etapes = [('apercu', None), ('programmes', None), ('file', None), ('journal', None), ('reglages', None),
-              ('nouveau-travail', 'file'), ('sortie-travail', 'file'), ('etroit', 'apercu')]
+    # (nom du fichier, page, action avant la prise, attente en ms)
+    etapes = [
+        ('apercu', 'apercu', None, 1500), ('programmes', 'programmes', None, 1500), ('file', 'file', None, 1500),
+        ('journal', 'journal', None, 1500), ('reglages', 'reglages', None, 1500),
+        ('reglages-service', 'reglages', lambda f: (bas(f.pages['reglages']), f.pages['reglages'].lancer_essai_cmd(False)), 5500),
+        ('nouveau-travail', 'file', lambda f: f.pages['file'].nouveau_travail(), 1500),
+        ('sortie-travail', 'file', lambda f: f.pages['file'].voir_sortie(next(iter(f.pages['file'].travaux))), 1500),
+        ('etroit', 'apercu', lambda f: f.set_default_size(420, 720), 2000),
+    ]
 
     def demarre(_app):
         f = app.fenetre
@@ -73,24 +97,23 @@ def main():
 
         def pas():
             try:
-                nom, page = next(suite)
+                nom, page, action, attente = next(suite)
             except StopIteration:
                 app.quit()
                 return GLib.SOURCE_REMOVE
             if f.get_visible_dialog():
                 f.get_visible_dialog().force_close()
-            f.aller_a(page or nom)
-            if nom == 'nouveau-travail':
-                f.pages['file'].nouveau_travail()
-            elif nom == 'sortie-travail':
-                f.pages['file'].voir_sortie(next(iter(f.pages['file'].travaux)))
-            elif nom == 'etroit':
-                f.set_default_size(410, 720)
-            if nom in ('nouveau-travail', 'sortie-travail'):
-                pass
-            GLib.timeout_add(1500, lambda: (historique_exemple(f.source), f.pages['apercu'].maj_ram(),
-                                            GLib.timeout_add(500, lambda: (photographier(f, nom), GLib.timeout_add(100, pas), 0)[2]),
-                                            0)[3])
+            f.aller_a(page)
+            historique_exemple(f.source)
+            if action:
+                action(f)
+
+            def prise():
+                historique_exemple(f.source)
+                f.pages['apercu'].maj_ram()
+                GLib.timeout_add(300, lambda: (photographier(f, nom), GLib.timeout_add(100, pas), False)[2])
+                return GLib.SOURCE_REMOVE
+            GLib.timeout_add(attente, prise)
             return GLib.SOURCE_REMOVE
         GLib.timeout_add(3500, pas)
     app.connect_after('activate', demarre)

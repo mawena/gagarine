@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Interface graphique de Gagarine (GTK 4 + libadwaita). Voir docs/conception-1.1.0.md, section 4."""
+import importlib
 import os
 import sys
 
@@ -10,21 +11,21 @@ sys.path.insert(0, '/usr/share/gagarine' if _ici == '/usr/bin' else os.path.dirn
 
 def _dependances():
     """Vérifie PyGObject, GTK 4 et libadwaita ; sinon dit clairement quoi installer."""
-    manque = []
     try:
         import gi
     except ImportError:
-        sys.exit('Gagarine : il manque PyGObject. Installez le paquet : sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1')
+        sys.exit('Gagarine : il manque PyGObject, nécessaire à l’interface graphique.\n'
+                 'Installez-le : sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1')
+    manque = []
     for espace, version, paquet in (('Gtk', '4.0', 'gir1.2-gtk-4.0'), ('Adw', '1', 'gir1.2-adw-1')):
         try:
             gi.require_version(espace, version)
-            __import__('gi.repository', fromlist=[espace])
-            getattr(__import__('gi.repository', fromlist=[espace]), espace)
+            importlib.import_module('gi.repository.' + espace)
         except (ValueError, ImportError):
             manque.append(paquet)
     if manque:
         sys.exit('Gagarine : l’interface graphique a besoin de ' + ' et '.join(manque) + '.\n'
-                 'Installez-les : sudo apt install ' + ' '.join(manque))
+                 'Installez-' + ('le' if len(manque) == 1 else 'les') + ' : sudo apt install ' + ' '.join(manque))
 
 
 if __name__ == '__main__':

@@ -5,7 +5,7 @@ import gi
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from . import donnees
 from .fenetre import PAGES, Fenetre
@@ -55,6 +55,9 @@ def principal(argv=None):
             page = a.split('=', 1)[1]
         elif a == '--page' and i + 1 < len(argv):
             page = argv[i + 1]
+    Gtk.init_check()
+    if Gdk.Display.get_default() is None:
+        sys.exit('Gagarine : aucun affichage disponible (écran graphique introuvable).')
     app = Application()
     if page in PAGES:
         app.connect_after('activate', lambda a: a.fenetre and a.fenetre.aller_a(page))

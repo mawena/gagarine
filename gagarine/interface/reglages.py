@@ -92,15 +92,22 @@ class PageReglages(Adw.PreferencesPage):
         ligne_essai.add_suffix(self.lancer_essai)
         ligne_essai.add_suffix(self.lancer_essai_admin)
         g_essai.add(ligne_essai)
-        self.verdict = Adw.ActionRow(title='', visible=False)
+        self.verdict = Adw.ActionRow(title='')
         self.icone_verdict = Gtk.Image()
         self.verdict.add_prefix(self.icone_verdict)
-        g_essai.add(self.verdict)
+        liste_verdict = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        liste_verdict.add_css_class('boxed-list')
+        liste_verdict.append(self.verdict)
+        self.liste_verdict = liste_verdict
+        liste_verdict.set_visible(False)
         self.sortie_essai = Gtk.TextView(editable=False, cursor_visible=False, monospace=True, top_margin=8, bottom_margin=8,
                                          left_margin=10, right_margin=10, wrap_mode=Gtk.WrapMode.WORD_CHAR)
         self.defile_essai = Gtk.ScrolledWindow(child=self.sortie_essai, min_content_height=130, visible=False)
         self.defile_essai.add_css_class('card')
-        g_essai.add(self.defile_essai)
+        zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12)
+        zone.append(liste_verdict)
+        zone.append(self.defile_essai)
+        g_essai.add(zone)
         self.add(g_essai)
 
         # --- indicateur ---
@@ -175,7 +182,7 @@ class PageReglages(Adw.PreferencesPage):
             else:
                 self.fenetre.toast(res.message, longue=True)
                 self._modifie()
-        self.fenetre.source.executeur.lancer(args, fini, delai=120, cle='reglages-ecrire')
+        self.fenetre.source.executeur.lancer(args, fini, delai=300, cle='reglages-ecrire')
 
     # --- service ---
     def maj_service(self):
@@ -194,7 +201,7 @@ class PageReglages(Adw.PreferencesPage):
         self.boutons_service['redemarrer'].set_sensitive(actif)
 
     def service(self, action, message):
-        self.fenetre.executer(donnees.commande_admin() + ['service', action], message, delai=60)
+        self.fenetre.executer(donnees.commande_admin() + ['service', action], message)
 
     def demander_arret_service(self):
         confirmer(self.fenetre, 'Arrêter le service Gagarine ?',
@@ -218,13 +225,13 @@ class PageReglages(Adw.PreferencesPage):
         self.sortie_texte = ''
         self.sortie_essai.get_buffer().set_text('')
         self.defile_essai.set_visible(True)
-        self.verdict.set_visible(False)
+        self.liste_verdict.set_visible(False)
         for b in (self.lancer_essai, self.lancer_essai_admin):
             b.set_sensitive(False)
         self.lancer_essai.set_label('Arrêter')
         self.lancer_essai.set_sensitive(not admin)   # pkexec : on n'interrompt pas un processus d'administrateur
         self.flux = Gio.DataInputStream.new(self.essai.get_stdout_pipe())
-        self.delai_essai = GLib.timeout_add_seconds(120, self._delai_essai)
+        self.delai_essai = GLib.timeout_add_seconds(300, self._delai_essai)
         self.flux.read_line_async(GLib.PRIORITY_DEFAULT, None, self._ligne_essai, self.essai)
         self.essai.wait_async(None, self._fin_essai)
 
@@ -273,7 +280,7 @@ class PageReglages(Adw.PreferencesPage):
         for c in ('success', 'error'):
             self.icone_verdict.remove_css_class(c)
         self.icone_verdict.add_css_class('success' if reussi else 'error')
-        self.verdict.set_visible(True)
+        self.liste_verdict.set_visible(True)
 
     # --- indicateur ---
     def _indicateur_change(self, *_):

@@ -24,8 +24,9 @@ except (ImportError, ValueError):
 try:
     gi.require_version('Gtk', '4.0')
     gi.require_version('Adw', '1')
-    from gi.repository import Adw, Gtk
-    GTK = os.environ.get('GAGARINE_TESTS_GTK') == '1' and Gtk.init_check()
+    from gi.repository import Adw, Gdk, Gtk
+    Gtk.init_check() if os.environ.get('GAGARINE_TESTS_GTK') == '1' else None
+    GTK = os.environ.get('GAGARINE_TESTS_GTK') == '1' and Gdk.Display.get_default() is not None
 except (NameError, ImportError, ValueError):
     GTK = False
 

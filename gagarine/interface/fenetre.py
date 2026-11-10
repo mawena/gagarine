@@ -19,7 +19,7 @@ PAGES = ['apercu', 'programmes', 'file', 'journal', 'reglages']
 class Fenetre(Adw.ApplicationWindow):
     def __init__(self, application, source=None):
         super().__init__(application=application, title='Gagarine', default_width=920, default_height=760)
-        self.set_size_request(400, 400)
+        self.set_size_request(420, 400)
         self.source = source or Source()
         self.executeur = self.source.executeur
 
@@ -118,8 +118,7 @@ class Fenetre(Adw.ApplicationWindow):
         elif self.source.etat and not self.source.service_actif():
             self.banniere.set_title('Le service Gagarine est arrêté : la RAM n’est pas protégée.')
             self.banniere.set_button_label('Démarrer le service')
-            self.action_banniere = lambda: self.executer(donnees.commande_admin() + ['service', 'demarrer'], 'Service démarré',
-                                                         delai=60)
+            self.action_banniere = lambda: self.executer(donnees.commande_admin() + ['service', 'demarrer'], 'Service démarré')
             self.banniere.set_revealed(True)
         else:
             self.banniere.set_revealed(False)
@@ -133,8 +132,11 @@ class Fenetre(Adw.ApplicationWindow):
         t = Adw.Toast(title=texte, timeout=6 if longue else 3)
         self.toasts.add_toast(t)
 
-    def executer(self, argv, message_ok, delai=15):
+    def executer(self, argv, message_ok, delai=None):
         """Lance une action en arrière-plan ; une notification dit le résultat, puis les données sont relues."""
+        if delai is None:
+            delai = 300 if argv[0] == 'pkexec' else 15   # pkexec attend le mot de passe
+
         def fini(res):
             if res.ok:
                 self.toast(message_ok)
