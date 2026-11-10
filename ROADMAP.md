@@ -27,10 +27,10 @@ Il reprend le garde-RAM écrit le 10/11/2026 pour le poste, après deux redémar
 
 ## Phase 4 — Paquet Debian
 
-- [ ] Service systemd système : administrateur, jamais arrêté par le noyau, verrouillé en RAM, prioritaire
-- [ ] Paquet `.deb` : installation, service activé, réglages conservés aux mises à jour, sommes SHA-256, lintian
-- [ ] Page de manuel `gagarine(8)`
-- [ ] README complet
+- [x] Service systemd système : administrateur, jamais arrêté par le noyau, verrouillé en RAM, prioritaire
+- [x] Paquet `.deb` : installation, service activé, réglages conservés aux mises à jour, sommes SHA-256, lintian
+- [x] Page de manuel `gagarine(8)`
+- [x] README complet
 
 ## Phase 5 — Première version
 
