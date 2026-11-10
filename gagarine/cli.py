@@ -3,6 +3,7 @@
 Chaque commande est une fonction `commande_xxx(args, ctx)` qui retourne le code de sortie ; la table COMMANDES les
 rassemble (ajouter une commande, comme `file`, c'est ajouter une fonction et une ligne dans la table).
 """
+import importlib
 import json
 import os
 import signal
@@ -369,8 +370,40 @@ def commande_service(args, ctx):
 # ======================================================================================================================
 # Ligne de commande
 # ======================================================================================================================
+# Commandes apportées par des modules à part (1.2.0) : chaque module d'EXTENSIONS définit
+#   COMMANDES = {'nom': fonction(args, ctx) -> code de sortie}
+#   AIDE_COMMANDES = '  nom ARGUMENTS…                description\n…'   (lignes ajoutées à l'aide)
+# Un module absent est ignoré ; un module présent mais cassé fait échouer la commande avec son erreur.
+EXTENSIONS = ('claude', 'menage', 'historique', 'applications')
+
+
+def charger_extensions(noms=EXTENSIONS, importer=importlib.import_module):
+    """[(module, COMMANDES, AIDE_COMMANDES)] des extensions présentes."""
+    trouvees = []
+    for nom in noms:
+        complet = f'gagarine.{nom}'
+        try:
+            module = importer(complet)
+        except ModuleNotFoundError as e:
+            if e.name == complet:
+                continue
+            raise
+        trouvees.append((module, dict(getattr(module, 'COMMANDES', {})), getattr(module, 'AIDE_COMMANDES', '')))
+    return trouvees
+
+
+def aide(extensions=None):
+    """Le texte d'aide, avec les lignes des extensions présentes avant « version »."""
+    extensions = charger_extensions() if extensions is None else extensions
+    lignes = ''.join(a if a.endswith('\n') else a + '\n' for _, _, a in extensions if a)
+    if not lignes:
+        return AIDE
+    marque = '  version                        affiche la version\n'
+    return AIDE.replace(marque, lignes + marque, 1)
+
+
 def usage():
-    print(AIDE, file=sys.stderr)
+    print(aide(), file=sys.stderr)
     return 2
 
 
@@ -423,9 +456,14 @@ def main(argv, ctx=None):
             args.append(argv[i])
             i += 1
     if not args or args[0] in ('-h', '--help', 'aide'):
-        print(AIDE)
+        print(aide())
         return 0 if args else 2
     commande = COMMANDES.get(args[0])
+    if commande is None:
+        for _, commandes, _ in charger_extensions():
+            if args[0] in commandes:
+                commande = commandes[args[0]]
+                break
     if commande is None:
         return usage()
     if ctx is None:
