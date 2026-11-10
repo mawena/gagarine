@@ -1,0 +1,12 @@
+[Unit]
+Description=Gagarine : ménage des programmes gourmands inactifs, toutes les 2 minutes
+Documentation=man:gagarine(8) https://github.com/mawena/gagarine
+
+[Timer]
+# Premier passage 5 minutes après l'ouverture de session, puis toutes les 2 minutes.
+OnStartupSec=5min
+OnUnitActiveSec=2min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

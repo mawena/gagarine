@@ -1,0 +1,14 @@
+[Unit]
+Description=Gagarine : ménage des démons et modèles gourmands inactifs
+Documentation=man:gagarine(8) https://github.com/mawena/gagarine
+
+[Service]
+# Un passage court : détecte les candidats, met à jour le suivi d'inactivité, arrête ceux qui le méritent.
+Type=oneshot
+ExecStart=/usr/bin/gagarine menage auto
+
+# Discret : ni processeur ni disque ne doivent être pris à l'utilisateur.
+Nice=19
+CPUWeight=20
+IOWeight=20
+IOSchedulingClass=idle
