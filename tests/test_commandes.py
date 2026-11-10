@@ -84,8 +84,10 @@ class TestEtatJson(Banc2):
                                         'priorite': 100, 'zram': True})
         self.assertFalse(e['swap'][1]['zram'])
         self.assertEqual(e['swap'][1]['priorite'], -2)
-        self.assertEqual(set(e['reglages']), {'seuil', 'urgence', 'vigilance', 'grace', 'vidage_max', 'delai_fige',
-                                              'reste_si_repris', 'notifications', 'proteges'})
+        # Le contrat garde toujours les clés de la 1.1.0 ; la 1.2.0 en ajoute (on peut ajouter, jamais retirer)
+        self.assertLessEqual({'seuil', 'urgence', 'vigilance', 'grace', 'vidage_max', 'delai_fige', 'reste_si_repris',
+                              'notifications', 'proteges'}, set(e['reglages']))
+        self.assertEqual(set(e['reglages']), set(rg.CLES_ECRITURE))
         self.assertEqual(e['fichier_reglages'], '/etc/gagarine.conf')
         self.assertEqual(e['service'], {'etat': 'active', 'actif_au_demarrage': True})
         self.assertEqual(e['dossier_etat'], str(self.d))

@@ -89,3 +89,52 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 - [x] Plus rien d'éparpillé hors de Gagarine : ancien garde-RAM, script et réglages zram de `/etc` (remplacés par ceux du paquet) retirés
 - [x] Essai réel de la file sur le poste : ordre, attente, annulation, ancien outil dans la même file
 - [x] Installation du correctif 1.1.1 (par l'utilisateur)
+
+## Phase 13 — Socle de la 1.2.0
+
+Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
+
+- [x] Réglages de la 1.2.0 (anticipation, pression, fin de travail, ntfy, correction des annonces, ménage, blocage Claude)
+- [x] Alertes sur le téléphone (ntfy), commandes apportées par des extensions
+
+## Phase 14 — File : mémoire apprise et fin de travail
+
+- [ ] Pic mémoire de chaque travail, mémoire des travaux, correction des annonces trop basses, `gagarine file appris`
+- [ ] Notification de fin de travail (bureau et ntfy)
+
+## Phase 15 — Garde : agir plus tôt, historique
+
+- [ ] Anticipation (temps avant saturation) et pression mémoire du noyau
+- [ ] Historique de 7 jours, `gagarine historique`
+- [ ] Alertes ntfy des programmes figés ou arrêtés ; journal lisible pour les nouveaux événements
+
+## Phase 16 — Ménage des inactifs
+
+- [ ] Démons Gradle et Kotlin, modèles LM Studio et Ollama, serveurs de développement ; `gagarine menage`
+- [ ] Ménage automatique (minuteur utilisateur)
+
+## Phase 17 — Hook Claude bloquant, plafonds des applications
+
+- [ ] `gagarine hook-claude` : refuse les travaux lourds hors de la file et donne la commande corrigée
+- [ ] `gagarine applications` : plafond mémoire par application du bureau
+
+## Phase 18 — Mises à jour par apt
+
+- [ ] Dépôt APT signé sur GitHub Pages, `scripts/publier-apt.sh`
+- [ ] Source APT et clé installées par le paquet
+
+## Phase 19 — Interface et indicateur 1.2.0
+
+- [ ] Réglages, historique sur la courbe, ménage, applications, mémoire apprise, travaux passés, journal
+- [ ] Indicateur : ménage
+
+## Phase 20 — Paquet, documentation et release 1.2.0
+
+- [ ] Paquet (nouveaux fichiers, minuteur utilisateur, source APT), pages de manuel, README, CHANGELOG
+- [ ] Release 1.2.0, release GitHub, dépôt APT publié
+
+## Phase 21 — Mise en place de la 1.2.0 sur le poste
+
+- [ ] Installation (par l'utilisateur), puis mises à jour par `apt upgrade`
+- [ ] Hook des sessions Claude remplacé par `gagarine hook-claude`
+- [ ] Scripts vidéo de Cofidesk, Cofidesk-gpu et Report passés par `gagarine file` (après les vidéos en cours)
