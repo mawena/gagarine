@@ -39,7 +39,23 @@ Description: RAM guard that freezes the program filling the memory
  .
  It includes a queue for heavy jobs ("gagarine file"): jobs run one at a
  time, each one locked into a kernel memory limit, so a runaway job cannot
- take the machine down.
+ take the machine down. The queue remembers the memory each job really used
+ and corrects announcements that are too low, and it notifies on the desktop
+ (and optionally on the phone through ntfy) when a job ends.
+ .
+ Gagarine also acts before the threshold: it freezes a program that would
+ fill the RAM within seconds, or when the kernel is already stalling on
+ memory pressure. It keeps a 7-day history of the RAM and of the biggest
+ programs ("gagarine historique"), and cleans up idle memory hogs (Gradle and
+ Kotlin daemons, models loaded in LM Studio or Ollama) with a user timer
+ ("gagarine menage"). It can cap the memory of desktop applications such as
+ Chrome or VS Code ("gagarine applications").
+ .
+ A hook for Claude Code sessions ("gagarine hook-claude") refuses heavy jobs
+ launched outside the queue and suggests the right command.
+ .
+ The package installs a signed APT repository entry, so "apt upgrade" keeps
+ Gagarine up to date.
  .
  A GNOME graphical interface ("gagarine-interface", GTK 4 and libadwaita)
  shows the RAM, the swap, the frozen programs, the job queue, the journal

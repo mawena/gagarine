@@ -29,6 +29,36 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .B gagarine file annuler
 .IR PID | TICKET
 .br
+.B gagarine file appris
+.RB [ \-\-json ]
+.br
+.B gagarine historique
+.RB [ \-\-depuis
+.IR 5min | 1h | 24h | 7j ]
+.RB [ \-\-json ]
+.br
+.B gagarine menage
+.RB [ \-\-json ]
+.br
+.B gagarine menage arreter
+.IR ID\ ...
+.br
+.B gagarine menage auto
+.br
+.B gagarine applications
+.RB [ \-\-json ]
+.br
+.B gagarine applications plafond
+.I ID
+.IR GO | aucun
+.br
+.B gagarine hook\-claude
+.RB [ \-\-tester
+.IR COMMANDE ]
+.br
+.B gagarine ntfy essai
+.I CIBLE
+.br
 .B gagarine journal
 .RB [ \-n
 .IR N ]
@@ -53,6 +83,11 @@ Quand un programme grossit sans fin (fuite de mémoire, test qui s'emballe), il 
 passe son temps à échanger avec le disque : plus rien ne répond. \fBgagarine\fR agit avant ce moment. Il tourne en service
 système (\fIgagarine.service\fR, administrateur) et mesure la RAM chaque seconde, quatre fois par seconde au\-delà du seuil
 de vigilance. La RAM utilisée est 100 % moins MemAvailable/MemTotal : le cache récupérable compte comme libre.
+.PP
+Avant même le seuil, il peut agir (réglages \fIanticipation\fR et \fIpression\fR) : le programme qui grossit le plus vite
+est figé dès que, à son rythme, il atteindrait le seuil dans moins de \fIanticipation\fR secondes, ou quand le noyau passe
+plus de \fIpression\fR % de son temps bloqué faute de mémoire. L'événement \fBfige\fR note son \fBdeclencheur\fR (seuil,
+anticipation, pression ou urgence).
 .PP
 Quand la RAM atteint le seuil (95 % par défaut) :
 .IP 1. 3
@@ -103,6 +138,56 @@ etat, ram, coeurs, commande, unite, sortie, source). Pour un ticket d'un ancien 
 Annule un travail de la file : en attente, il quitte la file ; en cours, il est arrêté. Seuls les travaux de l'utilisateur
 (l'administrateur : tous) ; un processus qui n'est pas dans la file n'est jamais touché. Code 1 si le travail est inconnu
 ou n'appartient pas à l'utilisateur.
+.TP
+.BR file " " appris " [" \-\-json ]
+Affiche la mémoire apprise de chaque travail : pic de mémoire (RAM + swap) des cinq dernières exécutions, annonce, nombre
+d'exécutions et date de la dernière, du plus récent au plus ancien. Avec \fB\-\-json\fR :
+\fB{"travaux": [{"nom", "executions", "pic_go", "annonce_go", "derniere"}]}\fR. Voir \fBFILE D'ATTENTE\fR.
+.TP
+.BR historique " [" \-\-depuis " \fIPERIODE\fR] [" \-\-json ]
+Résume les derniers jours (24 h par défaut ; \fB5min\fR, \fB1h\fR, \fB24h\fR ou \fB7j\fR) d'après l'historique écrit par
+le service (une mesure par minute, huit jours gardés dans \fIhistorique\-AAAA\-MM\-JJ.jsonl\fR) : pic de RAM, incidents
+(figé, arrêté, limite), programmes les plus gros et travaux de la file. Avec \fB\-\-json\fR : \fBdepuis_s\fR,
+\fBpas_s\fR, \fBpoints\fR (date, ram, swap_mo, zram_mo, pression ; moyennés par 10 minutes au\-delà de 24 h, le maximum de
+la RAM étant gardé), \fBincidents\fR, \fBgros\fR (nom, pic_mo, minutes) et \fBtravaux\fR (nom, date, duree, code,
+pic_go).
+.TP
+.BR menage " [" \-\-json ]
+Liste les programmes gourmands (au moins 300 Mo) qui ne font plus rien : démons Gradle et Kotlin, modèles chargés dans
+LM Studio ou Ollama, serveurs de développement (node, vite, next, webpack…). Seuls les processus de l'utilisateur sont
+vus. Avec \fB\-\-json\fR : \fB{"auto", "delai_min", "candidats": [{"id", "type", "nom", "pid", "memoire_mo",
+"inactif_depuis_s", "action", "auto"}]}\fR ; \fBid\fR est le PID, \fBlmstudio\fR ou \fBollama:\fR\fIMODELE\fR, et
+\fBaction\fR vaut \fBarreter\fR ou \fBdecharger\fR.
+.TP
+.BI menage " arreter ID" ...
+Arrête (SIGTERM, puis SIGKILL après 10 s) ou décharge les candidats nommés, et le note au journal (événement
+\fBmenage\fR). Un identifiant qui n'est pas un candidat donne le code 1.
+.TP
+.B menage auto
+Ménage automatique, lancé toutes les 2 minutes par le minuteur utilisateur \fIgagarine\-menage.timer\fR : arrête ou
+décharge les candidats inactifs depuis plus de \fImenage_delai\fR minutes (5 minutes si la RAM dépasse le seuil de
+vigilance), si \fImenage_auto\fR est actif. Les serveurs de développement ne sont jamais arrêtés tout seuls.
+.TP
+.BR applications " [" \-\-json ]
+Liste les applications du bureau en cours (Chrome, VS Code…) avec leur mémoire, et celles qui ont un plafond. Avec
+\fB\-\-json\fR : \fB{"applications": [{"id", "nom", "prefixe", "instances", "memoire_mo", "plafond_go"}]}\fR.
+.TP
+.BI applications " plafond ID " "\fR(\fIGO\fR | \fBaucun\fR)"
+Plafonne la mémoire d'une application : écrit \fI~/.config/systemd/user/\fIPREFIXE\fI.scope.d/50\-gagarine.conf\fR
+(\fBMemoryHigh\fR), recharge systemd et l'applique aux instances ouvertes. Au\-delà du plafond, l'application est freinée
+et rangée dans le swap, jamais arrêtée. \fBaucun\fR retire le plafond.
+.TP
+.BR hook\-claude " [" \-\-tester " \fICOMMANDE\fR]"
+Hook \fBPreToolUse\fR des sessions Claude Code (JSON sur l'entrée standard, réponse JSON). Rappelle l'état du poste
+quand il est chargé et les événements de la dernière demi\-heure, et, si \fIclaude_bloquer\fR est actif, refuse les
+travaux lourds lancés hors de la file (tests, compilations, \fBffmpeg\fR, \fBdocker build\fR…) en donnant la commande à
+utiliser. Si la file connaît déjà le travail, la commande proposée annonce la RAM apprise (1,2 × le pic, arrondi au
+demi\-Go supérieur). Ne plante jamais : en cas d'erreur, la sortie est vide. \fB\-\-tester\fR affiche le verdict sur une
+commande sans rien lire. Le paquet fournit \fI/usr/share/gagarine/claude/ressources\-poste.sh\fR, qui l'appelle.
+.TP
+.BI ntfy " essai CIBLE"
+Envoie un message d'essai à \fICIBLE\fR (un sujet ntfy, ou l'adresse complète d'un sujet), même si elle n'est pas
+enregistrée dans les réglages. Code 0 si le serveur l'a accepté, 1 sinon, 2 si la cible est invalide.
 .TP
 .BR journal " [" \-n " \fIN\fR] [" \-\-json ]
 Affiche les \fIN\fR derniers événements (50 par défaut), triés par date, fusionnés depuis le journal du service
@@ -156,6 +241,13 @@ Code de sortie : celui de la commande ; 128 + \fIn\fR si elle est tuée par le s
 arrêtée ; 2 si les arguments sont invalides. SIGTERM ou SIGINT reçu pendant l'attente (ticket retiré) ou l'exécution (le
 scope est arrêté) donne 143 ou 130. Le journal de l'utilisateur (\fI~/.local/state/gagarine/evenements.jsonl\fR, source
 \fBfile\fR) note \fBtravail\-debut\fR, \fBtravail\-fin\fR, \fBtravail\-annule\fR et \fBlimite\fR.
+.PP
+Mémoire apprise : pendant un travail, la file relève toutes les 2 secondes le pic de mémoire de son scope et le garde dans
+\fI~/.local/state/gagarine/travaux.json\fR (cinq derniers pics par nom de travail). Au lancement suivant, si le pic dépasse
+l'annonce de plus de 10 %, elle le dit et, avec \fIfile_ajuster\fR, corrige l'annonce : 1,2 × le pic arrondi au demi\-Go
+supérieur, au plus 60 % de la RAM du poste (au\-delà, ce travail a sans doute une fuite de mémoire). Les événements
+\fBtravail\-fin\fR et \fBlimite\fR portent \fBpic_go\fR ; \fBtravail\-debut\fR porte \fBannonce_initiale\fR et \fBajuste\fR.
+Un travail d'au moins \fInotification_fin_min\fR secondes envoie une notification de fin sur le bureau (et par ntfy).
 .SH RÉGLAGES
 Fichier \fI/etc/gagarine.conf\fR, au format INI, section \fB[gagarine]\fR. Il est conservé aux mises à jour du paquet.
 Le service relit ses réglages sur le signal SIGHUP, sans perdre son état (programmes figés, historique) : après une
@@ -187,7 +279,37 @@ Mo qu'un programme repris peut encore demander (256).
 .TP
 .B proteges
 Expression régulière de noms de programmes à protéger en plus de la liste intégrée (vide).
+.TP
+.B anticipation
+Secondes : fige tout de suite un programme qui atteindrait le seuil dans ce délai ; 0 : désactivé (15).
+.TP
+.B pression
+Pourcentage de temps bloqué faute de mémoire (\fIfull avg10\fR de \fI/proc/pressure/memory\fR) qui déclenche l'action ;
+0 : désactivé (20).
+.TP
+.B notifications_fin
+\fBoui\fR ou \fBnon\fR : notification à la fin d'un travail de la file (oui).
+.TP
+.B notification_fin_min
+Durée minimale en secondes d'un travail pour être notifié ; 0 : tous (30).
+.TP
+.B ntfy
+Sujet ntfy (ou adresse complète d'un sujet) où recevoir aussi les alertes sur le téléphone ; vide : rien n'est envoyé
+(vide).
+.TP
+.B file_ajuster
+\fBoui\fR ou \fBnon\fR : la file corrige elle\-même les annonces trop basses d'après la mémoire apprise (oui).
+.TP
+.B menage_auto
+\fBoui\fR ou \fBnon\fR : ménage automatique des démons et modèles inactifs (oui).
+.TP
+.B menage_delai
+Minutes d'inactivité avant le ménage automatique (30).
+.TP
+.B claude_bloquer
+\fBoui\fR ou \fBnon\fR : le hook des sessions Claude Code refuse les travaux lourds lancés hors de la file (oui).
 .PP
+Les composants qui tournent sous l'utilisateur (file, ménage, hook Claude, applications) lisent aussi \fI/etc/gagarine.conf\fR.
 Des variables d'environnement prévalent sur le fichier : \fBGAGARINE_CONFIG\fR (fichier de réglages), \fBGAGARINE_ETAT\fR
 (dossier d'état), \fBGAGARINE_SEUIL\fR, etc.
 .SH FICHIERS
@@ -203,6 +325,29 @@ Journal des événements, une ligne JSON par événement.
 .TP
 .I /var/lib/gagarine/figes.json
 Programmes actuellement figés (conservés d'un redémarrage du service à l'autre).
+.TP
+.I /var/lib/gagarine/historique\-AAAA\-MM\-JJ.jsonl
+Historique : une mesure par minute (RAM, swap, pression, trois plus gros programmes), huit jours gardés.
+.TP
+.I ~/.local/state/gagarine/travaux.json
+Mémoire apprise des travaux de la file (pics de mémoire).
+.TP
+.I ~/.local/state/gagarine/menage.json
+Suivi de l'inactivité des candidats au ménage.
+.TP
+.I /usr/lib/systemd/user/gagarine\-menage.service
+.TQ
+.I /usr/lib/systemd/user/gagarine\-menage.timer
+Ménage automatique, toutes les 2 minutes (minuteur activé pour tous les utilisateurs).
+.TP
+.I /usr/share/gagarine/claude/ressources\-poste.sh
+Hook \fBPreToolUse\fR à déclarer dans les réglages de Claude Code (appelle \fBgagarine hook\-claude\fR).
+.TP
+.I /etc/apt/sources.list.d/gagarine.sources
+.TQ
+.I /usr/share/keyrings/gagarine.gpg
+Dépôt APT signé (\fIhttps://mawena.github.io/gagarine/apt\fR) : après une première installation, \fBapt upgrade\fR met
+Gagarine à jour.
 .PP
 Hors administrateur, l'état est dans \fI~/.local/state/gagarine\fR.
 .SH EXEMPLES
@@ -250,6 +395,26 @@ Lancer un rendu à la queue, voir la file, puis annuler un travail (processus 42
 gagarine file "rendu vidéo" 4 4 \-\- ffmpeg \-i a.mkv b.mp4
 gagarine file \-\-etat
 gagarine file annuler 4242
+.fi
+.RE
+.PP
+Voir la mémoire apprise, l'historique de la semaine, le ménage possible, puis plafonner Chrome à 4 Go :
+.PP
+.RS
+.nf
+gagarine file appris
+gagarine historique \-\-depuis 7j
+gagarine menage
+gagarine applications plafond google\-chrome 4
+.fi
+.RE
+.PP
+Essayer les alertes du téléphone, et voir ce que le hook ferait d'une commande :
+.PP
+.RS
+.nf
+gagarine ntfy essai mon\-sujet\-secret
+gagarine hook\-claude \-\-tester "make deb"
 .fi
 .RE
 .SH VOIR AUSSI

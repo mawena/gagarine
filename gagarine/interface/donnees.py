@@ -337,7 +337,7 @@ def decrire_evenement(ev):
         titre = f'Travail « {nom} » terminé' + ('' if code in (0, None) else f' (code {code})')
         if ev.get('duree') is not None:
             morceaux.append(f'durée : {formater_duree(ev["duree"])}')
-        if ev.get('pic_go') is not None:
+        if (ev.get('pic_go') or 0) > 0:   # 0 : travail trop court pour qu'un pic ait pu être relevé
             morceaux.append(f'pic de mémoire : {formater_go(ev["pic_go"])}')
     elif action == 'travail-annule':
         titre = f'Travail « {nom} » annulé'
@@ -638,7 +638,7 @@ def detail_travail_passe(t, maintenant=None):
     morceaux = [heure_locale(t.get('date'), maintenant)]
     if t.get('duree') is not None:
         morceaux.append(f'durée {formater_duree(t["duree"])}')
-    if t.get('pic_go') is not None:
+    if (t.get('pic_go') or 0) > 0:
         morceaux.append(f'pic {formater_go(round(float(t["pic_go"]), 1))}')
     morceaux.append('terminé' if reussi else f'échec (code {code})')
     return titre, ' · '.join(morceaux), reussi
@@ -649,7 +649,7 @@ def detail_appris(t):
     pic, annonce = t.get('pic_go'), t.get('annonce_go')
     trop_bas = pic is not None and annonce is not None and float(pic) > float(annonce) * 1.1
     morceaux = []
-    if pic is not None:
+    if pic:
         morceaux.append(f'pic habituel {formater_go(round(float(pic), 1))}')
     if annonce is not None:
         morceaux.append(f'annoncé {formater_go(annonce)}')

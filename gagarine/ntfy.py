@@ -59,3 +59,44 @@ def envoyer_en_fond(cible, titre, texte, priorite='normale', etiquettes=(), **op
                            daemon=True, name='gagarine-ntfy')
     fil.start()
     return fil
+
+
+# ======================================================================================================================
+# Commande : gagarine ntfy essai CIBLE
+# ======================================================================================================================
+def commande_essai(args, ctx, ouvrir=urllib.request.urlopen):
+    """Envoie un message d'essai à CIBLE (même non enregistrée). 0 : le serveur l'a accepté ; 1 : refusé ou injoignable ;
+    2 : cible invalide ou arguments faux."""
+    import sys
+    from gagarine.reglages import MOTIF_NTFY
+    if len(args) != 1:
+        return usage()
+    cible = args[0].strip()
+    if not MOTIF_NTFY.fullmatch(cible):
+        print('Cible invalide : un sujet ntfy (lettres, chiffres, - et _) ou une adresse http(s)://serveur/sujet.',
+              file=sys.stderr)
+        return 2
+    serveur, sujet = destination(cible)
+    if envoyer(cible, 'Gagarine : essai', 'Si vous lisez ce message, les alertes de Gagarine arrivent bien sur ce sujet.',
+               'basse', ('white_check_mark',), ouvrir=ouvrir):
+        print(f'Message d\'essai envoyé au sujet « {sujet} » ({serveur}).')
+        return 0
+    print(f'Le serveur {serveur} n\'a pas accepté le message d\'essai (réseau coupé ou sujet refusé).', file=sys.stderr)
+    return 1
+
+
+def usage():
+    import sys
+    print('Usage :\n' + AIDE_COMMANDES.rstrip('\n'), file=sys.stderr)
+    return 2
+
+
+def commande_ntfy(args, ctx):
+    if args[:1] == ['essai']:
+        return commande_essai(args[1:], ctx)
+    return usage()
+
+
+COMMANDES = {'ntfy': commande_ntfy}
+AIDE_COMMANDES = (
+    '  ntfy essai CIBLE               envoie un message d\'essai à CIBLE (sujet ou adresse ntfy, même non enregistrée)\n')

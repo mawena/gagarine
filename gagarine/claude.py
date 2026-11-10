@@ -7,6 +7,7 @@ Règle d'or : ne jamais planter et ne jamais bloquer à tort. Une erreur interne
 une entrée qui n'est pas du JSON : sortie vide, code 0.
 """
 import json
+import math
 import os
 import re
 import sys
@@ -524,18 +525,36 @@ def retirer_heredocs(commande):
     return '\n'.join(sortie)
 
 
-def commande_corrigee(commande, travaux):
-    """La commande réécrite : chaque travail lourd passe par `gagarine file "<nom>" <Go> <cœurs> -- …`."""
+def ram_apprise(nom, appris):
+    """La RAM (Go) que la file a apprise pour ce travail : 1,2 × le plus haut des derniers pics, arrondi au 0,5 Go
+    supérieur ; None si la file ne le connaît pas."""
+    try:
+        pic = max(appris[nom]['pics_go'])
+        return math.ceil(round(1.2 * pic * 2, 6)) / 2
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def go_texte(x):
+    return str(int(x)) if float(x).is_integer() else str(x)
+
+
+def commande_corrigee(commande, travaux, appris=None):
+    """La commande réécrite : chaque travail lourd passe par `gagarine file "<nom>" <Go> <cœurs> -- …`. Si la file
+    connaît déjà le travail (`appris`, la mémoire des travaux), elle propose la RAM apprise à la place de la valeur fixe."""
     res = commande
     for f in sorted(travaux, key=lambda f: -f['debut']):
         segment = res[f['debut']:f['fin']]
+        apprise = ram_apprise(f['nom'], appris or {})
+        if apprise is not None:
+            f = {**f, 'go': go_texte(apprise)}
         if AFFECTATION.match(segment):
             segment = 'env ' + segment   # la file lance un programme : les affectations passent par env
         res = res[:f['debut']] + f'gagarine file "{f["nom"]}" {f["go"]} {f["coeurs"]} -- {segment}' + res[f['fin']:]
     return res
 
 
-def verdict(commande):
+def verdict(commande, appris=None):
     """{'lourd': bool, 'raison', 'travaux', 'corrigee'} ; ne bloque jamais en cas de doute (commande illisible)."""
     try:
         travaux = trouver(commande)
@@ -544,7 +563,7 @@ def verdict(commande):
     if not travaux:
         return {'lourd': False, 'raison': 'rien de lourd', 'travaux': [], 'corrigee': None}
     return {'lourd': True, 'raison': ' ; '.join(t['raison'] for t in travaux), 'travaux': travaux,
-            'corrigee': commande_corrigee(commande, travaux)}
+            'corrigee': commande_corrigee(commande, travaux, appris)}
 
 
 def motif_du_refus(v):
@@ -707,12 +726,24 @@ def decider(entree, bloquer, env, executer):
         if isinstance(commande, str) and commande.strip():
             v = verdict(commande)
             if v['lourd']:
+                try:   # la file connaît peut-être déjà le travail : on propose la RAM apprise
+                    from gagarine.file import lire_travaux
+                    v = verdict(commande, lire_travaux(env))
+                except Exception:
+                    pass
                 return sortie_hook(refus=motif_du_refus(v))
     return sortie_hook(contexte=message_poste(env, executer))
 
 
-def tester(commande):
-    v = verdict(commande)
+def tester(commande, env=None):
+    appris = None
+    if env is not None:
+        try:
+            from gagarine.file import lire_travaux
+            appris = lire_travaux(env)
+        except Exception:
+            pass
+    v = verdict(commande, appris)
     if v['lourd']:
         print(f'lourd : {v["raison"]}')
         print(f'commande corrigée : {v["corrigee"]}')
@@ -726,7 +757,7 @@ def commande_hook_claude(args, ctx):
         if len(args) != 2:
             print('usage : gagarine hook-claude --tester "<commande>"', file=sys.stderr)
             return 2
-        return tester(args[1])
+        return tester(args[1], ctx.env)
     try:
         from gagarine.reglages import charger_reglages
         try:
