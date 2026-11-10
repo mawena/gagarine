@@ -2,3 +2,5 @@ bin/gagarine usr/bin
 gagarine/*.py usr/share/gagarine/gagarine
 etc/gagarine.conf etc
 systemd/gagarine.service usr/lib/systemd/system
+data/zram/50-gagarine.conf usr/lib/systemd/zram-generator.conf.d
+data/sysctl/90-gagarine.conf usr/lib/sysctl.d

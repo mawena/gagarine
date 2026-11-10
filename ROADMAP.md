@@ -78,7 +78,7 @@ Conception : [docs/conception-1.1.0.md](docs/conception-1.1.0.md).
 ## Phase 11 — Paquet et documentation 1.1.0
 
 - [ ] Paquet : nouveaux fichiers, dépendances recommandées, validation du `.desktop` et du metainfo, lintian
-- [ ] Swap compressé en RAM (zram) et réglages du noyau fournis par le paquet, appliqués à l'installation
+- [x] Swap compressé en RAM (zram) et réglages du noyau fournis par le paquet, appliqués à l'installation
 - [ ] README (file d'attente, interface, indicateur, captures), pages de manuel, CHANGELOG
 - [ ] Release git flow 1.1.0, release GitHub avec le `.deb`, « About » GitHub à jour
 
