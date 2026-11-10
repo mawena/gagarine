@@ -1,3 +1,16 @@
+gagarine (1.3.0) unstable; urgency=medium
+
+  * File d'attente plus rapide : plusieurs travaux à la fois quand ils
+    tiennent (file_paralleles), priorités (--priorite, file priorite),
+    motif de chaque attente.
+  * Fuites de mémoire repérées pendant qu'un programme tourne (événement
+    fuite, notification) et d'un lancement à l'autre (tendance).
+  * Ligne d'état des sessions Claude Code : gagarine ligne-etat.
+  * Interface et indicateur pour ces nouveautés ; démarrage plus rapide de
+    la commande.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 19:34:51 +0000
+
 gagarine (1.2.2) unstable; urgency=low
 
   * Documentation : installation par le dépôt APT en tête du README (en
