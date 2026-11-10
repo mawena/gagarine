@@ -99,8 +99,8 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 14 — File : mémoire apprise et fin de travail
 
-- [ ] Pic mémoire de chaque travail, mémoire des travaux, correction des annonces trop basses, `gagarine file appris`
-- [ ] Notification de fin de travail (bureau et ntfy)
+- [x] Pic mémoire de chaque travail, mémoire des travaux, correction des annonces trop basses, `gagarine file appris`
+- [x] Notification de fin de travail (bureau et ntfy)
 
 ## Phase 15 — Garde : agir plus tôt, historique
 
@@ -110,13 +110,13 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 16 — Ménage des inactifs
 
-- [ ] Démons Gradle et Kotlin, modèles LM Studio et Ollama, serveurs de développement ; `gagarine menage`
-- [ ] Ménage automatique (minuteur utilisateur)
+- [x] Démons Gradle et Kotlin, modèles LM Studio et Ollama, serveurs de développement ; `gagarine menage`
+- [x] Ménage automatique (minuteur utilisateur)
 
 ## Phase 17 — Hook Claude bloquant, plafonds des applications
 
-- [ ] `gagarine hook-claude` : refuse les travaux lourds hors de la file et donne la commande corrigée
-- [ ] `gagarine applications` : plafond mémoire par application du bureau
+- [x] `gagarine hook-claude` : refuse les travaux lourds hors de la file et donne la commande corrigée
+- [x] `gagarine applications` : plafond mémoire par application du bureau
 
 ## Phase 18 — Mises à jour par apt
 
