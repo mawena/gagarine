@@ -287,24 +287,21 @@ class PageReglages(Adw.PreferencesPage):
         affiche = self.ligne_indicateur.get_active()
         if affiche == donnees.indicateur_affiche(self.chemin_autostart) and not getattr(self, '_forcer', False):
             return
+        # le fichier d'autostart est écrit par l'indicateur lui-même (--afficher / --masquer) : une seule écriture
         try:
-            os.makedirs(os.path.dirname(self.chemin_autostart), exist_ok=True)
-            if affiche:
-                if os.path.exists(self.chemin_autostart):
-                    os.remove(self.chemin_autostart)
-            else:
-                with open(self.chemin_autostart, 'w', encoding='utf-8') as f:
-                    f.write(donnees.contenu_autostart_indicateur(False))
-        except OSError as e:
-            self.fenetre.toast(f'Réglage impossible : {e.strerror or e}', longue=True)
+            subprocess.run(self.commande_indicateur + ['--afficher' if affiche else '--masquer'], check=True, timeout=10,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError) as e:
+            self.fenetre.toast(f'Réglage impossible : {getattr(e, "strerror", None) or e}', longue=True)
             return
         try:
-            if affiche and self.commande_indicateur:
+            if affiche:
                 subprocess.Popen(self.commande_indicateur, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL, start_new_session=True)
-            elif not affiche:
-                Gio.Subprocess.new(['pkill', '-u', str(os.getuid()), '-f', 'gagarine-indicateur'], Gio.SubprocessFlags.NONE)
-        except (OSError, GLib.Error):
+            else:   # arrête seulement l'indicateur de l'utilisateur (« python3 …/gagarine-indicateur » en entier)
+                subprocess.run(['pkill', '-u', str(os.getuid()), '-f', r'^/usr/bin/python3 \S*gagarine-indicateur$'],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        except (OSError, subprocess.SubprocessError):
             pass
         self.fenetre.toast('Indicateur affiché dans la barre du haut' if affiche else 'Indicateur masqué')
 
