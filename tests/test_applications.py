@@ -137,7 +137,8 @@ class TestListe(Base):
         code, sortie, _ = self.lancer('--json')
         self.assertEqual(code, 0)
         d = json.loads(sortie)
-        self.assertEqual(set(d['applications'][0]), {'id', 'nom', 'prefixe', 'instances', 'memoire_mo', 'plafond_go'})
+        self.assertEqual(set(d['applications'][0]), {'id', 'nom', 'prefixe', 'instances', 'memoire_mo', 'plafond_go',
+                                                     'ids', 'prefixes'})
 
     def test_texte(self):
         code, sortie, _ = self.lancer()
@@ -264,3 +265,56 @@ class TestLigneDeCommande(Base):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestRegroupement(Base):
+    """Sous GNOME, Chrome et VS Code tournent aussi dans des scopes à eux (`app-<id>-…`) : une seule ligne par application."""
+
+    def setUp(self):
+        super().setUp()
+        (self.bureau[0] / 'com.google.Chrome.desktop').write_text('[Desktop Entry]\nName=Google Chrome\n')
+        self.systemd.scopes['app-com.google.Chrome-555.scope'] = {'memoire': 300 * MO, 'plafond': None}
+        self.systemd.scopes['app-gnome-com.microsoft.VSCode-777.scope'] = {'memoire': 100 * MO, 'plafond': None}
+
+    def test_une_ligne_par_application(self):
+        apps = {a['id']: a for a in self.donnees()}
+        self.assertNotIn('app-com.google.Chrome', apps)
+        self.assertNotIn('app-com.microsoft.VSCode', apps)
+        chrome = apps['google-chrome']
+        self.assertEqual((chrome['nom'], chrome['instances'], chrome['memoire_mo']), ('Google Chrome', 3, 4800))
+        self.assertEqual(chrome['ids'], ['google-chrome', 'app-com.google.Chrome'])
+        self.assertEqual(chrome['prefixes'], ['app-gnome-google\\x2dchrome-', 'app-com.google.Chrome-'])
+        code = apps['com.microsoft.VSCode']            # sans .desktop : même identifiant au préfixe « app- » près
+        self.assertEqual((code['instances'], code['memoire_mo']), (2, 800))
+        self.assertEqual(code['ids'], ['com.microsoft.VSCode', 'app-com.microsoft.VSCode'])
+
+    def test_plafond_pour_toutes_les_familles(self):
+        for ident in ('google-chrome', 'app-com.google.Chrome'):      # par l'un ou l'autre identifiant
+            code, sortie, _ = self.lancer('plafond', ident, '1,5')
+            self.assertEqual(code, 0)
+            self.assertIn('Plafond de « google-chrome » : 1,5 Go', sortie)
+            self.assertIn('3 instances', sortie)
+            for prefixe in ('app-gnome-google\\x2dchrome-', 'app-com.google.Chrome-'):
+                self.assertIn('MemoryHigh=1.5G', (self.unites / f'{prefixe}.scope.d' / '50-gagarine.conf').read_text())
+        regles = {c[4] for c in self.systemd.appels if c[2] == 'set-property'}
+        self.assertIn('app-com.google.Chrome-555.scope', regles)
+        self.assertEqual({a['id']: a['plafond_go'] for a in self.donnees()}['google-chrome'], 1.5)
+
+    def test_retrait_pour_toutes_les_familles(self):
+        self.lancer('plafond', 'google-chrome', '2')
+        code, sortie, _ = self.lancer('plafond', 'google-chrome', 'aucun')
+        self.assertEqual(code, 0)
+        for prefixe in ('app-gnome-google\\x2dchrome-', 'app-com.google.Chrome-'):
+            self.assertFalse((self.unites / f'{prefixe}.scope.d').exists())
+
+    def test_virgule_dans_la_liste(self):
+        self.lancer('plafond', 'google-chrome', '2.5')
+        _, sortie, _ = self.lancer()
+        self.assertIn('2,5 Go', sortie)
+        self.assertNotIn('2.5 Go', sortie)
+
+    def test_go_lisible(self):
+        self.assertEqual(ap.go_lisible(1.5), '1,5')
+        self.assertEqual(ap.go_lisible(3.0), '3')
+        self.assertEqual(ap.go_texte(1.5), '1.5')      # systemd veut le point
+

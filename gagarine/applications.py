@@ -180,14 +180,42 @@ def donnees_applications(ctx, dossiers_bureau=None):
     for p in prefixes_plafonnes(ctx.env):
         apps.setdefault(p, {'instances': 0, 'octets': 0, 'plafond': None})
         apps[p]['plafond'] = plafond_du_dossier(p, ctx.env) or apps[p]['plafond']
-    res = []
+    entrees = []
     for p, a in apps.items():
         identifiant = id_du_prefixe(p)
-        res.append({'id': identifiant, 'nom': nom_lisible(identifiant, ctx.env, dossiers_bureau), 'prefixe': p,
-                    'instances': a['instances'], 'memoire_mo': round(a['octets'] / 1048576),
-                    'plafond_go': round(a['plafond'] / GO, 2) if a['plafond'] else None})
+        entrees.append({'id': identifiant, 'nom': nom_lisible(identifiant, ctx.env, dossiers_bureau), 'prefixe': p,
+                        'instances': a['instances'], 'memoire_mo': round(a['octets'] / 1048576),
+                        'plafond_go': round(a['plafond'] / GO, 2) if a['plafond'] else None})
+    res = regrouper(entrees)
     res.sort(key=lambda a: (-a['memoire_mo'], a['id']))
     return {'applications': res}
+
+
+def cle_de_regroupement(e):
+    """Même application : même nom lisible ; sans fichier .desktop, même identifiant au préfixe « app- » près."""
+    return (e['nom'] if e['nom'] != e['id'] else e['id'].removeprefix('app-')).casefold()
+
+
+def regrouper(entrees):
+    """Sous GNOME, une application peut tourner dans deux familles de scopes : celle du lanceur du bureau
+    (`app-gnome-<id>-…`) et la sienne (`app-<id>-…`) ; Chrome et VS Code le font. On les réunit en une seule
+    application (mémoire et instances additionnées) ; son plafond vaut pour toutes ses familles (`prefixes`, `ids`)."""
+    groupes = {}
+    for e in entrees:
+        groupes.setdefault(cle_de_regroupement(e), []).append(e)
+    res = []
+    for membres in groupes.values():
+        # identifiant principal : celui du lanceur du bureau (sans « app- » ni « snap. »), sinon le plus gourmand
+        membres.sort(key=lambda e: (e['id'].startswith(('app-', 'snap.')), -e['memoire_mo'], e['id']))
+        principal = membres[0]
+        nom = next((e['nom'] for e in membres if e['nom'] != e['id']), principal['nom'])
+        plafonds = [e['plafond_go'] for e in membres if e['plafond_go']]
+        res.append({'id': principal['id'], 'nom': nom, 'prefixe': principal['prefixe'],
+                    'instances': sum(e['instances'] for e in membres),
+                    'memoire_mo': sum(e['memoire_mo'] for e in membres),
+                    'plafond_go': max(plafonds) if plafonds else None,
+                    'ids': [e['id'] for e in membres], 'prefixes': [e['prefixe'] for e in membres]})
+    return res
 
 
 def afficher(ctx, en_json):
@@ -200,7 +228,7 @@ def afficher(ctx, en_json):
         return 0
     print(f'{"Application":<34} {"Instances":>9} {"Mémoire":>10} {"Plafond":>9}  Identifiant')
     for a in d['applications']:
-        plafond = f'{a["plafond_go"]:g} Go' if a['plafond_go'] else 'aucun'
+        plafond = f'{go_lisible(a["plafond_go"])} Go' if a['plafond_go'] else 'aucun'
         print(f'{a["nom"][:34]:<34} {a["instances"]:>9} {a["memoire_mo"]:>7} Mo {plafond:>9}  {a["id"]}')
     return 0
 
@@ -215,7 +243,13 @@ def lire_go(texte):
 
 
 def go_texte(v):
+    """Pour systemd (point décimal) : 1.5"""
     return f'{v:.2f}'.rstrip('0').rstrip('.')
+
+
+def go_lisible(v):
+    """Pour les messages, à la française : 1,5"""
+    return go_texte(v).replace('.', ',')
 
 
 def poser_plafond(identifiant, valeur, ctx):
@@ -230,38 +264,41 @@ def poser_plafond(identifiant, valeur, ctx):
         except ValueError:
             print(f'plafond invalide : « {valeur} » (un nombre de Go, ou « aucun »)', file=sys.stderr)
             return 2
-    connues = {id_du_prefixe(prefixe_du_scope(i['scope'])): prefixe_du_scope(i['scope']) for i in instances_en_cours(ctx)}
-    connues.update({id_du_prefixe(p): p for p in prefixes_plafonnes(ctx.env)})
-    prefixe = connues.get(identifiant) or prefixe_de_l_id(identifiant)
-    dossier = dossier_plafond(prefixe, ctx.env)
-    fichier = dossier / FICHIER_PLAFOND
-    if aucun:
-        try:
-            fichier.unlink()
-        except FileNotFoundError:
-            pass
-        except OSError as e:
-            print(f'impossible de retirer {fichier} : {e}', file=sys.stderr)
-            return 1
-        try:
-            dossier.rmdir()   # seulement s'il est vide : le reste n'est pas à nous
-        except OSError:
-            pass
-        propriete = 'MemoryHigh=infinity'
+    # Toutes les familles de scopes de l'application (voir regrouper) ; à défaut, celle que donne l'identifiant
+    groupe = next((a for a in donnees_applications(ctx)['applications'] if identifiant in a['ids']), None)
+    if groupe:
+        prefixes, nom = groupe['prefixes'], groupe['id']
     else:
-        propriete = f'MemoryHigh={go_texte(go)}G'
-        try:
-            dossier.mkdir(parents=True, exist_ok=True)
-            fichier.write_text(f'# Écrit par « gagarine applications plafond » ; se retire par « gagarine applications '
-                               f'plafond {identifiant} aucun »\n[Scope]\n{propriete}\n')
-        except OSError as e:
-            print(f'impossible d\'écrire {fichier} : {e}', file=sys.stderr)
-            return 1
+        prefixes, nom = [prefixe_de_l_id(identifiant)], identifiant
+    propriete = 'MemoryHigh=infinity' if aucun else f'MemoryHigh={go_texte(go)}G'
+    for prefixe in prefixes:
+        dossier = dossier_plafond(prefixe, ctx.env)
+        fichier = dossier / FICHIER_PLAFOND
+        if aucun:
+            try:
+                fichier.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                print(f'impossible de retirer {fichier} : {e}', file=sys.stderr)
+                return 1
+            try:
+                dossier.rmdir()   # seulement s'il est vide : le reste n'est pas à nous
+            except OSError:
+                pass
+        else:
+            try:
+                dossier.mkdir(parents=True, exist_ok=True)
+                fichier.write_text(f'# Écrit par « gagarine applications plafond » ; se retire par « gagarine applications '
+                                   f'plafond {nom} aucun »\n[Scope]\n{propriete}\n')
+            except OSError as e:
+                print(f'impossible d\'écrire {fichier} : {e}', file=sys.stderr)
+                return 1
     code, _, erreur = ctx.executer(['systemctl', '--user', 'daemon-reload'])
     if code != 0:
         print(f'daemon-reload a échoué : {erreur.strip()}', file=sys.stderr)
         return 1
-    ouverts = [i['scope'] for i in instances_en_cours(ctx) if prefixe_du_scope(i['scope']) == prefixe]
+    ouverts = [i['scope'] for i in instances_en_cours(ctx) if prefixe_du_scope(i['scope']) in prefixes]
     echecs = 0
     for scope in ouverts:
         code, _, erreur = ctx.executer(['systemctl', '--user', 'set-property', '--runtime', scope, propriete])
@@ -271,9 +308,9 @@ def poser_plafond(identifiant, valeur, ctx):
     quand = (f'appliqué à {len(ouverts)} instance{"s" if len(ouverts) > 1 else ""} ouverte{"s" if len(ouverts) > 1 else ""}'
              if ouverts else 'applicable au prochain lancement (application non ouverte)')
     if aucun:
-        print(f'Plafond de « {identifiant} » retiré ; {quand}.')
+        print(f'Plafond de « {nom} » retiré ; {quand}.')
     else:
-        print(f'Plafond de « {identifiant} » : {go_texte(go)} Go ({quand}). Au-delà, l\'application est freinée et rangée dans '
+        print(f'Plafond de « {nom} » : {go_lisible(go)} Go ({quand}). Au-delà, l\'application est freinée et rangée dans '
               f'le swap, jamais arrêtée.')
     return 1 if echecs else 0
 
