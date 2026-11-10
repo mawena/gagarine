@@ -69,7 +69,7 @@ def horodatage(date):
 def fichiers_journaux(env=None, home=None):
     """Journaux à fusionner : celui du service (ou GAGARINE_ETAT), celui de l'utilisateur et l'ancien de file-attente."""
     env = os.environ if env is None else env
-    home = Path(home or Path.home())
+    home = Path(home or env.get('HOME') or Path.home())
     if env.get('GAGARINE_ETAT'):
         principaux = [Path(env['GAGARINE_ETAT']) / 'evenements.jsonl']
     else:
