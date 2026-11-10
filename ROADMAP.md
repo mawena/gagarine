@@ -138,3 +138,29 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 - [x] Installation (par l'utilisateur), puis mises à jour par `apt upgrade`
 - [x] Hook des sessions Claude remplacé par `gagarine hook-claude`
 - [ ] Scripts vidéo de Cofidesk, Cofidesk-gpu et Report passés par `gagarine file` (après les vidéos en cours)
+
+## Phase 22 — Socle de la 1.3.0
+
+Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
+
+- [x] Réglages `file_paralleles`, `fuite_seuil`, `fuite_notifier` ; extension `ligne`
+
+## Phase 23 — File plus rapide
+
+- [ ] Plusieurs travaux à la fois quand la mémoire et les cœurs suffisent (`file_paralleles`), sans famine
+- [ ] Priorités (`--priorite urgent|normal|fond`, `gagarine file priorite`)
+- [ ] Fuite d'un lancement à l'autre (tendance de la mémoire apprise)
+
+## Phase 24 — Fuites repérées pendant qu'un programme tourne
+
+- [ ] Pente sur 5 minutes, événement `fuite`, notification (et ntfy), `fuites` dans `etat --json`
+
+## Phase 25 — État du poste dans Claude Code
+
+- [ ] `gagarine ligne-etat [--avec COMMANDE]`
+
+## Phase 26 — Interface, paquet et release 1.3.0
+
+- [ ] Interface et indicateur (priorités, travaux en parallèle, fuites, nouveaux réglages)
+- [ ] Paquet, pages de manuel, README, CHANGELOG, site ; release 1.3.0, GitHub et dépôt APT
+- [ ] Mise en place : ligne d'état de Claude Code branchée sur `gagarine ligne-etat`
