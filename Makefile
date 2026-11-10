@@ -4,7 +4,7 @@ PYTHON ?= python3
 
 # Tests unitaires (décisions sur des mesures simulées, sans toucher au poste)
 test:
-	$(PYTHON) -m unittest discover -s tests -v
+	$(PYTHON) -m unittest discover -s tests -t . -v
 
 # Construit dist/gagarine_<version>_all.deb avec SHA256SUMS et lintian
 deb:
