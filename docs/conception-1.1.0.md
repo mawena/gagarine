@@ -159,6 +159,9 @@ Reprise de `~/.local/bin/file-attente` (Node, à lire en entier : c'est la réf�
 - Journal : `~/.local/state/gagarine/evenements.jsonl` (même format et même rotation que le journal du service,
   `source: "file"`) : `travail-debut`, `travail-fin` (code, durée en s), `travail-annule`, `limite` (`declare`, `limite`,
   `commande`). Le hook des sessions Claude lit les actions `fige`, `arrete`, `limite`.
+- Unités des événements (précisé à l'intégration) : `memoire` (événements `fige`, `arrete`) est en **octets** ;
+  `declare` et `limite` (événement `limite`) sont des **Go**, en nombres ; `duree` (`travail-fin`) en secondes. Le
+  service écrit aussi `rechargement` (`seuil`, `urgence`) à chaque SIGHUP.
 - `gagarine file --etat --json` :
 
 ```json
