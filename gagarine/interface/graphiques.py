@@ -90,20 +90,31 @@ class Jauge(Gtk.DrawingArea):
 
 
 class Courbe(Gtk.DrawingArea):
-    """Courbe de la RAM utilisée sur les 5 dernières minutes, avec les repères de réglage."""
+    """Courbe de la RAM utilisée, avec les repères de réglage : les 5 dernières minutes (lues en direct dans
+    /proc/meminfo) ou les dernières 24 h et 7 jours (historique du service), incidents marqués."""
 
     def __init__(self, source):
         super().__init__()
         self.source = source
+        self.periode = '5min'
         self.set_content_height(190)
         self.set_hexpand(True)
         self.set_draw_func(self._dessiner)
-        self.update_property([Gtk.AccessibleProperty.LABEL], ['Courbe de la mémoire vive utilisée sur les cinq dernières minutes'])
+        self._etiquette()
+
+    def _etiquette(self):
+        self.update_property([Gtk.AccessibleProperty.LABEL],
+                             [f'Courbe de la mémoire vive utilisée, {donnees.libelle_periode(self.periode)}'])
+
+    def choisir_periode(self, periode):
+        self.periode = periode
+        self._etiquette()
+        self.queue_draw()
 
     def _dessiner(self, _zone, cr, largeur, hauteur):
         fg = self.get_color()
         cr.select_font_face('sans-serif')
-        gauche, droite, haut, bas = 8, 46, 8, 22
+        gauche, droite, haut, bas = 8, 46, 12, 22
         w, h = largeur - gauche - droite, hauteur - haut - bas
         reglages = self.source.reglages()
 
@@ -131,13 +142,39 @@ class Courbe(Gtk.DrawingArea):
             cr.stroke()
         cr.set_dash([])
         # axe du temps
-        _texte(cr, '5 min', gauche, hauteur - 6, 10, fg, 0.6)
-        _texte(cr, '2 min', gauche + w * 0.6, hauteur - 6, 10, fg, 0.6, 'centre')
-        _texte(cr, 'maintenant', gauche + w, hauteur - 6, 10, fg, 0.6, 'droite')
+        graduations = donnees.graduations_axe(self.periode)
+        for i, (f, texte) in enumerate(graduations):
+            if self.periode == '7j' and i % 2 and f < 1:
+                continue    # un jour sur deux : l'axe reste lisible en fenêtre étroite
+            ancre = 'gauche' if f == 0 else 'droite' if f == 1 else 'centre'
+            _texte(cr, texte, gauche + w * f, hauteur - 6, 10, fg, 0.6, ancre)
+            if 0 < f < 1:
+                cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.07)
+                cr.move_to(gauche + w * f, haut)
+                cr.line_to(gauche + w * f, haut + h)
+                cr.stroke()
         # la courbe
-        maintenant = time.monotonic()
-        points = [(gauche + w * (1 - (maintenant - t) / DUREE_COURBE), y_de(p)) for t, p in self.source.historique
-                  if maintenant - t <= DUREE_COURBE]
+        if self.periode == '5min':
+            maintenant = time.monotonic()
+            points = [(gauche + w * (1 - (maintenant - t) / DUREE_COURBE), y_de(p)) for t, p in self.source.historique
+                      if maintenant - t <= DUREE_COURBE]
+            incidents = []
+        else:
+            hist = self.source.historiques.get(self.periode)
+            duree = donnees.duree_periode(self.periode)
+            maintenant = time.time()
+            points, incidents = [], []
+            if hist:
+                for pt in hist['points']:
+                    f = donnees.fraction_temps(pt['t'], maintenant, duree)
+                    if f is not None:
+                        points.append((gauche + w * max(0.0, min(1.0, f)), y_de(pt['ram'])))
+                for ev in hist['incidents']:
+                    f = donnees.fraction_temps(donnees.en_timestamp(ev.get('date')) or 0, maintenant, duree)
+                    if f is not None:
+                        incidents.append((gauche + w * max(0.0, min(1.0, f)), ev))
+            if len(points) < 2:
+                _texte(cr, 'Pas encore assez de mesures pour cette période', gauche + w / 2, haut + h / 2, 12, fg, 0.6, 'centre')
         if len(points) >= 2:
             r, g, b = couleur_niveau(self.source.niveau())
             cr.save()
@@ -150,7 +187,7 @@ class Courbe(Gtk.DrawingArea):
             cr.close_path()
             cr.set_source_rgba(r, g, b, 0.18)
             cr.fill()
-            cr.set_line_width(2)
+            cr.set_line_width(2 if self.periode == '5min' else 1.5)
             cr.set_line_join(1)
             cr.move_to(*points[0])
             for x, y in points[1:]:
@@ -158,3 +195,14 @@ class Courbe(Gtk.DrawingArea):
             cr.set_source_rgb(r, g, b)
             cr.stroke()
             cr.restore()
+        # incidents : trait fin et point en haut de la courbe
+        r, g, b = COULEURS['alerte']
+        for x, ev in incidents:
+            cr.set_source_rgba(r, g, b, 0.55)
+            cr.set_line_width(1)
+            cr.move_to(x, haut)
+            cr.line_to(x, haut + h)
+            cr.stroke()
+            cr.set_source_rgb(r, g, b)
+            cr.arc(x, haut - 3, 3.5, 0, 2 * math.pi)
+            cr.fill()

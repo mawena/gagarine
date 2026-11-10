@@ -35,12 +35,48 @@ class PageReglages(Adw.PreferencesPage):
         self.add(g_seuils)
         self.add(g_delais)
 
-        g_autres = Adw.PreferencesGroup(title='Notifications et protection')
-        self.notifications = Adw.SwitchRow(title='Notifications', subtitle='Boutons « Arrêter » et « Reprendre » dans le bureau')
+        self.interrupteurs = {}
+        # --- agir plus tôt (1.2.0) ---
+        g_tot = Adw.PreferencesGroup(title='Agir avant le seuil',
+                                     description='Gagarine peut intervenir avant que la RAM n’atteigne le seuil.')
+        for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_ANTICIPATION:
+            g_tot.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
+        self.add(g_tot)
+
+        # --- notifications ---
+        g_notif = Adw.PreferencesGroup(title='Notifications')
+        self.notifications = Adw.SwitchRow(title='Boutons dans les notifications',
+                                           subtitle='Boutons « Arrêter » et « Reprendre » dans le bureau')
         self.notifications.connect('notify::active', self._modifie)
+        g_notif.add(self.notifications)
+        g_notif.add(self._ligne_interrupteur('notifications_fin'))
+        for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_NOTIFICATIONS:
+            g_notif.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
+        self.ntfy = Adw.EntryRow(title='ntfy : sujet ou adresse (notifications sur le téléphone)')
+        self.ntfy.connect('changed', self._modifie)
+        self.essai_ntfy = bouton('Envoyer un essai', self.envoyer_essai_ntfy, aide='Envoie un message d’essai à ce sujet ntfy')
+        self.essai_ntfy.set_sensitive(False)
+        self.ntfy.add_suffix(self.essai_ntfy)
+        g_notif.add(self.ntfy)
+        self.add(g_notif)
+
+        # --- file, ménage, sessions Claude ---
+        g_file = Adw.PreferencesGroup(title='File d’attente')
+        g_file.add(self._ligne_interrupteur('file_ajuster'))
+        self.add(g_file)
+        g_menage = Adw.PreferencesGroup(title='Ménage',
+                                        description='Démons Gradle et Kotlin, modèles de LM Studio et d’Ollama restés inactifs.')
+        g_menage.add(self._ligne_interrupteur('menage_auto'))
+        for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_MENAGE:
+            g_menage.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
+        self.add(g_menage)
+        g_claude = Adw.PreferencesGroup(title='Sessions Claude')
+        g_claude.add(self._ligne_interrupteur('claude_bloquer'))
+        self.add(g_claude)
+
+        g_autres = Adw.PreferencesGroup(title='Protection')
         self.proteges = Adw.EntryRow(title='Programmes protégés en plus (expression régulière)')
         self.proteges.connect('changed', self._modifie)
-        g_autres.add(self.notifications)
         g_autres.add(self.proteges)
         self.add(g_autres)
 
@@ -128,10 +164,29 @@ class PageReglages(Adw.PreferencesPage):
         self.recharger()
 
     # --- réglages ---
+    def _ligne_nombre(self, cle, titre, aide, unite, mini, maxi):
+        ligne = Adw.SpinRow.new_with_range(mini, maxi, 1)
+        ligne.set_title(f'{titre} ({unite})')
+        ligne.set_subtitle(aide)
+        ligne.set_subtitle_lines(3)
+        ligne.connect('notify::value', self._modifie)
+        self.champs[cle] = ligne
+        return ligne
+
+    def _ligne_interrupteur(self, cle):
+        titre, aide = donnees.REGLAGES_BOOLEENS[cle]
+        ligne = Adw.SwitchRow(title=titre, subtitle=aide, subtitle_lines=3)
+        ligne.connect('notify::active', self._modifie)
+        self.interrupteurs[cle] = ligne
+        return ligne
+
     def valeurs(self):
         v = {cle: int(ch.get_value()) for cle, ch in self.champs.items()}
         v['notifications'] = self.notifications.get_active()
         v['proteges'] = self.proteges.get_text().strip()
+        v['ntfy'] = self.ntfy.get_text().strip()
+        for cle, ligne in self.interrupteurs.items():
+            v[cle] = ligne.get_active()
         return v
 
     def recharger(self, force=False):
@@ -141,13 +196,16 @@ class PageReglages(Adw.PreferencesPage):
         if not force and self.modifie():
             self.maj_service()
             return
-        self.courants = dict(etat['reglages'])
+        self.courants = donnees.reglages_complets(etat['reglages'])
         self.en_cours_chargement = True
         for cle, ch in self.champs.items():
             if self.courants.get(cle) is not None:
                 ch.set_value(self.courants[cle])
         self.notifications.set_active(bool(self.courants.get('notifications', True)))
         self.proteges.set_text(str(self.courants.get('proteges') or ''))
+        self.ntfy.set_text(str(self.courants.get('ntfy') or ''))
+        for cle, ligne in self.interrupteurs.items():
+            ligne.set_active(bool(self.courants.get(cle)))
         self.en_cours_chargement = False
         self._modifie()
         self.maj_service()
@@ -158,6 +216,7 @@ class PageReglages(Adw.PreferencesPage):
     def _modifie(self, *_):
         if self.en_cours_chargement:
             return
+        self.essai_ntfy.set_sensitive(bool(self.ntfy.get_text().strip()))
         sale = self.modifie()
         erreur = donnees.verifier_reglages(self.valeurs()) if sale else None
         self.bouton_enregistrer.set_sensitive(sale and erreur is None)
@@ -183,6 +242,27 @@ class PageReglages(Adw.PreferencesPage):
                 self.fenetre.toast(res.message, longue=True)
                 self._modifie()
         self.fenetre.source.executeur.lancer(args, fini, delai=300, cle='reglages-ecrire')
+
+    def envoyer_essai_ntfy(self):
+        """Message d'essai vers le sujet saisi (même avant l'enregistrement) : `gagarine ntfy essai CIBLE`, sans pkexec."""
+        cible = self.ntfy.get_text().strip()
+        if not cible:
+            return
+        if any(c in cible for c in ' \t\n'):
+            self.fenetre.toast('Le sujet ntfy ne doit contenir ni espace ni retour à la ligne.', longue=True)
+            return
+
+        def fini(res):
+            self.essai_ntfy.set_sensitive(bool(self.ntfy.get_text().strip()))
+            if res.ok:
+                self.fenetre.toast('Message d’essai envoyé : regardez votre téléphone')
+            elif res.code == 2:
+                self.fenetre.toast('Cette version de Gagarine ne sait pas encore envoyer d’essai ntfy.', longue=True)
+            else:
+                self.fenetre.toast(res.message, longue=True)
+        self.essai_ntfy.set_sensitive(False)
+        self.fenetre.executeur.lancer(donnees.commande_essai_ntfy(donnees.commande_gagarine(), cible), fini, delai=20,
+                                      cle='ntfy-essai')
 
     # --- service ---
     def maj_service(self):

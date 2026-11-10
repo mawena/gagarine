@@ -144,6 +144,7 @@ class Fenetre(Adw.ApplicationWindow):
                 self.toast(res.message, longue=True)
             self.source.rafraichir()
             self.source.rafraichir_journal()
+            self.source.rafraichir_options()
         self.executeur.lancer(argv, fini, delai=delai)
 
     def _fermeture(self, *_):

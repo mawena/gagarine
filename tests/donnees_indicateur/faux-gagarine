@@ -1,6 +1,7 @@
 #!/bin/sh
 # Faux `gagarine` pour les essais de l'indicateur : rend des JSON conformes à docs/conception-1.1.0.md.
 # FAUX_GAGARINE_MODE : normal (défaut), vigilance, fige, panne (code 1), invalide (pas du JSON), lent (dort 30 s).
+# FAUX_GAGARINE_MENAGE : normal (deux candidats), vide, absent (commande inconnue, code 2) ; commandes de docs/conception-1.2.0.md.
 mode="${FAUX_GAGARINE_MODE:-normal}"
 journal="${FAUX_GAGARINE_JOURNAL:-}"
 [ -n "$journal" ] && echo "$@" >> "$journal"
@@ -33,6 +34,19 @@ JSON
               "commande": "ffmpeg", "unite": null, "sortie": null, "source": "gagarine"}]}
 JSON
     ;;
+  "menage --json")
+    [ "$FAUX_GAGARINE_MENAGE" = absent ] && { echo "commande inconnue" >&2; exit 2; }
+    if [ "$FAUX_GAGARINE_MENAGE" = vide ]; then
+      echo '{"auto": true, "delai_min": 30, "candidats": []}'
+    else
+      cat <<JSON
+{"auto": true, "delai_min": 30, "candidats": [
+ {"id": "5551", "type": "gradle", "nom": "Démon Gradle", "pid": 5551, "memoire_mo": 3100, "inactif_depuis_s": 2640, "action": "arreter", "auto": true},
+ {"id": "ollama:llama3.1:8b", "type": "ollama", "nom": "llama3.1:8b", "pid": null, "memoire_mo": 5400, "inactif_depuis_s": 1260, "action": "decharger", "auto": true}]}
+JSON
+    fi
+    ;;
+  "menage arreter") exit 0 ;;
   reprendre*|arreter*) exit 0 ;;
   *) echo "commande inconnue" >&2; exit 2 ;;
 esac
