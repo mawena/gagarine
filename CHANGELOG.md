@@ -7,6 +7,16 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.2.1] - 2026-11-10
+
+### Corrigé
+
+- `gagarine applications` montrait Chrome et VS Code deux fois : sous GNOME, ils tournent à la fois dans les scopes du
+  lanceur du bureau (`app-gnome-…`) et dans les leurs (`app-com.google.Chrome-…`). Chaque application n'a plus qu'une
+  ligne, avec sa mémoire et ses instances additionnées ; son plafond s'applique à toutes ses familles de scopes, quel
+  que soit l'identifiant donné. Le JSON ajoute `ids` et `prefixes`.
+- Les plafonds s'affichent à la française (« 1,5 Go » au lieu de « 1.5 Go »).
+
 ## [1.2.0] - 2026-11-10
 
 Gagarine empêche maintenant les incidents à la source : un travail lourd ne peut plus échapper à la file depuis une
