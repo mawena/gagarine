@@ -7,6 +7,9 @@ Documentation=man:gagarine(8) https://github.com/mawena/gagarine
 Type=simple
 ExecStart=/usr/bin/gagarine surveiller
 
+# « systemctl reload gagarine » : le démon relit ses réglages (SIGHUP) sans perdre son état.
+ExecReload=/bin/kill -HUP $MAINPID
+
 # Relancé aussitôt s'il s'arrête, quelle qu'en soit la cause : le poste ne doit jamais rester sans garde.
 Restart=always
 RestartSec=1
