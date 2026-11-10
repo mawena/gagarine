@@ -150,7 +150,8 @@ class PageProgrammes(Adw.PreferencesPage):
         a = self.applis[cle]
         ligne.set_title(echappe(a.get('nom') or cle))
         ligne.set_subtitle(echappe(donnees.detail_application(a)))
-        ligne.plafond.set_label(donnees.libelle_plafond(a).capitalize())
+        texte = donnees.libelle_plafond(a)
+        ligne.plafond.set_label(texte[0].upper() + texte[1:])
 
     def regler_plafond(self, cle):
         a = self.applis.get(cle)

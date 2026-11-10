@@ -601,8 +601,8 @@ def graduations_axe(cle):
     if cle == '5min':
         return [(0.0, '5 min'), (0.6, '2 min'), (1.0, 'maintenant')]
     if cle == '24h':
-        return [(0.0, '−24 h'), (0.25, '−18 h'), (0.5, '−12 h'), (0.75, '−6 h'), (1.0, 'maintenant')]
-    return [(i / 7, f'−{7 - i} j') for i in range(7)] + [(1.0, 'maintenant')]
+        return [(0.0, '-24 h'), (0.25, '-18 h'), (0.5, '-12 h'), (0.75, '-6 h'), (1.0, 'maintenant')]
+    return [(i / 7, f'-{7 - i} j') for i in range(7)] + [(1.0, 'maintenant')]
 
 
 def fraction_temps(t, maintenant, duree):

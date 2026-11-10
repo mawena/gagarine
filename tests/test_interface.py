@@ -181,7 +181,7 @@ class Historique120(unittest.TestCase):
         self.assertEqual([c for c, _, _ in d.PERIODES], ['5min', '24h', '7j'])
         self.assertEqual(d.duree_periode('7j'), 7 * 86400)
         self.assertEqual(d.libelle_periode('24h'), '24 h')
-        self.assertEqual(d.graduations_axe('24h')[0], (0.0, '−24 h'))
+        self.assertEqual(d.graduations_axe('24h')[0], (0.0, '-24 h'))
         self.assertEqual(d.graduations_axe('7j')[-1], (1.0, 'maintenant'))
         self.assertEqual(len(d.graduations_axe('7j')), 8)
         self.assertAlmostEqual(d.fraction_temps(500, 1000, 1000), 0.5)
