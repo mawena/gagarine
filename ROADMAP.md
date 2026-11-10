@@ -163,4 +163,4 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 
 - [x] Interface et indicateur (priorités, travaux en parallèle, fuites, nouveaux réglages)
 - [x] Paquet, pages de manuel, README, CHANGELOG, site ; release 1.3.0, GitHub et dépôt APT
-- [ ] Mise en place : ligne d'état de Claude Code branchée sur `gagarine ligne-etat`
+- [x] Mise en place : ligne d'état de Claude Code branchée sur `gagarine ligne-etat` (avec repli tant que la 1.3 n'est pas installée)
