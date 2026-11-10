@@ -35,6 +35,25 @@ class FauxPoste:
         self.tues = []
         self.arretes = []
         self.armes = 0
+        self.total = 16.0
+        self.pics = []            # pics rendus à chaque relevé ; None : pas de cgroup
+        self.notifs = []
+        self.ntfys = []
+
+    def ram_totale_go(self):
+        return self.total
+
+    def cgroup_scope(self, scope):
+        return Path('/cgroup-simule') / scope if self.pics else None
+
+    def pic_cgroup(self, chemin):
+        return self.pics.pop(0) if self.pics else None
+
+    def notifier(self, titre, texte):
+        self.notifs.append((titre, texte))
+
+    def alerter_ntfy(self, cible, titre, texte, priorite, etiquettes):
+        self.ntfys.append((cible, titre, texte, priorite, etiquettes))
 
     def maintenant(self):
         return self.t
@@ -85,8 +104,10 @@ class FauxPoste:
             return 0, self.resultat + '\n'
         return 0, ''
 
-    def lancer(self, argv, env):
+    def lancer(self, argv, env, pendant=None):
         self.lances.append((argv, env))
+        if pendant:
+            pendant()
         if self.leve:
             raise self.leve
         return self.code
@@ -312,7 +333,7 @@ class TestLimite(BancFile):
         vu = {}
         lancer = self.poste.lancer
 
-        def espion(argv, env):
+        def espion(argv, env, pendant=None):
             vu.update(json.loads((self.tickets / env['FILE_ATTENTE_TICKET']).read_text()))
             return lancer(argv, env)
         self.poste.lancer = espion
@@ -372,7 +393,7 @@ class TestCodes(BancFile):
         vu = {}
         lancer = self.poste.lancer
 
-        def espion(argv, e):
+        def espion(argv, e, pendant=None):
             vu.update(json.loads((self.tickets / e['FILE_ATTENTE_TICKET']).read_text()))
             return lancer(argv, e)
         self.poste.lancer = espion

@@ -7,6 +7,7 @@ héritage par FILE_ATTENTE_TICKET. Tout ce qui vient du poste (horloge, /proc, s
 `Poste`, que les tests remplacent.
 """
 import json
+import math
 import os
 import shlex
 import signal
@@ -15,13 +16,20 @@ import sys
 import time
 from pathlib import Path
 
+from gagarine import ntfy
 from gagarine.journal import Journal, horodatage
+from gagarine.reglages import charger_reglages
 from gagarine.systeme import demarrage as demarrage_systeme
 
 DOSSIER_DEFAUT = '/tmp/file-attente-travaux-lourds'
 PAUSE = 5.0
 ETAT_ATTENTE = 'en attente'
 ETAT_COURS = 'en cours'
+INTERVALLE_PIC = 0.5         # s entre deux relevés du pic mémoire (la conception dit « toutes les 2 s » au plus)
+PREMIER_RELEVE = 0.2         # s : premier relevé, pour ne pas manquer un travail très court
+PICS_GARDES = 5
+PLAFOND_ANNONCE = 0.6        # part de la RAM totale qu'une annonce corrigée ne dépasse jamais
+ICONE = 'io.github.mawena.Gagarine'
 
 
 class ErreurSignal(Exception):
@@ -91,6 +99,57 @@ class Poste:
             pass
         return 0.0
 
+    def ram_totale_go(self):
+        """RAM totale (MemTotal), en Go ; 0 si illisible."""
+        try:
+            for ligne in Path('/proc/meminfo').read_text().splitlines():
+                if ligne.startswith('MemTotal:'):
+                    return int(ligne.split()[1]) * 1024 / 2 ** 30
+        except (OSError, ValueError, IndexError):
+            pass
+        return 0.0
+
+    racine_cgroup = Path('/sys/fs/cgroup')
+
+    def cgroup_scope(self, scope):
+        """Dossier cgroup du scope (ControlGroup de systemd), ou None s'il n'existe pas (encore)."""
+        code, sortie = self.executer(['systemctl', '--user', 'show', scope, '-p', 'ControlGroup', '--value'])
+        chemin = sortie.strip()
+        if code != 0 or not chemin.startswith('/'):
+            return None
+        return self.racine_cgroup / chemin.lstrip('/')
+
+    def pic_cgroup(self, chemin):
+        """Plus haut atteint par le cgroup, RAM + swap, en Go ; None si memory.peak est illisible."""
+        try:
+            octets = int((Path(chemin) / 'memory.peak').read_text())
+        except (OSError, ValueError):
+            return None
+        try:
+            octets += int((Path(chemin) / 'memory.swap.peak').read_text())
+        except (OSError, ValueError):
+            pass
+        return octets / 2 ** 30
+
+    def notifier(self, titre, texte):
+        """Notification de bureau sur la session de l'utilisateur, sans attendre ni échouer."""
+        env = dict(os.environ)
+        bus = f'/run/user/{os.geteuid()}/bus'
+        if not env.get('DBUS_SESSION_BUS_ADDRESS') and os.path.exists(bus):
+            env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={bus}'
+        try:
+            subprocess.Popen(['notify-send', '--app-name=Gagarine', '-i', ICONE, '-h', f'string:desktop-entry:{ICONE}',
+                              titre, texte], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
+
+    def alerter_ntfy(self, cible, titre, texte, priorite, etiquettes):
+        """Alerte ntfy ; attend l'envoi au plus quelques secondes (le fil est un démon : il mourrait avec la file)."""
+        fil = ntfy.envoyer_en_fond(cible, titre, texte, priorite, etiquettes)
+        if fil is not None:
+            fil.join(ntfy.DELAI + 1)
+
     def charge(self):
         return os.getloadavg()[0]
 
@@ -127,15 +186,23 @@ class Poste:
             return 127, ''
         return res.returncode, res.stdout
 
-    def lancer(self, argv, env):
+    def lancer(self, argv, env, pendant=None):
         """Lance le travail (entrées et sorties héritées) et rend son code ; signal n → 128 + n ; 127 si introuvable.
+        `pendant`, s'il est donné, est appelé toutes les INTERVALLE_PIC s tant que le travail tourne.
         Un ErreurSignal levé pendant l'attente laisse le travail tourner : l'appelant l'arrête (arreter)."""
         try:
             self.enfant = subprocess.Popen(argv, env=env)
         except OSError as e:
             print(f'  impossible de lancer « {argv[0]} » : {e.strerror}', file=sys.stderr)
             return 127
-        code = self.enfant.wait()
+        delai = PREMIER_RELEVE
+        while True:
+            try:
+                code = self.enfant.wait(delai if pendant else None)
+                break
+            except subprocess.TimeoutExpired:
+                pendant()
+                delai = INTERVALLE_PIC
         return 128 - code if code < 0 else code
 
     def arreter(self, unite):
@@ -253,6 +320,155 @@ def donnees_travaux(dossier, poste):
 
 
 # ======================================================================================================================
+# Mémoire apprise des travaux
+# ======================================================================================================================
+class Releveur:
+    """Relève le pic mémoire (RAM + swap) du scope d'un travail ; ne lève jamais."""
+
+    def __init__(self, poste, unite):
+        self.poste, self.scope, self.chemin, self.pic = poste, unite + '.scope', None, None
+
+    def relever(self):
+        try:
+            if self.chemin is None:
+                self.chemin = self.poste.cgroup_scope(self.scope)
+            if self.chemin is None:
+                return
+            v = self.poste.pic_cgroup(self.chemin)
+            if v is not None and (self.pic is None or v > self.pic):
+                self.pic = v
+        except Exception:
+            pass
+
+
+def fichier_travaux(env):
+    return dossier_journal(env) / 'travaux.json'
+
+
+def lire_travaux(env):
+    """La mémoire des travaux ({nom: {...}}) ; fichier absent, corrompu ou mal formé : vide (les entrées valides sont
+    gardées)."""
+    try:
+        brut = json.loads(fichier_travaux(env).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(brut, dict):
+        return {}
+    travaux = {}
+    for nom, t in brut.items():
+        if not isinstance(t, dict) or not isinstance(t.get('pics_go'), list):
+            continue
+        pics = [p for p in t['pics_go'] if isinstance(p, (int, float)) and not isinstance(p, bool) and p == p]
+        if pics:
+            travaux[nom] = {**t, 'pics_go': pics[-PICS_GARDES:]}
+    return travaux
+
+
+def noter_pic(env, nom, pic, annonce, instant):
+    """Ajoute le pic de cette exécution à la mémoire des travaux (5 derniers gardés), écriture atomique. Ne lève jamais."""
+    try:
+        travaux = lire_travaux(env)
+        ancien = travaux.get(nom, {})
+        travaux[nom] = {'executions': int(ancien.get('executions') or 0) + 1,
+                        'pics_go': (ancien.get('pics_go', []) + [round(pic, 2)])[-PICS_GARDES:],
+                        'annonce_go': joli(annonce), 'derniere': time.strftime('%Y-%m-%dT%H:%M:%S+0000', time.gmtime(instant))}
+        chemin = fichier_travaux(env)
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        tmp = chemin.with_name(f'.{chemin.name}.{os.getpid()}.tmp')
+        tmp.write_text(json.dumps(travaux, ensure_ascii=False), encoding='utf-8')
+        os.replace(tmp, chemin)
+    except Exception:
+        pass
+
+
+def fr(x):
+    """Un nombre de Go en français : 6,3 ; 0,5 ; 8."""
+    return ('%g' % round(x, 1)).replace('.', ',')
+
+
+def corriger_annonce(nom, ram, env, reglages, poste, sortie):
+    """(annonce à utiliser, corrigée ?). Si le plus haut des derniers pics dépasse l'annonce de plus de 10 %, dit
+    combien le travail a pris ; avec `file_ajuster`, l'annonce devient min(1,2 × pic arrondi au 0,5 Go supérieur, 60 %
+    de la RAM totale). Ne lève jamais."""
+    try:
+        t = lire_travaux(env).get(nom)
+        if not t:
+            return ram, False
+        pic = max(t['pics_go'])
+        if round(pic, 6) <= round(ram * 1.1, 6):
+            return ram, False
+        message = f'  file d\'attente ({nom}) : annoncé {fr(ram)} Go, il en a pris {fr(pic)} Go la dernière fois'
+        if not reglages.file_ajuster:
+            print(message + ' (correction des annonces désactivée : file_ajuster = non)', file=sortie, flush=True)
+            return ram, False
+        voulu = math.ceil(round(1.2 * pic * 2, 6)) / 2
+        plafond = PLAFOND_ANNONCE * poste.ram_totale_go()
+        nouveau = min(voulu, plafond) if plafond > 0 else voulu
+        if nouveau <= ram:
+            print(message, file=sortie, flush=True)
+            return ram, False
+        suite = f' ; annonce corrigée à {fr(nouveau)} Go'
+        if nouveau < voulu:
+            suite += (f' (plafond : 60 % de la RAM) : ce travail a sans doute une fuite de mémoire à corriger '
+                      f'plutôt qu\'une annonce à gonfler')
+        print(message + suite, file=sortie, flush=True)
+        return nouveau, True
+    except Exception:
+        return ram, False
+
+
+def donnees_appris(env):
+    """L'objet de `gagarine file appris --json`, du plus récent au plus ancien."""
+    travaux = [{'nom': nom, 'executions': t.get('executions'), 'pic_go': max(t['pics_go']),
+                'annonce_go': t.get('annonce_go'), 'derniere': t.get('derniere')}
+               for nom, t in lire_travaux(env).items()]
+    travaux.sort(key=lambda t: horodatage(t['derniere']) or 0, reverse=True)
+    return {'travaux': travaux}
+
+
+def afficher_appris(env, en_json, sortie=None):
+    sortie = sortie or sys.stdout
+    d = donnees_appris(env)
+    if en_json:
+        print(json.dumps(d, ensure_ascii=False), file=sortie)
+        return 0
+    if not d['travaux']:
+        print('Aucun travail appris pour l\'instant (la file retient le pic mémoire de chaque travail).', file=sortie)
+    for t in d['travaux']:
+        annonce = f', annoncé {fr(t["annonce_go"])} Go' if isinstance(t['annonce_go'], (int, float)) else ''
+        print(f'{t["nom"]} : pic {fr(t["pic_go"])} Go{annonce} ({t["executions"]} exécution(s))', file=sortie)
+    return 0
+
+
+def duree_texte(secondes):
+    minutes = round(secondes / 60)
+    if secondes < 60:
+        return f'{round(secondes)} s'
+    if minutes < 60:
+        return f'{minutes} min'
+    return f'{minutes // 60} h {minutes % 60:02d} min'
+
+
+def notifier_fin(nom, code, duree, limite_depassee, reglages, poste):
+    """Notification de bureau et ntfy à la fin d'un travail assez long. Ne lève jamais, ne retient pas le travail."""
+    try:
+        if not reglages.notifications_fin or duree < reglages.notification_fin_min:
+            return
+        if limite_depassee:
+            titre, texte, priorite, etiquettes = 'Travail arrêté', f'« {nom} » arrêté : limite mémoire dépassée', 'haute', ('warning',)
+        elif code != 0:
+            titre, texte, priorite, etiquettes = 'Travail échoué', f'« {nom} » a échoué (code {code})', 'haute', ('x',)
+        else:
+            titre, texte, priorite, etiquettes = ('Travail terminé', f'« {nom} » terminé en {duree_texte(duree)}',
+                                                  'normale', ('white_check_mark',))
+        poste.notifier(titre, texte)
+        if reglages.ntfy:
+            poste.alerter_ntfy(reglages.ntfy, titre, texte, priorite, etiquettes)
+    except Exception:
+        pass
+
+
+# ======================================================================================================================
 # Attente du tour et exécution
 # ======================================================================================================================
 def raison_d_attendre(ticket, nom, ram, coeurs, apres, dossier, poste):
@@ -272,7 +488,7 @@ def raison_d_attendre(ticket, nom, ram, coeurs, apres, dossier, poste):
     return None, None
 
 
-def attendre_son_tour(nom, ram, coeurs, apres, commande, env, poste, dossier, sortie):
+def attendre_son_tour(nom, ram, coeurs, apres, commande, env, poste, dossier, sortie, initiale=None):
     """Rend 'herite' si un travail parent a déjà son tour, sinon le nom du ticket obtenu (le ticket est alors posé et
     l'appelant doit le retirer). Peut lever ErreurSignal : le ticket est alors encore à retirer par l'appelant."""
     herite = env.get('FILE_ATTENTE_TICKET')
@@ -285,6 +501,8 @@ def attendre_son_tour(nom, ram, coeurs, apres, commande, env, poste, dossier, so
     contenu = {'pid': pid, 'demarrage': poste.demarrage(pid), 'nom': nom, 'depuis': iso_ms(maintenant),
                'ram': joli(ram), 'coeurs': joli(coeurs), 'commande': commande[:300], 'etat': ETAT_ATTENTE,
                'unite': None, 'sortie': env.get('GAGARINE_SORTIE') or None, 'source': 'gagarine'}
+    if initiale is not None and initiale != ram:
+        contenu['annonce_initiale'] = joli(initiale)   # annonce corrigée : ce que le travail avait demandé
     ecrire_ticket(dossier, ticket, contenu)
     dit = ''
     try:
@@ -307,7 +525,8 @@ def attendre_son_tour(nom, ram, coeurs, apres, commande, env, poste, dossier, so
     return ticket
 
 
-def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=None, erreur=None, journal=None):
+def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=None, erreur=None, journal=None,
+                   reglages=None):
     """Attend son tour, lance la commande, rend son code de sortie (128 + n si tuée par le signal n, 137 si la limite
     mémoire l'a arrêtée, 143 ou 130 si la file a reçu SIGTERM ou SIGINT)."""
     poste = poste or Poste()
@@ -315,6 +534,12 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
     erreur = erreur or sys.stderr
     dossier = dossier_tickets(env)
     journal = journal or Journal(dossier_journal(env), heure=poste.maintenant, sortie=False)
+    if reglages is None:
+        try:
+            reglages = charger_reglages(env=env)[0]
+        except Exception:
+            from gagarine.reglages import Reglages
+            reglages = Reglages()
 
     def note(action, **champs):
         journal.ecrire(action, source='file', **champs)
@@ -324,7 +549,11 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
     debut = None
     poste.armer_signaux()
     try:
-        ticket = attendre_son_tour(nom, ram, coeurs, apres, texte, env, poste, dossier, sortie)
+        initiale, ajuste = ram, False
+        heritage = env.get('FILE_ATTENTE_TICKET')
+        if not (heritage and (dossier / heritage).exists()):
+            ram, ajuste = corriger_annonce(nom, ram, env, reglages, poste, sortie)
+        ticket = attendre_son_tour(nom, ram, coeurs, apres, texte, env, poste, dossier, sortie, initiale)
         herite = ticket == 'herite'
         env = dict(env)
         env['FILE_ATTENTE_TICKET'] = env['FILE_ATTENTE_TICKET'] if herite else ticket
@@ -343,10 +572,16 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
                   file=sortie, flush=True)
         if not herite:
             note('travail-debut', nom=nom, pid=poste.pid(), ticket=ticket, ram=joli(ram), coeurs=joli(coeurs),
-                           limite=joli(limite), commande=texte[:300], sortie=env.get('GAGARINE_SORTIE') or None)
+                           limite=joli(limite), commande=texte[:300], sortie=env.get('GAGARINE_SORTIE') or None,
+                           annonce_initiale=joli(initiale) if ajuste else None, ajuste=True if ajuste else None)
         debut = poste.mono()
-        code = poste.lancer(argv, env)
+        releveur = Releveur(poste, unite) if unite else None
+        code = poste.lancer(argv, env, releveur.relever) if releveur else poste.lancer(argv, env)
         duree = round(poste.mono() - debut, 1)
+        if releveur:
+            releveur.relever()   # le cgroup a le plus souvent disparu avec le travail : le dernier relevé tient alors
+        pic = releveur.pic if releveur else None
+        limite_depassee = False
         if unite:
             resultat = poste.executer(['systemctl', '--user', 'show', f'{unite}.scope', '-p', 'Result', '--value'])[1].strip()
             poste.executer(['systemctl', '--user', 'reset-failed', f'{unite}.scope'])
@@ -356,10 +591,17 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
                       f'\n  Le poste n\'a rien eu. Si ce travail a vraiment besoin de plus, relance-le en annonçant la '
                       f'RAM qu\'il lui faut ;\n  sinon, il a une fuite de mémoire à corriger avant de le relancer.',
                       file=erreur, flush=True)
-                note('limite', nom=nom, declare=joli(ram), limite=joli(limite), commande=texte[:300])
+                limite_depassee = True
+                pic = max(pic or 0, limite)   # arrêté par sa limite : il a pris au moins celle-ci
+                note('limite', nom=nom, declare=joli(ram), limite=joli(limite), commande=texte[:300],
+                     pic_go=round(pic, 2))
                 code = 137
         if not herite:
-            note('travail-fin', nom=nom, pid=poste.pid(), ticket=ticket, code=code, duree=duree)
+            note('travail-fin', nom=nom, pid=poste.pid(), ticket=ticket, code=code, duree=duree,
+                 pic_go=round(pic, 2) if pic is not None else None)
+            if pic is not None:
+                noter_pic(env, nom, pic, initiale, poste.maintenant())
+            notifier_fin(nom, code, duree, limite_depassee, reglages, poste)
         return code
     except ErreurSignal as e:
         if debut is not None:
@@ -402,7 +644,14 @@ def afficher_etat(env, en_json, poste=None, sortie=None):
     for k, t in enumerate(d['travaux']):
         secondes = horodatage(t['depuis'])
         heure = time.strftime('%H:%M:%S', time.localtime(secondes)) if secondes is not None else '?'
-        print(f'{"en attente" if k else "en tête   "} : {t["nom"]} (processus {t["pid"]}, depuis {heure})', file=sortie)
+        annonce = ''
+        if isinstance(t['ram'], (int, float)):
+            initiale = (lire_ticket(dossier_tickets(env), t['ticket']) or {}).get('annonce_initiale')
+            annonce = f', RAM annoncée {fr(t["ram"])} Go'
+            if isinstance(initiale, (int, float)):
+                annonce += f' (corrigée : {fr(initiale)} Go demandés)'
+        print(f'{"en attente" if k else "en tête   "} : {t["nom"]} (processus {t["pid"]}, depuis {heure}{annonce})',
+              file=sortie)
     return 0
 
 
