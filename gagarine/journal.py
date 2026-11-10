@@ -119,24 +119,44 @@ def ligne_lisible(e):
     return ' '.join(morceaux)
 
 
+def _go(x):
+    return f'{x:g}'
+
+
 def detail_lisible(e):
     """Le détail d'un événement, avec ses unités : pour le garde, `ram` est le % de RAM utilisée ; pour la file, `ram`,
-    `declare` et `limite` sont des Go, `duree` des secondes."""
+    `declare`, `limite` et `pic_go` sont des Go, `duree` des secondes ; pour le ménage, `memoire_mo` des Mo."""
     action = e.get('action')
     if action == 'travail-debut':
         coeurs = e.get('coeurs')
-        parties = [f'{e["ram"]} Go annoncés' if e.get('ram') is not None else None,
+        initiale = e.get('annonce_initiale')
+        if e.get('ajuste') and initiale is not None and e.get('ram') is not None:
+            annonce = f'annonce corrigée {_go(initiale)} → {_go(e["ram"])} Go'
+        else:
+            annonce = f'{e["ram"]} Go annoncés' if e.get('ram') is not None else None
+        parties = [annonce,
                    f'{coeurs} cœur{"s" if coeurs != 1 else ""}' if coeurs is not None else None,
                    f'limite {e["limite"]} Go' if e.get('limite') is not None else None]
         return ', '.join(x for x in parties if x)
     if action == 'travail-fin':
         parties = [f'code {e["code"]}' if e.get('code') is not None else None,
-                   f'{round(e["duree"])} s' if isinstance(e.get('duree'), (int, float)) else None]
+                   f'{round(e["duree"])} s' if isinstance(e.get('duree'), (int, float)) else None,
+                   f'pic {_go(e["pic_go"])} Go' if isinstance(e.get('pic_go'), (int, float)) else None]
         return ', '.join(x for x in parties if x)
     if action == 'travail-annule':
         return 'arrêté en cours' if e.get('en_cours') else 'annulé en attente'
     if action == 'limite':
-        return f'annoncé {e.get("declare", "?")} Go, limite {e.get("limite", "?")} Go dépassée'
+        texte = f'annoncé {e.get("declare", "?")} Go, limite {e.get("limite", "?")} Go dépassée'
+        if isinstance(e.get('pic_go'), (int, float)):
+            texte += f', pic {_go(e["pic_go"])} Go'
+        return texte
+    if action == 'menage':
+        parties = [e.get('type'), f'{e["memoire_mo"]:g} Mo' if isinstance(e.get('memoire_mo'), (int, float)) else None,
+                   'automatique' if e.get('auto') else None]
+        return ', '.join(str(x) for x in parties if x)
     if e.get('ram') is not None and e.get('source') != 'file':
-        return f'RAM {e["ram"]} %'
+        texte = f'RAM {e["ram"]} %'
+        if e.get('declencheur'):
+            texte += f', {e["declencheur"]}'
+        return texte
     return ''
