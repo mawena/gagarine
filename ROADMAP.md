@@ -153,7 +153,7 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 
 ## Phase 24 — Fuites repérées pendant qu'un programme tourne
 
-- [ ] Pente sur 5 minutes, événement `fuite`, notification (et ntfy), `fuites` dans `etat --json`
+- [x] Pente sur 5 minutes, événement `fuite`, notification (et ntfy), `fuites` dans `etat --json`
 
 ## Phase 25 — État du poste dans Claude Code
 
