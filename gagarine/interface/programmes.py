@@ -28,6 +28,14 @@ class PageProgrammes(Adw.PreferencesPage):
         self.vide_figes = ligne_vide('Aucun programme figé', 'La RAM est sous contrôle : Gagarine n’a rien eu à faire.')
         self.add(self.groupe_figes)
 
+        # fuites en cours (1.3.0) : section visible seulement quand le garde en a repéré
+        self.groupe_fuites = Adw.PreferencesGroup(
+            title='Fuites en cours', visible=False,
+            description='Programmes dont la mémoire monte régulièrement. Gagarine prévient mais n’agit pas : il fige '
+                        'seulement au seuil, comme d’habitude.')
+        self.lignes_fuites, self.fuites = {}, {}
+        self.add(self.groupe_fuites)
+
         # ménage : démons et modèles inactifs (commande de la 1.2.0, section masquée si le cœur ne la connaît pas)
         self.groupe_menage = Adw.PreferencesGroup(
             title='Ménage', visible=False,
@@ -64,6 +72,9 @@ class PageProgrammes(Adw.PreferencesPage):
         etat = self.source.etat
         if not etat:
             return
+        self.fuites = donnees.fuites_par_pid(etat.get('fuites'))
+        self.groupe_fuites.set_visible(bool(self.fuites))
+        synchroniser(self.groupe_fuites, self.lignes_fuites, list(self.fuites), self._creer_fuite, self._maj_fuite)
         self.figes = {f.get('pid'): f for f in etat['figes']}
         self._basculer(self.groupe_figes, self.vide_figes, bool(self.figes))
         synchroniser(self.groupe_figes, self.lignes_figes, list(self.figes), self._creer_fige, self._maj_fige)
@@ -71,6 +82,24 @@ class PageProgrammes(Adw.PreferencesPage):
         self._basculer(self.groupe_gros, self.vide_gros, bool(gros))
         synchroniser(self.groupe_gros, self.lignes_gros, list(gros), self._creer_gros,
                      lambda pid, ligne: self._maj_gros(ligne, gros[pid]))
+
+
+    # --- fuites ---
+    def _creer_fuite(self, pid):
+        r = Adw.ActionRow(selectable=False)
+        icone = Gtk.Image.new_from_icon_name('go-up-symbolic')
+        icone.add_css_class('warning')
+        r.add_prefix(icone)
+        r.pente = etiquette('', ['warning', 'numeric', 'heading'])
+        r.add_suffix(r.pente)
+        return r
+
+    def _maj_fuite(self, pid, ligne):
+        f = self.fuites[pid]
+        titre, detail = donnees.detail_fuite(f)
+        ligne.set_title(echappe(titre))
+        ligne.set_subtitle(echappe(detail))
+        ligne.pente.set_label('+' + donnees.formater_pente(f.get('pente_mo_min')) if f.get('pente_mo_min') is not None else '')
 
     # --- ménage ---
     def maj_menage(self):
@@ -245,7 +274,11 @@ class PageProgrammes(Adw.PreferencesPage):
         r.protege = Gtk.Image.new_from_icon_name('changes-prevent-symbolic')
         r.protege.set_tooltip_text('Protégé : Gagarine ne le figera jamais')
         r.add_prefix(Gtk.Image.new_from_icon_name('application-x-executable-symbolic'))
+        r.fuite = etiquette('', ['warning', 'caption-heading'])
+        r.fuite.set_tooltip_text('La mémoire de ce programme monte régulièrement : fuite probable')
+        r.fuite.set_visible(False)
         r.valeur = etiquette('', ['numeric'])
+        r.add_suffix(r.fuite)
         r.add_suffix(r.valeur)
         r.add_suffix(r.protege)
         return r
@@ -259,6 +292,10 @@ class PageProgrammes(Adw.PreferencesPage):
             morceaux.append('protégé')
         ligne.set_subtitle(' · '.join(morceaux))
         ligne.protege.set_visible(bool(g.get('protege')))
+        fuite = self.fuites.get(g.get('pid'))
+        ligne.fuite.set_visible(fuite is not None)
+        if fuite is not None:
+            ligne.fuite.set_label(donnees.badge_fuite(fuite))
         swap = g.get('swap_mo') or 0
         ligne.valeur.set_label(donnees.formater_taille_mo((g.get('rss_mo') or 0)) +
                                (f' + {donnees.formater_taille_mo(swap)} de swap' if swap else ''))

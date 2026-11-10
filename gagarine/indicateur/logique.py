@@ -78,6 +78,27 @@ def travaux_en_file(file_etat):
     return len(travaux) if isinstance(travaux, list) else None
 
 
+def fuites(etat):
+    """Fuites de mémoire en cours (`fuites` de `etat --json`, 1.3.0), les plus rapides d'abord ; vide si le cœur n'en parle pas."""
+    liste = (etat or {}).get('fuites')
+    if not isinstance(liste, list):
+        return []
+    valides = [f for f in liste if isinstance(f, dict) and isinstance(f.get('pid'), int)]
+    return sorted(valides, key=lambda f: -_nombre(f.get('pente_mo_min'), 0))
+
+
+def en_cours_file(file_etat):
+    """Nombre de travaux « en cours » d'après `file --etat --json` : champ `en_cours` (1.3.0), sinon compté ; None si inconnu."""
+    d = file_etat or {}
+    n = d.get('en_cours')
+    if isinstance(n, int) and not isinstance(n, bool) and n >= 0:
+        return n
+    travaux = d.get('travaux')
+    if isinstance(travaux, list):
+        return sum(1 for t in travaux if isinstance(t, dict) and t.get('etat') == 'en cours') or None
+    return None
+
+
 def candidats_menage(menage):
     """Candidats valides de `menage --json` (id texte non vide et sans espace, ne commençant pas par un tiret),
     les plus gros d'abord. Liste vide si la commande est absente ou la réponse inutilisable."""
@@ -156,12 +177,29 @@ def titre_fige(programme):
     return '%s (PID %d), %s' % (programme.get('nom') or '?', programme['pid'], taille_mo(programme.get('memoire_mo')))
 
 
-def ligne_file(nombre):
+def ligne_file(nombre, en_cours=None):
+    """« File d'attente : 3 travaux (2 en cours) » ; sans `en_cours` (cœur 1.2.x), comme avant."""
     if nombre is None:
         return 'File d\'attente : inconnue'
     if nombre == 0:
         return 'File d\'attente : aucun travail'
-    return 'File d\'attente : %d %s' % (nombre, 'travaux' if nombre > 1 else 'travail')
+    texte = 'File d\'attente : %d %s' % (nombre, 'travaux' if nombre > 1 else 'travail')
+    if en_cours:
+        texte += ' (%d en cours)' % en_cours
+    return texte
+
+
+def ligne_fuite(liste):
+    """« Fuite : python3 (+210 Mo/min) » ; « … et 2 autres » s'il y en a plusieurs ; None sans fuite."""
+    if not liste:
+        return None
+    premiere = liste[0]
+    texte = 'Fuite : %s' % (premiere.get('nom') or '?')
+    if premiere.get('pente_mo_min') is not None:
+        texte += ' (+%s/min)' % taille_mo(premiere['pente_mo_min'])
+    if len(liste) > 1:
+        texte += ' et %d autre%s' % (len(liste) - 1, 's' if len(liste) > 2 else '')
+    return texte
 
 
 def duree(secondes):
@@ -230,7 +268,10 @@ def contenu_menu(pourcent, etat, file_etat, utilisateur=None, menage=None):
             elements.append(('fige', p['pid'], titre_fige(p), direct))
     else:
         elements.append(('info', 'Aucun programme figé'))
-    elements.append(('info', ligne_file(travaux_en_file(file_etat))))
+    fuite = ligne_fuite(fuites(etat))
+    if fuite:
+        elements.append(('info', fuite))
+    elements.append(('info', ligne_file(travaux_en_file(file_etat), en_cours_file(file_etat))))
     candidats = candidats_menage(menage)
     if candidats:
         elements.append(('menage', ligne_menage(candidats),

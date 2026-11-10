@@ -63,7 +63,12 @@ class PageFile(Adw.PreferencesPage):
             morceaux.append(f'{donnees.formater_go(f["ram_disponible_go"])} de RAM disponibles')
         if f.get('charge') is not None:
             morceaux.append(f'charge {str(f["charge"]).replace(".", ",")} sur {f.get("coeurs") or "?"} cœurs')
-        base = 'Les travaux passent un par un, chacun dans une limite de mémoire, pour que le poste reste fluide.'
+        entete = donnees.entete_file(f)
+        if entete:   # cœur 1.3.0 : plusieurs travaux à la fois
+            base = (f'{entete}. Plusieurs travaux peuvent tourner ensemble tant que la RAM et les cœurs suffisent, '
+                    'chacun dans une limite de mémoire.')
+        else:
+            base = 'Les travaux passent un par un, chacun dans une limite de mémoire, pour que le poste reste fluide.'
         self.groupe.set_description(base + ('\nMaintenant : ' + ' · '.join(morceaux) if morceaux else ''))
 
     # --- mémoire apprise ---
@@ -79,8 +84,15 @@ class PageFile(Adw.PreferencesPage):
         travaux = a['travaux']
         for t in travaux[:LIGNES_MAX]:
             titre, detail, trop_bas = donnees.detail_appris(t)
+            tendance, texte_tendance = donnees.tendance_travail(t)
             r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), subtitle_lines=2, selectable=False)
-            r.add_prefix(Gtk.Image.new_from_icon_name('dialog-warning-symbolic' if trop_bas else 'dialog-information-symbolic'))
+            if tendance == 'hausse':
+                icone = 'go-up-symbolic'
+            else:
+                icone = 'dialog-warning-symbolic' if trop_bas or tendance else 'dialog-information-symbolic'
+            r.add_prefix(Gtk.Image.new_from_icon_name(icone))
+            if tendance:
+                r.add_suffix(etiquette(texte_tendance, ['error' if tendance == 'limite' else 'warning', 'caption-heading']))
             if trop_bas:
                 r.add_suffix(etiquette('annonce trop basse', ['warning', 'caption-heading']))
             self.groupe_appris.add(r)
@@ -136,6 +148,10 @@ class PageFile(Adw.PreferencesPage):
         r.position.set_width_chars(2)
         r.add_prefix(r.position)
         r.sortie = bouton('Voir la sortie', lambda: self.voir_sortie(cle))
+        r.priorite = etiquette('', ['caption-heading'])
+        r.changer = bouton('Priorité…', lambda: self.changer_priorite(cle), aide='Changer la priorité de ce travail en attente')
+        r.add_suffix(r.priorite)
+        r.add_suffix(r.changer)
         r.annuler = bouton('Annuler', lambda: self.demander_annulation(cle), ['destructive-action'])
         r.add_suffix(r.sortie)
         r.add_suffix(r.annuler)
@@ -146,17 +162,21 @@ class PageFile(Adw.PreferencesPage):
         en_cours = t.get('etat') == 'en cours'
         ligne.set_title(echappe(t.get('nom') or 'Travail sans nom'))
         ligne.position.set_label(str(t.get('position') or ''))
-        morceaux = ['En cours' if en_cours else 'En attente']
-        if t.get('ram') is not None:
-            morceaux.append(f'{donnees.formater_go(t["ram"])} de RAM')
-        if t.get('coeurs') is not None:
-            morceaux.append(donnees.pluriel(t['coeurs'], 'cœur'))
-        morceaux.append(donnees.depuis(t.get('depuis')))
-        sous = ' · '.join(morceaux)
+        sous = echappe(donnees.detail_travail_file(t))
         if t.get('commande'):
             sous += '\n' + echappe(donnees.tronquer(t['commande'], 110))
         ligne.set_subtitle(sous)
         ligne.sortie.set_visible(bool(t.get('sortie')))
+        # priorité (cœur 1.3.0 seulement) : pastille, et action sur les travaux en attente
+        niveau = t.get('priorite')
+        libelle = donnees.libelle_priorite(niveau)
+        ligne.priorite.set_visible(bool(libelle))
+        if libelle:
+            ligne.priorite.set_label(libelle)
+            for c in ('error', 'dim-label'):
+                ligne.priorite.remove_css_class(c)
+            ligne.priorite.add_css_class('error' if niveau == 'urgent' else 'dim-label')
+        ligne.changer.set_visible(bool(libelle) and donnees.peut_changer_priorite(t))
 
     # --- annuler ---
     def demander_annulation(self, cle):
@@ -169,6 +189,34 @@ class PageFile(Adw.PreferencesPage):
         confirmer(self.fenetre, f'Annuler « {nom} » ?', corps, 'Annuler le travail',
                   lambda: self.fenetre.executer(donnees.commande_gagarine() + ['file', 'annuler', cible],
                                                 f'« {nom} » annulé'))
+
+    # --- priorité ---
+    def changer_priorite(self, cle):
+        t = self.travaux.get(cle, {})
+        nom = t.get('nom') or 'ce travail'
+        cible = t.get('ticket') or str(t.get('pid'))
+        d = Adw.AlertDialog.new(f'Priorité de « {nom} »',
+                                'Un travail plus prioritaire passe devant les autres quand il tient dans la RAM et les cœurs '
+                                'disponibles. Un travail déjà en cours n’est jamais interrompu.')
+        liste = Gtk.DropDown.new_from_strings([n for _, n in donnees.PRIORITES])
+        liste.set_selected(next((i for i, (c, _) in enumerate(donnees.PRIORITES) if c == t.get('priorite')), 1))
+        liste.set_halign(Gtk.Align.CENTER)
+        liste.update_property([Gtk.AccessibleProperty.LABEL], ['Priorité'])
+        d.set_extra_child(liste)
+        d.add_response('annuler', 'Annuler')
+        d.add_response('ok', 'Changer')
+        d.set_response_appearance('ok', Adw.ResponseAppearance.SUGGESTED)
+        d.set_default_response('ok')
+        d.set_close_response('annuler')
+
+        def repondu(_d, reponse):
+            if reponse != 'ok':
+                return
+            niveau, nom_niveau = donnees.PRIORITES[liste.get_selected()]
+            self.fenetre.executer(donnees.arguments_priorite(donnees.commande_gagarine(), cible, niveau),
+                                  f'« {nom} » : priorité « {nom_niveau} »')
+        d.connect('response', repondu)
+        d.present(self.fenetre)
 
     # --- sortie ---
     def voir_sortie(self, cle):
@@ -241,7 +289,8 @@ class DialogueNouveauTravail(Adw.Dialog):
         vue.add_top_bar(entete)
 
         groupe = Adw.PreferencesGroup(description='Le travail attend son tour dans la file, puis se lance dans une limite '
-                                                  'de mémoire. Il continue même si vous fermez cette fenêtre.')
+                                                  'de mémoire. Un travail urgent passe devant les autres, un travail en fond '
+                                                  'leur laisse la place. Il continue même si vous fermez cette fenêtre.')
         self.nom = Adw.EntryRow(title='Nom')
         self.ram = Adw.SpinRow.new_with_range(0.5, 512, 0.5)
         self.ram.set_title('RAM nécessaire (Go)')
@@ -251,13 +300,16 @@ class DialogueNouveauTravail(Adw.Dialog):
         self.coeurs = Adw.SpinRow.new_with_range(0, 64, 1)
         self.coeurs.set_title('Cœurs nécessaires')
         self.coeurs.set_value(2)
+        self.priorite = Adw.ComboRow(title='Priorité')
+        self.priorite.set_model(Gtk.StringList.new([n for _, n in donnees.PRIORITES]))
+        self.priorite.set_selected(1)
         self.dossier = Adw.EntryRow(title='Dossier de travail')
         self.dossier.set_text(GLib.get_home_dir())
         choisir = bouton('', self.choisir_dossier, ['flat'], 'folder-open-symbolic', 'Choisir un dossier')
         self.dossier.add_suffix(choisir)
         self.commande = Adw.EntryRow(title='Commande')
         self.commande.connect('entry-activated', lambda _r: self.valider())
-        for ligne in (self.nom, self.commande, self.ram, self.coeurs, self.dossier):
+        for ligne in (self.nom, self.commande, self.ram, self.coeurs, self.priorite, self.dossier):
             groupe.add(ligne)
         self.erreur = Gtk.Label(wrap=True, xalign=0)
         self.erreur.add_css_class('error')
@@ -293,7 +345,8 @@ class DialogueNouveauTravail(Adw.Dialog):
             self.erreur.set_visible(True)
             return
         try:
-            sortie = lancer_detache(nom, self.ram.get_value(), int(self.coeurs.get_value()), commande, dossier)
+            sortie = lancer_detache(nom, self.ram.get_value(), int(self.coeurs.get_value()), commande, dossier,
+                                    donnees.PRIORITES[self.priorite.get_selected()][0])
         except OSError as e:
             self.erreur.set_label(f'Impossible de lancer le travail : {e.strerror or e}')
             self.erreur.set_visible(True)
@@ -303,14 +356,14 @@ class DialogueNouveauTravail(Adw.Dialog):
         GLib.timeout_add(1200, lambda: self.fenetre.source.rafraichir() or GLib.SOURCE_REMOVE)
 
 
-def lancer_detache(nom, ram_go, coeurs, commande, dossier):
+def lancer_detache(nom, ram_go, coeurs, commande, dossier, priorite='normal'):
     """Lance `gagarine file …` détaché de l'interface (nouvelle session) ; rend le fichier de sortie."""
     dossier_sortie = donnees.dossier_sorties()
     os.makedirs(dossier_sortie, exist_ok=True)
     sortie = donnees.fichier_sortie(dossier_sortie, nom)
     env = dict(os.environ, GAGARINE_SORTIE=sortie)
     with open(sortie, 'ab') as f:
-        p = subprocess.Popen(donnees.arguments_travail(nom, ram_go, coeurs, commande), cwd=dossier, env=env,
+        p = subprocess.Popen(donnees.arguments_travail(nom, ram_go, coeurs, commande, priorite=priorite), cwd=dossier, env=env,
                              stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
     GLib.child_watch_add(GLib.PRIORITY_DEFAULT, p.pid, lambda *_: None)   # récolte le processus quand il finit
     return sortie

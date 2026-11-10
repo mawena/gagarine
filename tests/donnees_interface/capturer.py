@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Captures des pages de l'interface dans docs/captures/, avec le faux gagarine, SOUS Xvfb uniquement :
 
-    xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 tests/donnees_interface/capturer.py [DOSSIER]
+    dbus-run-session -- xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 tests/donnees_interface/capturer.py [DOSSIER]
 
-Refuse de tourner sans Xvfb (jamais d'ouverture de fenêtre sur l'écran réel).
+Refuse de tourner sans Xvfb (jamais d'ouverture de fenêtre sur l'écran réel) et sans session D-Bus privée : l'interface
+est une application unique (org.gagarine…), et sur le bus de la session une interface déjà ouverte serait réveillée
+au lieu que la capture s'ouvre. `dbus-run-session` donne un bus à part.
 """
 import os
 import sys
@@ -16,6 +18,10 @@ DOSSIER = sys.argv[1] if len(sys.argv) > 1 else os.path.join(RACINE, 'docs', 'ca
 
 if os.environ.get('GDK_BACKEND') != 'x11' or os.environ.get('DISPLAY', ':1') == ':1' or not os.environ.get('DISPLAY'):
     sys.exit('À lancer sous Xvfb : xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 ' + sys.argv[0])
+
+bus = os.environ.get('DBUS_SESSION_BUS_ADDRESS', '')
+if not bus or bus == f'unix:path=/run/user/{os.getuid()}/bus':
+    sys.exit('À lancer avec une session D-Bus privée : dbus-run-session -- xvfb-run … (voir l\'en-tête)')
 
 # environnement isolé : faux gagarine, pas d'indicateur réel, pas de réglages du poste
 tmp = tempfile.mkdtemp(prefix='gagarine-captures-')
@@ -95,12 +101,16 @@ def main():
         ('apercu-7j', 'apercu', lambda f: (periode(f, '7j'), defiler(f.pages['apercu'], 0.45)), 2500),
         ('programmes', 'programmes', None, 1500),
         ('programmes-menage', 'programmes', lambda f: defiler(f.pages['programmes'], 0.5), 2500),
+        ('programmes-gros', 'programmes', lambda f: defiler(f.pages['programmes'], 1), 2500),
         ('programmes-plafond', 'programmes', lambda f: f.pages['programmes'].regler_plafond(next(iter(f.pages['programmes'].applis))), 2500),
         ('file', 'file', None, 1500),
         ('file-historique', 'file', lambda f: defiler(f.pages['file'], 1), 2500),
         ('journal', 'journal', None, 1500), ('reglages', 'reglages', None, 1500),
         ('reglages-notifications', 'reglages', lambda f: defiler(f.pages['reglages'], 0.3), 2500),
         ('reglages-service', 'reglages', lambda f: (defiler(f.pages['reglages'], 1), f.pages['reglages'].lancer_essai_cmd(False)), 5500),
+        ('file-priorite', 'file', lambda f: f.pages['file'].changer_priorite('1762785100000-1301.json'), 1500),
+        ('journal-fuites', 'journal', lambda f: (f.pages['journal'].recherche.set_text('fuite'), f.pages['journal'].maj(force=True)), 1500),
+        ('reglages-fuites', 'reglages', lambda f: defiler(f.pages['reglages'], 0.62), 2500),
         ('nouveau-travail', 'file', lambda f: f.pages['file'].nouveau_travail(), 1500),
         ('sortie-travail', 'file', lambda f: f.pages['file'].voir_sortie(next(iter(f.pages['file'].travaux))), 1500),
         ('etroit', 'apercu', lambda f: (periode(f, '24h'), defiler(f.pages['apercu'], 0), f.set_default_size(420, 720)), 2500),

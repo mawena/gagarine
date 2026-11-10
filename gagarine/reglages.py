@@ -1,7 +1,6 @@
 """Réglages de Gagarine : lecture, validation et écriture sur place de gagarine.conf."""
 import os
 import re
-import tempfile
 from configparser import ConfigParser, Error as ErreurConfig
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -13,9 +12,11 @@ CLES_ECRITURE = ('seuil', 'urgence', 'vigilance', 'grace', 'vidage_max', 'delai_
                  'notifications', 'proteges',
                  # 1.2.0
                  'anticipation', 'pression', 'notifications_fin', 'notification_fin_min', 'ntfy', 'file_ajuster',
-                 'menage_auto', 'menage_delai', 'claude_bloquer')
+                 'menage_auto', 'menage_delai', 'claude_bloquer',
+                 # 1.3.0
+                 'file_paralleles', 'fuite_seuil', 'fuite_notifier')
 # Réglages numériques pour lesquels 0 veut dire « désactivé »
-ZERO_PERMIS = ('anticipation', 'pression', 'notification_fin_min')
+ZERO_PERMIS = ('anticipation', 'pression', 'notification_fin_min', 'fuite_seuil')
 # Réglages exprimés en pourcentage (100 au plus)
 POURCENTAGES = ('seuil', 'urgence', 'vigilance', 'pression')
 # ntfy : un sujet (servi par ntfy.sh) ou l'adresse complète d'un sujet sur un autre serveur
@@ -44,6 +45,10 @@ class Reglages:
     menage_auto: bool = True     # arrêter tout seul les démons et modèles inactifs depuis menage_delai
     menage_delai: float = 30     # min d'inactivité avant le ménage automatique
     claude_bloquer: bool = True  # le hook des sessions Claude refuse les travaux lourds lancés hors de la file
+    # 1.3.0
+    file_paralleles: float = 2   # travaux de la file qui peuvent tourner en même temps quand ils tiennent (1 : un à la fois)
+    fuite_seuil: float = 100     # Mo/min : un programme qui grossit ainsi depuis 5 min est signalé comme fuite (0 : non)
+    fuite_notifier: bool = True  # notification (et ntfy) quand une fuite est repérée
 
 
 def booleen(texte):
@@ -73,6 +78,8 @@ def convertir(nom, texte):
         minimum_ok = v >= 0 if nom in ZERO_PERMIS else v > 0
         if not (minimum_ok and v <= (100 if nom in POURCENTAGES else 10 ** 9)):
             raise ValueError('hors limites')
+        if nom == 'file_paralleles' and not v.is_integer():
+            raise ValueError('un nombre entier de travaux')
         return v
     if nom in ('proteges', 'filtre') and texte:
         re.compile(texte)
@@ -232,6 +239,7 @@ def ecrire_reglages(chemin, valeurs):
         cp.read_string(nouveau)
     except ErreurConfig as e:   # ne jamais écrire un fichier que le service ne saurait pas relire
         raise OSError(f'le fichier modifié ne serait pas lisible : {e}') from e
+    import tempfile
     fd, tmp = tempfile.mkstemp(dir=chemin.parent, prefix='.gagarine.conf.')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:

@@ -37,9 +37,10 @@ Description: RAM guard that freezes the program filling the memory
  used before the disk swap) with matching kernel settings, so that frozen
  programs are pushed out fast and the machine never thrashes the disk.
  .
- It includes a queue for heavy jobs ("gagarine file"): jobs run one at a
- time, each one locked into a kernel memory limit, so a runaway job cannot
- take the machine down. The queue remembers the memory each job really used
+ It includes a queue for heavy jobs ("gagarine file"): several jobs can run
+ together when the RAM and the cores allow it, ordered by priority, each one
+ locked into a kernel memory limit, so a runaway job cannot take the machine
+ down. The queue remembers the memory each job really used
  and corrects announcements that are too low, and it notifies on the desktop
  (and optionally on the phone through ntfy) when a job ends.
  .
@@ -51,8 +52,12 @@ Description: RAM guard that freezes the program filling the memory
  ("gagarine menage"). It can cap the memory of desktop applications such as
  Chrome or VS Code ("gagarine applications").
  .
+ It also spots memory leaks (a program whose memory climbs steadily, or a job
+ whose peak grows from one run to the next) and warns before the threshold.
+ .
  A hook for Claude Code sessions ("gagarine hook-claude") refuses heavy jobs
- launched outside the queue and suggests the right command.
+ launched outside the queue and suggests the right command, and a status line
+ ("gagarine ligne-etat") shows the state of the machine in Claude Code.
  .
  The package installs a signed APT repository entry, so "apt upgrade" keeps
  Gagarine up to date.

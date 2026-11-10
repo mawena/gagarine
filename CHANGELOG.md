@@ -7,6 +7,36 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.3.0] - 2026-11-10
+
+La file d'attente fait passer plusieurs travaux à la fois quand ils tiennent, les fuites de mémoire se voient avant de
+remplir la RAM, et chaque session Claude Code affiche l'état du poste.
+
+### Ajouté
+
+- **File plus rapide** :
+  - plusieurs travaux tournent en même temps quand la mémoire (en réservant ce que chaque travail en cours peut encore
+    prendre) et les cœurs suffisent : réglage `file_paralleles`, 2 par défaut (1 = comme avant) ;
+  - **priorités** : `gagarine file --priorite urgent|normal|fond …`, `gagarine file priorite PID|TICKET NIVEAU` ; un travail
+    ne double un autre que si celui-ci ne tient pas, et jamais un travail qui attend depuis plus de 10 minutes ;
+  - les tickets des anciens outils (copies `file-attente.cjs`) ne sont jamais doublés ;
+  - `file --etat` dit pourquoi chaque travail attend (`motif`, `besoin_go`, `priorite`, `en_cours`, `paralleles`).
+- **Fuites de mémoire** :
+  - en direct : un programme qui grossit d'au moins `fuite_seuil` Mo/min (100) depuis 5 minutes est signalé, avec la
+    pente et l'heure à laquelle la RAM serait pleine (événement `fuite`, notification et ntfy si `fuite_notifier`,
+    `fuites` dans `etat`) ; aucune action sur le programme ;
+  - d'un lancement à l'autre : la file signale un travail dont le pic monte à chaque lancement ou qui dépasse sa limite
+    plusieurs fois (`tendance` dans `file appris`, événement `fuite-travail`).
+- **Ligne d'état de Claude Code** : `gagarine ligne-etat [--avec "COMMANDE"]` affiche `RAM 72 % · file 3 (2 en cours)
+  · 1 figé · fuite : python3`, à côté d'une ligne d'état existante.
+- **Interface et indicateur** : priorités et motifs dans la file, travaux en parallèle, « Priorité… », fuites en cours
+  et badge « fuite », tendances de la mémoire apprise, nouveaux réglages ; l'indicateur signale les fuites.
+
+### Modifié
+
+- La commande `gagarine` démarre plus vite (modules chargés à la demande) : le hook des sessions Claude et la ligne
+  d'état répondent plus tôt.
+
 ## [1.2.2] - 2026-11-10
 
 ### Documentation

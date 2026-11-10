@@ -150,6 +150,22 @@ def detail_lisible(e):
         if isinstance(e.get('pic_go'), (int, float)):
             texte += f', pic {_go(e["pic_go"])} Go'
         return texte
+    if action == 'fuite':
+        parties = [f'{e["pente_mo_min"]:g} Mo/min' if isinstance(e.get('pente_mo_min'), (int, float)) else None]
+        prevision = e.get('prevision_s')
+        if isinstance(prevision, (int, float)):
+            parties.append('RAM pleine dans ~' + (f'{round(prevision)} s' if prevision < 90 else
+                           f'{round(prevision / 60)} min' if prevision < 5400 else f'{round(prevision / 3600)} h'))
+        return ', '.join(x for x in parties if x)
+    if action == 'fuite-travail':
+        pics = e.get('pics_go')
+        suite = ' → '.join(f'{x:.1f}'.replace('.', ',') for x in pics if isinstance(x, (int, float))) \
+            if isinstance(pics, list) else ''
+        if e.get('tendance') == 'limite':
+            texte = 'arrêté par sa limite aux derniers lancements'
+        else:
+            texte = 'pic en hausse à chaque lancement'
+        return f'{texte} ({suite} Go)' if suite else texte
     if action == 'menage':
         parties = [e.get('type'), f'{e["memoire_mo"]:g} Mo' if isinstance(e.get('memoire_mo'), (int, float)) else None,
                    'automatique' if e.get('auto') else None]

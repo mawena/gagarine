@@ -67,10 +67,28 @@ class Paquet(unittest.TestCase):
                     'menage_auto', 'menage_delai', 'claude_bloquer', 'travaux.json', 'gagarine.sources'):
             self.assertTrue(mot in texte, f'{mot} absent de man/gagarine.8')
 
+    def test_manuel_documente_la_130(self):
+        with open(os.path.join(RACINE, 'man/gagarine.8'), encoding='utf-8') as f:
+            texte = f.read()
+        for mot in ('gagarine file priorite', 'gagarine ligne\\-etat', '\\-\\-priorite', 'paralleles', 'en_cours', 'motif',
+                    'besoin_go', 'tendance', 'fuites', 'prevision_s', 'fuite\\-travail', 'fuite_seuil',
+                    'fuite_notifier', 'file_paralleles', 'fuites.json', 'FUITES DE MÉMOIRE'):
+            self.assertIn(mot, texte, f'{mot} absent de man/gagarine.8')
+
+    def test_ligne_d_etat_installee_et_sans_purge_a_prevoir(self):
+        """gagarine/*.py (donc ligne.py) est installé ; le paquet ne nettoie pas le dossier d'état à la purge
+        (StateDirectory de systemd), donc rien à ajouter pour fuites.json."""
+        sources = [s for s, *_ in lignes('gagarine.install')]
+        self.assertIn('gagarine/*.py', sources)
+        self.assertTrue(os.path.exists(os.path.join(RACINE, 'gagarine', 'ligne.py')))
+        for nom in ('postrm', 'gagarine.postrm', 'prerm', 'gagarine.prerm'):
+            self.assertFalse(os.path.exists(os.path.join(RACINE, 'debian', nom)),
+                             f'debian/{nom} : si le paquet nettoie /var/lib/gagarine, il doit aussi retirer fuites.json')
+
     def test_description_a_jour(self):
         with open(os.path.join(RACINE, 'debian/control'), encoding='utf-8') as f:
             texte = f.read()
-        for mot in ('hook-claude', 'historique', 'menage', 'APT'):
+        for mot in ('hook-claude', 'historique', 'menage', 'APT', 'ligne-etat', 'leak'):
             self.assertTrue(mot in texte, f'{mot} absent de la description')
 
     def test_pages_de_manuel(self):

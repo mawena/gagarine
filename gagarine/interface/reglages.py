@@ -62,8 +62,16 @@ class PageReglages(Adw.PreferencesPage):
 
         # --- file, ménage, sessions Claude ---
         g_file = Adw.PreferencesGroup(title='File d’attente')
+        for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_FILE_130:
+            g_file.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
         g_file.add(self._ligne_interrupteur('file_ajuster'))
         self.add(g_file)
+        g_fuites = Adw.PreferencesGroup(title='Fuites de mémoire',
+                                        description='Gagarine repère un programme qui grossit régulièrement, bien avant le seuil.')
+        for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_FUITES:
+            g_fuites.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
+        g_fuites.add(self._ligne_interrupteur('fuite_notifier'))
+        self.add(g_fuites)
         g_menage = Adw.PreferencesGroup(title='Ménage',
                                         description='Démons Gradle et Kotlin, modèles de LM Studio et d’Ollama restés inactifs.')
         g_menage.add(self._ligne_interrupteur('menage_auto'))

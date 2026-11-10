@@ -1,4 +1,4 @@
-.TH GAGARINE 8 "10 novembre 2026" "gagarine 1.2.2" "Administration système"
+.TH GAGARINE 8 "10 novembre 2026" "gagarine 1.3.0" "Administration système"
 .SH NOM
 gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de figer le poste
 .SH SYNOPSIS
@@ -17,6 +17,8 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .br
 .B gagarine file
 .I NOM GO COEURS
+.RB [ \-\-priorite
+.IR urgent | normal | fond ]
 .RB [ \-\-apres
 .IR PID ]
 .B \-\-
@@ -25,6 +27,9 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .B gagarine file
 .RB ( \-\-etat " | " etat )
 .RB [ \-\-json ]
+.br
+.B gagarine file priorite
+.IR PID | TICKET\ urgent | normal | fond
 .br
 .B gagarine file annuler
 .IR PID | TICKET
@@ -55,6 +60,11 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .B gagarine hook\-claude
 .RB [ \-\-tester
 .IR COMMANDE ]
+.br
+.B gagarine ligne\-etat
+.RB [ \-\-avec
+.IR COMMANDE ]
+.RB [ \-\-sans\-couleur ]
 .br
 .B gagarine ntfy essai
 .I CIBLE
@@ -115,8 +125,12 @@ Lance le démon de surveillance (c'est ce que fait le service). Sans \fB\-\-conf
 .BR etat " [" \-\-json ]
 Affiche la RAM utilisée, l'état du service, les programmes figés et les derniers événements. Avec \fB\-\-json\fR, écrit
 un seul objet JSON (UTF\-8) : version, date, RAM, zones de swap (dont zram), réglages en vigueur, fichier de réglages,
-état du service (\fBsystemctl is\-active\fR) et son activation au démarrage, dossier d'état, programmes figés et les
-dix programmes qui prennent le plus de mémoire (RAM + swap). Les clés ne disparaissent jamais d'une version à l'autre.
+état du service (\fBsystemctl is\-active\fR) et son activation au démarrage, dossier d'état, programmes figés, fuites
+repérées et les dix programmes qui prennent le plus de mémoire (RAM + swap). \fBfuites\fR est la liste des programmes dont
+la mémoire monte régulièrement en ce moment (fichier \fIfuites.json\fR du service) : \fBpid\fR, \fBnom\fR,
+\fBpente_mo_min\fR, \fBdepuis\fR (secondes depuis 1970), \fBmemoire_mo\fR et \fBprevision_s\fR (secondes avant que la RAM
+atteigne le seuil à cette pente, absent ou \fBnull\fR si elle ne l'atteindrait pas). Les clés ne disparaissent jamais
+d'une version à l'autre.
 .TP
 .BI reprendre " PID"
 Relance un programme figé. Il reste bridé.
@@ -124,15 +138,23 @@ Relance un programme figé. Il reste bridé.
 .BI arreter " PID"
 Arrête un programme figé.
 .TP
-.BR file " \fINOM GO COEURS\fR [" \-\-apres " \fIPID\fR] " \-\- " \fICOMMANDE\fR..."
+.BR file " \fINOM GO COEURS\fR [" \-\-priorite " \fINIVEAU\fR] [" \-\-apres " \fIPID\fR] " \-\- " \fICOMMANDE\fR..."
 File d'attente des travaux lourds (voir \fBFILE D'ATTENTE\fR) : attend son tour, puis lance \fICOMMANDE\fR dans sa limite
-mémoire et rend son code de sortie.
+mémoire et rend son code de sortie. \fB\-\-priorite\fR vaut \fBurgent\fR, \fBnormal\fR (par défaut) ou \fBfond\fR : un travail
+plus prioritaire passe devant les autres quand il tient dans la RAM et les cœurs disponibles.
 .TP
 .BR file " (" \-\-etat " | " etat ") [" \-\-json ]
 Affiche la mémoire disponible, la charge et les travaux en file. Avec \fB\-\-json\fR, un seul objet JSON :
-\fBram_disponible_go\fR, \fBcharge\fR, \fBcoeurs\fR, \fBdossier\fR et \fBtravaux\fR (ticket, position, nom, pid, depuis,
-etat, ram, coeurs, commande, unite, sortie, source). Pour un ticket d'un ancien outil, les champs absents valent
-\fBnull\fR et \fBsource\fR vaut \fB"autre"\fR. Cette lecture ne supprime aucun ticket.
+\fBram_disponible_go\fR, \fBcharge\fR, \fBcoeurs\fR, \fBdossier\fR, \fBparalleles\fR (le réglage \fIfile_paralleles\fR),
+\fBen_cours\fR (nombre de travaux en cours) et \fBtravaux\fR (ticket, position, nom, pid, depuis, etat, ram, coeurs,
+commande, unite, sortie, source, plus, depuis la 1.3.0, \fBpriorite\fR, \fBbesoin_go\fR et, pour un travail en attente,
+\fBmotif\fR : la raison courte de l'attente, par exemple « 2 travaux en cours » ou « derrière « rendu » (urgent) »,
+\fBnull\fR s'il peut démarrer). Pour un ticket d'un ancien outil, les champs absents valent \fBnull\fR et \fBsource\fR vaut
+\fB"autre"\fR. Cette lecture ne supprime aucun ticket.
+.TP
+.BI file " priorite PID|TICKET " "\fR(\fBurgent\fR | \fBnormal\fR | \fBfond\fR)"
+Change la priorité d'un travail en attente (le sien ; l'administrateur : tous). Une priorité n'interrompt jamais un
+travail en cours. Code 1 si le travail est inconnu, déjà en cours ou à un autre utilisateur, 2 si le niveau est inconnu.
 .TP
 .BI file " annuler PID|TICKET"
 Annule un travail de la file : en attente, il quitte la file ; en cours, il est arrêté. Seuls les travaux de l'utilisateur
@@ -141,8 +163,10 @@ ou n'appartient pas à l'utilisateur.
 .TP
 .BR file " " appris " [" \-\-json ]
 Affiche la mémoire apprise de chaque travail : pic de mémoire (RAM + swap) des cinq dernières exécutions, annonce, nombre
-d'exécutions et date de la dernière, du plus récent au plus ancien. Avec \fB\-\-json\fR :
-\fB{"travaux": [{"nom", "executions", "pic_go", "annonce_go", "derniere"}]}\fR. Voir \fBFILE D'ATTENTE\fR.
+d'exécutions, tendance et date de la dernière, du plus récent au plus ancien. Avec \fB\-\-json\fR :
+\fB{"travaux": [{"nom", "executions", "pic_go", "annonce_go", "derniere", "tendance"}]}\fR ; \fBtendance\fR vaut \fBhausse\fR
+(les pics montent à chaque lancement : fuite probable), \fBlimite\fR (les deux derniers lancements ont été arrêtés par leur
+limite) ou \fBstable\fR. Voir \fBFILE D'ATTENTE\fR.
 .TP
 .BR historique " [" \-\-depuis " \fIPERIODE\fR] [" \-\-json ]
 Résume les derniers jours (24 h par défaut ; \fB5min\fR, \fB1h\fR, \fB24h\fR ou \fB7j\fR) d'après l'historique écrit par
@@ -185,6 +209,15 @@ utiliser. Si la file connaît déjà le travail, la commande proposée annonce l
 demi\-Go supérieur). Ne plante jamais : en cas d'erreur, la sortie est vide. \fB\-\-tester\fR affiche le verdict sur une
 commande sans rien lire. Le paquet fournit \fI/usr/share/gagarine/claude/ressources\-poste.sh\fR, qui l'appelle.
 .TP
+.BR ligne\-etat " [" \-\-avec " \fICOMMANDE\fR] [" \-\-sans\-couleur ]
+Ligne d'état de Claude Code : lit sur l'entrée standard le JSON que Claude Code envoie à sa ligne d'état et affiche une
+ligne courte, par exemple \fBRAM 72 % · file 3 (2 en cours) · 1 figé · fuite : python3\fR ; seules les parties non nulles
+apparaissent, colorées selon le niveau de la RAM (\fB\-\-sans\-couleur\fR les supprime). \fB\-\-avec\fR lance d'abord la ligne
+d'état existante (même entrée, 1 seconde au plus) et ajoute la partie de Gagarine à la fin de sa dernière ligne, après
+\fB │ \fR ; si elle échoue ou tarde trop, seule la partie de Gagarine s'affiche. La commande ne plante jamais (au pire,
+la RAM seule) et répond en moins de 70 ms. À déclarer dans \fIstatusLine\fR des réglages de Claude Code :
+\fBgagarine ligne\-etat \-\-avec "/usr/bin/claude\-accounts statusline"\fR.
+.TP
 .BI ntfy " essai CIBLE"
 Envoie un message d'essai à \fICIBLE\fR (un sujet ntfy, ou l'adresse complète d'un sujet), même si elle n'est pas
 enregistrée dans les réglages. Code 0 si le serveur l'a accepté, 1 sinon, 2 si la cible est invalide.
@@ -215,20 +248,26 @@ Auto\-test sans risque : un programme d'essai grossit ; il doit être figé, ran
 affiché. À lancer en administrateur pour essayer la chaîne complète du service.
 .TP
 .BR version ", " \-\-version
-Affiche « gagarine 1.2.2 ».
+Affiche « gagarine 1.3.0 ».
 .TP
 .BR \-h ", " \-\-help
 Affiche l'aide.
 .SH FILE D'ATTENTE
 \fBgagarine file\fR met les travaux lourds (rendu vidéo, compilation, longue suite de tests, modèle local…) à la queue :
-un seul à la fois, dans l'ordre d'arrivée, et seulement quand la mémoire et les processeurs suffisent. Chaque travail
+plusieurs à la fois si la mémoire et les processeurs le permettent (réglage \fIfile_paralleles\fR), rangés par priorité puis
+par ancienneté. Chaque travail
 dépose un ticket \fI<millisecondes>\-<pid>.json\fR dans \fI/tmp/file\-attente\-travaux\-lourds\fR (variable
 \fBFILE_ATTENTE_DOSSIER\fR). La file est la même que celle de l'ancien outil \fBfile\-attente\fR et de ses copies : les
 deux se voient et s'attendent. Un ticket dont le processus est mort est supprimé.
 .PP
-Son tour vient quand aucun travail vivant n'est plus ancien, que \fBMemAvailable\fR atteint les \fIGO\fR annoncés, que les
-cœurs libres (cœurs moins charge sur 1 minute) atteignent \fICOEURS\fR et que le processus de \fB\-\-apres\fR est terminé.
-La vérification a lieu toutes les 5 secondes, avec un message à chaque changement de raison d'attendre.
+Un travail en attente démarre quand toutes ces conditions sont réunies : moins de \fIfile_paralleles\fR travaux en cours ;
+\fBMemAvailable\fR moins une réserve (1 Go de marge, plus ce que les travaux en cours peuvent encore prendre jusqu'à leur
+annonce, plus 2 Go par travail en cours d'un ancien outil) atteint les \fIGO\fR annoncés ; les cœurs libres (cœurs moins
+charge sur 1 minute, moins les cœurs des travaux lancés depuis moins de 60 s) atteignent \fICOEURS\fR ; le processus de
+\fB\-\-apres\fR est terminé ; et l'ordre est respecté : un travail ne passe devant un travail plus prioritaire que si ce
+dernier ne tient pas en ce moment, et jamais devant un travail qui attend depuis plus de 10 minutes. Un travail d'un ancien
+outil qui attend n'est jamais doublé, et ne sait pas tourner à côté des autres. La vérification a lieu toutes les 5
+secondes, avec un message à chaque changement de raison d'attendre.
 .PP
 Le travail est lancé dans un scope systemd utilisateur (\fBsystemd\-run \-\-user \-\-scope\fR) dont la mémoire est limitée à
 max(2 × \fIGO\fR, \fIGO\fR + 2) Go, avec 512 Mo de swap au plus. S'il dépasse cette limite, le noyau n'arrête que lui :
@@ -248,6 +287,20 @@ l'annonce de plus de 10 %, elle le dit et, avec \fIfile_ajuster\fR, corrige l'an
 supérieur, au plus 60 % de la RAM du poste (au\-delà, ce travail a sans doute une fuite de mémoire). Les événements
 \fBtravail\-fin\fR et \fBlimite\fR portent \fBpic_go\fR ; \fBtravail\-debut\fR porte \fBannonce_initiale\fR et \fBajuste\fR.
 Un travail d'au moins \fInotification_fin_min\fR secondes envoie une notification de fin sur le bureau (et par ntfy).
+.PP
+Fuites d'un lancement à l'autre : \fBtravaux.json\fR garde aussi une \fBtendance\fR par travail. Elle vaut \fBhausse\fR si les
+trois derniers pics (au moins) montent à chaque fois et que le dernier vaut au moins 1,3 fois le plus ancien d'entre eux,
+\fBlimite\fR si les deux derniers lancements ont été arrêtés par leur limite, sinon \fBstable\fR. Au lancement d'un travail
+en \fBhausse\fR ou en \fBlimite\fR, la file le dit (« pic en hausse à chaque lancement : fuite probable ») et note l'événement
+\fBfuite\-travail\fR (\fBnom\fR, \fBtendance\fR, \fBpics_go\fR).
+.SH FUITES DE MÉMOIRE
+Le service suit, toutes les 10 secondes, les programmes d'au moins 500 Mo (RAM + swap) qui ne sont pas protégés. Un
+programme est signalé comme fuite si la pente de sa mémoire sur les 5 dernières minutes atteint \fIfuite_seuil\fR Mo par
+minute et si elle a monté sur au moins 80 % des intervalles. Le service note alors l'événement \fBfuite\fR (\fBpid\fR,
+\fBnom\fR, \fBpente_mo_min\fR, \fBmemoire\fR en octets, \fBprevision_s\fR ou absent, \fButilisateur\fR, \fBcommande\fR), prévient
+par une notification du bureau (et par ntfy) si \fIfuite_notifier\fR est actif, une fois par programme toutes les 30
+minutes, et tient à jour \fIfuites.json\fR. Aucune action n'est faite sur le programme : c'est une alerte, le garde agit
+comme d'habitude (anticipation, seuil).
 .SH RÉGLAGES
 Fichier \fI/etc/gagarine.conf\fR, au format INI, section \fB[gagarine]\fR. Il est conservé aux mises à jour du paquet.
 Le service relit ses réglages sur le signal SIGHUP, sans perdre son état (programmes figés, historique) : après une
@@ -308,6 +361,17 @@ Minutes d'inactivité avant le ménage automatique (30).
 .TP
 .B claude_bloquer
 \fBoui\fR ou \fBnon\fR : le hook des sessions Claude Code refuse les travaux lourds lancés hors de la file (oui).
+.TP
+.B file_paralleles
+Nombre maximal de travaux de la file en cours en même temps (entier d'au moins 1) ; 1 : un seul à la fois, comme avant la
+1.3.0 (2).
+.TP
+.B fuite_seuil
+Pente de mémoire, en Mo par minute, à partir de laquelle un programme est signalé comme fuite ; 0 : ne pas chercher les
+fuites (100).
+.TP
+.B fuite_notifier
+\fBoui\fR ou \fBnon\fR : notification (bureau, et ntfy si réglé) quand une fuite est repérée (oui).
 .PP
 Les composants qui tournent sous l'utilisateur (file, ménage, hook Claude, applications) lisent aussi \fI/etc/gagarine.conf\fR.
 Des variables d'environnement prévalent sur le fichier : \fBGAGARINE_CONFIG\fR (fichier de réglages), \fBGAGARINE_ETAT\fR
@@ -326,11 +390,15 @@ Journal des événements, une ligne JSON par événement.
 .I /var/lib/gagarine/figes.json
 Programmes actuellement figés (conservés d'un redémarrage du service à l'autre).
 .TP
+.I /var/lib/gagarine/fuites.json
+Fuites repérées en ce moment par le service (liste d'objets : pid, nom, pente_mo_min, memoire en octets, depuis, prevision_s,
+debut, utilisateur), lisible par tous ; réécrit quand la liste change, vidé au démarrage du service.
+.TP
 .I /var/lib/gagarine/historique\-AAAA\-MM\-JJ.jsonl
 Historique : une mesure par minute (RAM, swap, pression, trois plus gros programmes), huit jours gardés.
 .TP
 .I ~/.local/state/gagarine/travaux.json
-Mémoire apprise des travaux de la file (pics de mémoire).
+Mémoire apprise des travaux de la file (pics de mémoire et tendance).
 .TP
 .I ~/.local/state/gagarine/menage.json
 Suivi de l'inactivité des candidats au ménage.
@@ -392,8 +460,9 @@ Lancer un rendu à la queue, voir la file, puis annuler un travail (processus 42
 .PP
 .RS
 .nf
-gagarine file "rendu vidéo" 4 4 \-\- ffmpeg \-i a.mkv b.mp4
+gagarine file \-\-priorite urgent "rendu vidéo" 4 4 \-\- ffmpeg \-i a.mkv b.mp4
 gagarine file \-\-etat
+gagarine file priorite 4242 fond
 gagarine file annuler 4242
 .fi
 .RE
@@ -415,6 +484,14 @@ Essayer les alertes du téléphone, et voir ce que le hook ferait d'une commande
 .nf
 gagarine ntfy essai mon\-sujet\-secret
 gagarine hook\-claude \-\-tester "make deb"
+.fi
+.RE
+.PP
+Montrer l'état du poste dans la barre de Claude Code (réglages de Claude Code, \fIstatusLine\fR) :
+.PP
+.RS
+.nf
+gagarine ligne\-etat \-\-avec "/usr/bin/claude\-accounts statusline"
 .fi
 .RE
 .SH VOIR AUSSI

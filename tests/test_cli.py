@@ -33,11 +33,11 @@ class TestEssaiEtCommandes(unittest.TestCase):
         self.assertEqual([ok for _, ok, _ in v], [False, False, False])
 
     def test_version_et_aide(self):
-        self.assertEqual(ve.VERSION, '1.2.2')
+        self.assertEqual(ve.VERSION, '1.3.0')
         import subprocess
         for a in ('version', '--version'):
             r = subprocess.run([str(CHEMIN), a], capture_output=True, text=True)
-            self.assertEqual(r.stdout, 'gagarine 1.2.2\n')
+            self.assertEqual(r.stdout, 'gagarine 1.3.0\n')
         r = subprocess.run([str(CHEMIN), '--help'], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
         for mot in ('surveiller', 'etat', 'reprendre', 'arreter', 'essai', 'version'):
@@ -51,3 +51,38 @@ class TestEssaiEtCommandes(unittest.TestCase):
                                env=dict(os.environ, GAGARINE_ETAT=d))
             self.assertNotEqual(r.returncode, 0)
             self.assertIn('ne figure pas', r.stderr)
+
+
+class TestDemarrageRapide(unittest.TestCase):
+    """`ligne-etat` et `hook-claude` tournent à chaque message de Claude Code : ils ne doivent pas charger le reste."""
+
+    def test_index_des_extensions_d_accord_avec_les_modules(self):
+        from gagarine import cli
+        for commande, nom in cli.COMMANDES_EXTENSIONS.items():
+            [(_, commandes, _)] = cli.charger_extensions((nom,))
+            self.assertIn(commande, commandes)
+        for _, commandes, _ in cli.charger_extensions():
+            for commande in commandes:
+                self.assertIn(commande, cli.COMMANDES_EXTENSIONS)
+
+    def test_modules_lourds_non_importes(self):
+        import subprocess
+        import sys
+        code = ('import sys, json; from gagarine.cli import main; main(["ligne-etat"]); '
+                'print(json.dumps([m for m in ("gagarine.file", "gagarine.garde", "gagarine.ntfy", "gagarine.essai", '
+                '"gagarine.claude", "urllib.request", "subprocess") if m in sys.modules]))')
+        racine = str(CHEMIN.parent.parent)
+        r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, input='{}',
+                           env=dict(os.environ, PYTHONPATH=racine))
+        # file est chargé pour compter les tickets ; ni le garde, ni le réseau, ni l'essai, ni le hook
+        import json
+        charges = json.loads(r.stdout.strip().splitlines()[-1])
+        for m in ('gagarine.garde', 'gagarine.essai', 'gagarine.claude', 'urllib.request'):
+            self.assertNotIn(m, charges)
+
+    def test_aide_complete_avec_les_extensions(self):
+        from gagarine import cli
+        texte = cli.aide()
+        for mot in ('ligne-etat', 'hook-claude', 'menage', 'historique', 'applications', 'ntfy', 'file priorite'):
+            self.assertIn(mot, texte)
+        self.assertEqual(cli.AIDE, cli.texte_aide())
