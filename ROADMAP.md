@@ -11,19 +11,19 @@ Il reprend le garde-RAM écrit le 10/11/2026 pour le poste, après deux redémar
 
 ## Phase 2 — Programme `gagarine`
 
-- [ ] Mesure de la RAM chaque seconde, quatre fois par seconde au-delà du seuil de vigilance
-- [ ] Choix du coupable : croissance sur 10 s puis 60 s, à défaut le plus gros ; programmes protégés jamais touchés
-- [ ] Figer (SIGSTOP), brider (il ne peut plus grossir s'il est repris), ranger dans le swap (`process_madvise` en administrateur, `memory.reclaim` sinon)
-- [ ] Arrêt : RAM toujours au-dessus du seuil une fois le rangement fini, urgence à 98 %, figé depuis 10 min sans décision
-- [ ] Notifications sur les sessions graphiques ouvertes, avec les boutons « Arrêter » et « Reprendre »
-- [ ] Fichier de réglages `/etc/gagarine.conf`
-- [ ] Commandes `surveiller`, `etat`, `reprendre`, `arreter`, `essai`, `version`
-- [ ] Journal des événements (une ligne JSON par événement), lisible par les outils du poste
+- [x] Mesure de la RAM chaque seconde, quatre fois par seconde au-delà du seuil de vigilance
+- [x] Choix du coupable : croissance sur 10 s puis 60 s, à défaut le plus gros ; programmes protégés jamais touchés
+- [x] Figer (SIGSTOP), brider (il ne peut plus grossir s'il est repris), ranger dans le swap (`process_madvise` en administrateur, `memory.reclaim` sinon)
+- [x] Arrêt : RAM toujours au-dessus du seuil une fois le rangement fini, urgence à 98 %, figé depuis 10 min sans décision
+- [x] Notifications sur les sessions graphiques ouvertes, avec les boutons « Arrêter » et « Reprendre »
+- [x] Fichier de réglages `/etc/gagarine.conf`
+- [x] Commandes `surveiller`, `etat`, `reprendre`, `arreter`, `essai`, `version`
+- [x] Journal des événements (une ligne JSON par événement), lisible par les outils du poste
 
 ## Phase 3 — Tests
 
-- [ ] Tests unitaires des décisions, sur des mesures simulées
-- [ ] Essai réel sans privilèges : seuil abaissé, programme d'essai qui grossit (`gagarine essai`)
+- [x] Tests unitaires des décisions, sur des mesures simulées
+- [x] Essai réel sans privilèges : seuil abaissé, programme d'essai qui grossit (`gagarine essai`)
 
 ## Phase 4 — Paquet Debian
 
