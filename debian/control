@@ -13,8 +13,8 @@ Depends: ${misc:Depends},
          python3 (>= 3.10),
          libnotify-bin,
          systemd,
-         util-linux (>= 2.37)
-Suggests: systemd-zram-generator
+         util-linux (>= 2.37),
+         systemd-zram-generator
 Description: RAM guard that freezes the program filling the memory
  Gagarine keeps a Linux machine from freezing when its memory fills up. It
  measures the RAM every second (four times per second above 85 %). At 95 %
@@ -27,5 +27,7 @@ Description: RAM guard that freezes the program filling the memory
  services, and sends desktop notifications offering to stop or resume the
  frozen program. The "gagarine essai" command checks the whole chain safely.
  .
- Complements systemd-oomd and earlyoom; a zram swap (systemd-zram-generator,
- suggested) gives it a fast place to push the frozen program.
+ It also sets up a compressed swap in RAM (zram, the size of the RAM, zstd,
+ used before the disk swap) with matching kernel settings, so that frozen
+ programs are pushed out fast and the machine never thrashes the disk.
+ Complements systemd-oomd and earlyoom.
