@@ -1,0 +1,9 @@
+Dépôt APT de Gagarine : https://mawena.github.io/gagarine/apt (branche gh-pages).
+
+gagarine.gpg      clé publique de signature (format binaire, sans armure)
+gagarine.sources  source deb822 installée dans /etc/apt/sources.list.d/
+
+Clé de signature : « Gagarine APT (mawena) <57989130+mawena@users.noreply.github.com> »
+Empreinte : FE66 B5A9 00CB E8EB FB8F  B079 FCA7 E8E0 C551 3B93
+ed25519, sans phrase de passe, créée le 10/11/2026, valable 3 ans.
+Publication : scripts/publier-apt.sh dist/gagarine_<version>_all.deb (ou make apt).
