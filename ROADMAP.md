@@ -135,6 +135,6 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 21 — Mise en place de la 1.2.0 sur le poste
 
-- [ ] Installation (par l'utilisateur), puis mises à jour par `apt upgrade`
-- [ ] Hook des sessions Claude remplacé par `gagarine hook-claude`
+- [x] Installation (par l'utilisateur), puis mises à jour par `apt upgrade`
+- [x] Hook des sessions Claude remplacé par `gagarine hook-claude`
 - [ ] Scripts vidéo de Cofidesk, Cofidesk-gpu et Report passés par `gagarine file` (après les vidéos en cours)
