@@ -120,7 +120,7 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 ## Phase 18 — Mises à jour par apt
 
-- [ ] Dépôt APT signé sur GitHub Pages, `scripts/publier-apt.sh`
+- [x] Dépôt APT signé sur GitHub Pages, `scripts/publier-apt.sh`
 - [ ] Source APT et clé installées par le paquet
 
 ## Phase 19 — Interface et indicateur 1.2.0
