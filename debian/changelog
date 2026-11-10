@@ -9,4 +9,4 @@ gagarine (1.0.0) unstable; urgency=medium
   * Paquet Debian : service systemd activé et démarré à l'installation,
     page de manuel gagarine(8), README.
 
- -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 14:00:00 +0000
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 10 Nov 2026 13:22:32 +0000
