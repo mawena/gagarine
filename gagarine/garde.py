@@ -23,12 +23,36 @@ from gagarine.systeme import CROISSANCE_MIN, ENCORE_EN_RAM, FENETRES, Mo, System
 from gagarine.version import VERSION
 
 
+# --- fuites de mémoire : une mesure toutes les 10 s sur 5 min, pour les programmes d'au moins 500 Mo ---
+FUITE_PAS = 10                # secondes entre deux mesures gardées
+FUITE_FENETRE = 300           # secondes d'historique (5 min) ; il en faut presque autant pour conclure
+FUITE_DUREE_MIN = 290         # durée couverte minimale des mesures (tolérance d'un tour de boucle)
+FUITE_TAILLE_MIN = 500 * Mo   # en dessous, un programme n'est pas examiné
+FUITE_HAUSSES = 0.8           # part des intervalles où la mémoire doit avoir monté
+FUITE_RENOTIFIER = 1800       # secondes avant de signaler de nouveau le même programme
+FUITE_HORIZON = 24 * 3600     # au-delà, la RAM « ne serait jamais » pleine (prévision : null)
+
+
+def pente_et_hausses(mesures):
+    """(pente en octets/s par moindres carrés, part des intervalles en hausse) d'une liste [(instant, mémoire)]."""
+    n = len(mesures)
+    if n < 2:
+        return 0.0, 0.0
+    tm = sum(t for t, _ in mesures) / n
+    mm = sum(m for _, m in mesures) / n
+    den = sum((t - tm) ** 2 for t, _ in mesures)
+    pente = sum((t - tm) * (m - mm) for t, m in mesures) / den if den else 0.0
+    hausses = sum(1 for (_, a), (_, b) in zip(mesures, mesures[1:]) if b > a)
+    return pente, hausses / (n - 1)
+
+
 def lancer_fil(f, *args):
     threading.Thread(target=f, args=args, daemon=True).start()
 
 
 class Garde:
-    def __init__(self, r, systeme, journal, fichier_figes, lancer=lancer_fil, charger_reglages=None, alerter=ntfy.envoyer_en_fond):
+    def __init__(self, r, systeme, journal, fichier_figes, lancer=lancer_fil, charger_reglages=None, alerter=ntfy.envoyer_en_fond,
+                 fichier_fuites=None):
         self.r = r
         self.s = systeme
         self.journal = journal
@@ -44,6 +68,14 @@ class Garde:
         self.figes = self.charger_figes()
         self.repos_jusqua = 0.0
         self.vidage = set()    # programmes figés que le noyau est en train de ranger dans le swap
+        self.fichier_fuites = Path(fichier_fuites) if fichier_fuites else self.fichier_figes.with_name('fuites.json')
+        self.mesures_fuite = {}   # pid -> deque[(instant, rss + swap)], une mesure toutes les 10 s
+        self.prochaine_mesure_fuite = 0.0
+        self.fuites = {}          # pid -> fuite repérée en cours
+        self.fuites_signalees = {}   # pid -> (début du processus, instant du dernier signalement)
+        self.fuites_ecrites = None
+        if self.fichier_fuites.exists():
+            self.sauver_fuites()   # un fichier laissé par une exécution précédente ne doit plus rien affirmer
 
     # --- programmes figés, conservés d'un redémarrage de Gagarine à l'autre ---
     def charger_figes(self):
@@ -60,6 +92,21 @@ class Garde:
             tmp.write_text(json.dumps(self.figes, ensure_ascii=False, indent=1))
             os.chmod(tmp, 0o644)
             tmp.replace(self.fichier_figes)
+        except OSError:
+            pass
+
+    def sauver_fuites(self):
+        """Réécrit fuites.json (lisible par tous, de façon atomique) quand la liste a changé."""
+        liste = [{'pid': p, **f} for p, f in self.fuites.items()]
+        if liste == self.fuites_ecrites:
+            return
+        try:
+            self.fichier_fuites.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+            tmp = self.fichier_fuites.with_suffix('.tmp')
+            tmp.write_text(json.dumps(liste, ensure_ascii=False, indent=1))
+            os.chmod(tmp, 0o644)
+            tmp.replace(self.fichier_fuites)
+            self.fuites_ecrites = liste
         except OSError:
             pass
 
@@ -117,6 +164,82 @@ class Garde:
         if meilleur is not None and manque / vitesse_max < r.anticipation:
             return meilleur, gain_max
         return None, 0
+
+    # --- fuites de mémoire ---
+    def prevision(self, pente, pct, memoire_totale):
+        """Secondes avant que la RAM atteigne le seuil à cette pente (octets/s) ; None si inconnue ou au-delà de 24 h."""
+        if not memoire_totale or pente <= 0:
+            return None
+        manque = max(0.0, (self.r.seuil - pct) / 100 * memoire_totale)
+        duree = manque / pente
+        return None if duree > FUITE_HORIZON else round(duree)
+
+    def suivre_fuites(self, procs, pct, maintenant):
+        """Une mesure toutes les 10 s (à partir des processus déjà lus : aucune lecture de plus), puis recherche des fuites."""
+        r = self.r
+        if r.fuite_seuil <= 0:
+            if self.mesures_fuite or self.fuites:
+                self.mesures_fuite.clear()
+                self.fuites.clear()
+                self.fuites_signalees.clear()
+                self.sauver_fuites()
+            return
+        if maintenant < self.prochaine_mesure_fuite:
+            return
+        self.prochaine_mesure_fuite = maintenant + FUITE_PAS
+        for pid in [p for p in self.mesures_fuite if p not in procs]:
+            del self.mesures_fuite[pid]
+        for pid, p in procs.items():
+            h = self.mesures_fuite.setdefault(pid, deque())
+            h.append((maintenant, p.rss + p.swap))
+            while maintenant - h[0][0] > FUITE_FENETRE + 1:
+                h.popleft()
+        total = getattr(self.s, 'memoire_totale', lambda: 0)()
+        trouvees = {}
+        for pid, h in self.mesures_fuite.items():
+            i = procs[pid]
+            if (i.rss + i.swap < FUITE_TAILLE_MIN or pid in self.figes or i.etat in 'TtZX' or self.est_protege(i.nom)
+                    or h[-1][0] - h[0][0] < FUITE_DUREE_MIN):
+                continue
+            pente, hausses = pente_et_hausses(list(h))
+            if pente * 60 / Mo < r.fuite_seuil or hausses < FUITE_HAUSSES:
+                continue
+            if self.filtre and not self.filtre.search(self.s.commande(pid)):
+                continue
+            trouvees[pid] = (i, pente, h[-1][0] - h[0][0])
+        for pid in [p for p in self.fuites if p not in trouvees]:
+            del self.fuites[pid]
+        for pid, (i, pente, duree) in trouvees.items():
+            en_cours = self.fuites.get(pid)
+            prevision = self.prevision(pente, pct, total)
+            self.fuites[pid] = {'nom': i.nom, 'pente_mo_min': round(pente * 60 / Mo), 'memoire': int(i.rss + i.swap),
+                                'depuis': en_cours['depuis'] if en_cours else self.s.heure(), 'prevision_s': prevision,
+                                'debut': self.s.demarrage(pid) if not en_cours else en_cours['debut'],
+                                'utilisateur': self.s.utilisateur(i.uid)}
+            self.signaler_fuite(pid, self.fuites[pid], duree)
+        self.sauver_fuites()
+        for pid in [p for p in self.fuites_signalees if p not in procs]:
+            del self.fuites_signalees[pid]
+
+    def signaler_fuite(self, pid, f, duree):
+        """Événement, notification et ntfy : une fois par programme toutes les 30 min. Aucune action sur le programme."""
+        deja = self.fuites_signalees.get(pid)
+        maintenant = self.s.mono()
+        if deja and deja[0] == f['debut'] and maintenant - deja[1] < FUITE_RENOTIFIER:
+            return
+        self.fuites_signalees[pid] = (f['debut'], maintenant)
+        self.journal.ecrire('fuite', pid=pid, nom=f['nom'], pente_mo_min=f['pente_mo_min'], memoire=int(f['memoire']),
+                            prevision_s=f['prevision_s'], utilisateur=f['utilisateur'],
+                            commande=self.s.commande(pid) or None)
+        if not self.r.fuite_notifier:
+            return
+        texte = f'{f["nom"]} grossit de {f["pente_mo_min"]} Mo/min depuis {max(1, round(duree / 60))} min'
+        if f['prevision_s'] is not None:
+            vers = time.strftime('%H:%M', time.localtime(self.s.heure() + f['prevision_s']))
+            texte += f' : la RAM serait pleine vers {vers}'
+        texte += f'. Il occupe {go(f["memoire"])} ; rien n\'est fait, c\'est une alerte.'
+        self.s.notifier(f'Fuite de mémoire probable : « {f["nom"]} »', texte)
+        self.alerte(f'Fuite de mémoire probable : « {f["nom"]} »', texte, 'normale', ('chart_with_upwards_trend',))
 
     def en_cours_de_pause(self):
         """Un programme vient d'être figé et le noyau le range encore : on ne fige pas un deuxième."""
@@ -215,6 +338,10 @@ class Garde:
                 self.arreter(pid, f['nom'], f'figé depuis {duree} sans décision', pct)
 
         self.noter_historique(pct, procs)
+        try:
+            self.suivre_fuites(procs, pct, maintenant)
+        except Exception as e:   # la détection ne doit jamais gêner la protection de la RAM
+            print(f'erreur (fuites) : {e!r}', file=sys.stderr, flush=True)
         if maintenant < self.repos_jusqua:
             return pct
         en_ram = sorted(((procs[p].rss, p) for p in self.figes if p in procs and procs[p].rss > ENCORE_EN_RAM),
@@ -264,6 +391,8 @@ class Garde:
         self.s.r = r
         self.proteges = construire_proteges(r.proteges)
         self.filtre = re.compile(r.filtre) if r.filtre else None
+        if r.fuite_seuil <= 0:
+            self.suivre_fuites({}, 0, 0)   # détection coupée : plus de mesures ni de fuites affichées
 
     def demander_rechargement(self, *_):
         """Appelé par le gestionnaire de SIGHUP : ne fait que lever un drapeau, la boucle recharge au tour suivant."""
