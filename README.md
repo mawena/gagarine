@@ -6,8 +6,9 @@ Gagarine est un garde-RAM pour Linux : il empêche la mémoire vive d'un poste d
 
 Quand un programme grossit sans fin (fuite de mémoire, test qui s'emballe, rendu trop lourd), il remplit la RAM, puis le
 swap. Le poste passe alors son temps à échanger avec le disque : l'écran ne répond plus pendant des minutes, et il faut
-souvent forcer le redémarrage. C'est arrivé deux fois le 02/11/2026 et le 10/11/2026 : un test qui avait grossi jusqu'à
-9 Go a rempli les 14 Go de RAM puis les 10 Go de swap, et le poste est resté figé.
+souvent forcer le redémarrage. C'est arrivé le 02/11/2026, avec deux travaux lourds lancés en même temps, puis deux fois
+le 10/11/2026 : un test qui avait grossi jusqu'à 9 Go a rempli les 14 Go de RAM puis les 10 Go de swap, et le poste est
+resté figé.
 
 Gagarine agit avant ce moment. Il mesure la RAM chaque seconde et, à 95 %, **fige** le programme qui grossit le plus vite,
 le **bride**, le **range dans le swap**, puis l'**arrête** si la RAM ne redescend pas. Le bureau et les services critiques
@@ -41,9 +42,9 @@ suppression. Les réglages (`/etc/gagarine.conf`) sont conservés aux mises à j
 |---|---|
 | `gagarine surveiller [--config FICHIER]` | lance le démon (c'est ce que fait le service) |
 | `gagarine etat` | RAM, état du service, programmes figés, derniers événements |
-| `gagarine reprendre PID` | relance un programme figé (il reste bridé) |
-| `gagarine arreter PID` | arrête un programme figé |
-| `gagarine essai` | auto-test sans risque : un programme d'essai grossit, il doit être figé, rangé dans le swap puis arrêté, avec un verdict |
+| `gagarine reprendre PID` | relance un programme figé par Gagarine (il reste bridé) |
+| `gagarine arreter PID` | arrête un programme figé par Gagarine |
+| `gagarine essai` | auto-test sans risque : un programme d'essai grossit, il doit être figé, rangé dans le swap puis arrêté, avec un verdict (refusé au-delà de 80 % de RAM) |
 | `gagarine version` | affiche `gagarine 1.0.0` (aussi `--version`) |
 | `gagarine -h` | aide |
 
@@ -95,8 +96,9 @@ bloquerait ses accès (`/proc`, cgroups, D-Bus, `process_madvise`, `runuser`, `n
 - Gagarine choisit le programme qui **grossit le plus vite**, pas le plus gros, et le **bride** s'il est repris.
 
 Ils se complètent : on peut garder `systemd-oomd`. Pour que le rangement dans le swap soit rapide, ajoutez un **swap
-compressé en RAM** (zram) : `sudo apt install systemd-zram-generator`. Il évite d'écrire sur le disque et rend la RAM bien
-plus vite (voir `zramctl(8)`).
+compressé en RAM** (zram) : `sudo apt install systemd-zram-generator` crée tout de suite un zram de la moitié de la RAM
+(4 Go au plus, réglable dans `/etc/systemd/zram-generator.conf`, voir `zram-generator.conf(5)`). Il évite d'écrire sur le
+disque et rend la RAM bien plus vite (voir `zramctl(8)`).
 
 ## Structure du dépôt
 
