@@ -32,13 +32,17 @@ Commandes :
   etat [--json]                  RAM, swap, état du service, programmes figés, plus gros programmes, derniers événements
   reprendre PID                  relance un programme figé (il reste bridé à sa taille)
   arreter PID                    arrête un programme figé
-  file "NOM" GO COEURS [--apres PID] -- COMMANDE…
-                                 file d'attente des travaux lourds : attend son tour (RAM, cœurs libres), puis lance la
+  file "NOM" GO COEURS [--priorite urgent|normal|fond] [--apres PID] -- COMMANDE…
+                                 file d'attente des travaux lourds : attend son tour (RAM, cœurs libres, priorité ;
+                                 plusieurs travaux à la fois si le réglage file_paralleles le permet), puis lance la
                                  commande dans sa limite mémoire ; rend le code de la commande (137 si limite dépassée) ;
-                                 retient le pic mémoire, relève une annonce trop basse et prévient à la fin du travail
-  file --etat [--json]           mémoire disponible, charge et travaux en file (aussi : file etat)
+                                 retient le pic mémoire, relève une annonce trop basse, repère les fuites d'un
+                                 lancement à l'autre et prévient à la fin du travail
+  file --etat [--json]           mémoire disponible, charge, travaux en cours et en file, avec priorité et motif d'attente
+                                 (aussi : file etat)
+  file priorite PID|TICKET NIVEAU  change la priorité (urgent, normal, fond) d'un travail en attente (le sien ; tous : root)
   file annuler PID|TICKET        annule un travail en attente ou arrête un travail en cours (le sien ; tous : root)
-  file appris [--json]           mémoire apprise : pic mémoire de chaque travail (la file corrige les annonces trop basses)
+  file appris [--json]           mémoire apprise : pic et tendance (hausse, limite, stable) de chaque travail
   journal [-n N] [--json]        les N derniers événements (50 par défaut), tous journaux fusionnés
   reglages [--json]              affiche les réglages en vigueur
   reglages --ecrire CLE=VALEUR…  modifie /etc/gagarine.conf et recharge le service (administrateur)
@@ -211,8 +215,10 @@ def commande_etat(args, ctx):
 # ======================================================================================================================
 # file
 # ======================================================================================================================
-USAGE_FILE = ('usage : gagarine file "<nom>" <Go de RAM> <cœurs libres> [--apres PID] -- <commande> [arguments…]\n'
+USAGE_FILE = ('usage : gagarine file "<nom>" <Go de RAM> <cœurs libres> [--priorite urgent|normal|fond] [--apres PID] '
+              '-- <commande> [arguments…]\n'
               '        gagarine file --etat [--json]   |   gagarine file etat\n'
+              '        gagarine file priorite <PID|ticket> <urgent|normal|fond>\n'
               '        gagarine file annuler <PID|ticket>\n'
               '        gagarine file appris [--json]')
 
@@ -221,18 +227,28 @@ def commande_file(args, ctx):
     if '--' not in args:
         # Sans commande à lancer : état ou annulation
         if args in (['--etat'], ['etat']):
-            return fa.afficher_etat(ctx.env, False, ctx.poste)
+            return fa.afficher_etat(ctx.env, False, ctx.poste, reglages=charger_reglages(ctx.config, ctx.env)[0])
         if args in (['--etat', '--json'], ['etat', '--json'], ['--json', '--etat'], ['--json', 'etat']):
-            return fa.afficher_etat(ctx.env, True, ctx.poste)
+            return fa.afficher_etat(ctx.env, True, ctx.poste, reglages=charger_reglages(ctx.config, ctx.env)[0])
         if args in (['appris'], ['appris', '--json'], ['--json', 'appris']):
             return fa.afficher_appris(ctx.env, '--json' in args)
         if len(args) == 2 and args[0] == 'annuler':
             return fa.annuler(args[1], ctx.env, ctx.root, ctx.poste)
+        if len(args) == 3 and args[0] == 'priorite':
+            return fa.changer_priorite(args[1], args[2], ctx.env, ctx.root, ctx.poste)
         print(USAGE_FILE, file=sys.stderr)
         return 2
     tiret = args.index('--')
     avant, commande = args[:tiret], args[tiret + 1:]
     apres = None
+    priorite = fa.PRIORITE_DEFAUT
+    if '--priorite' in avant:
+        i = avant.index('--priorite')
+        if i + 1 >= len(avant) or avant[i + 1] not in fa.NIVEAUX:
+            print(f'--priorite demande un niveau : {", ".join(fa.NIVEAUX)}', file=sys.stderr)
+            return 2
+        priorite = avant[i + 1]
+        avant = avant[:i] + avant[i + 2:]
     if '--apres' in avant:
         i = avant.index('--apres')
         if i + 1 >= len(avant) or not avant[i + 1].isdigit():
@@ -249,7 +265,8 @@ def commande_file(args, ctx):
         return 2
     env = dict(ctx.env)
     reglages = charger_reglages(ctx.config, env)[0]
-    return fa.lancer_travail(nom, ram or 1, coeurs or 1, apres, commande, env, ctx.poste, reglages=reglages)
+    return fa.lancer_travail(nom, ram or 1, coeurs or 1, apres, commande, env, ctx.poste, reglages=reglages,
+                             priorite=priorite)
 
 
 # ======================================================================================================================
