@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Publie un ou plusieurs .deb dans le dépôt APT signé de Gagarine (branche gh-pages,
-# https://mawena.github.io/gagarine/apt). Idempotent ; les anciennes versions restent dans pool/.
-# Usage : scripts/publier-apt.sh dist/gagarine_<version>_all.deb...
+# https://mawena.github.io/gagarine/apt), avec la page d'accueil du site (dossier site/ du dépôt, captures de
+# docs/captures, icône). Idempotent ; les anciennes versions restent dans pool/.
+# Usage : scripts/publier-apt.sh dist/gagarine_<version>_all.deb...   (sans paquet : met seulement le site à jour)
 # Variables : GAGARINE_APT_CLE (empreinte de la clé, défaut ci-dessous), GAGARINE_APT_PUSH=0 (ne pas pousser).
 set -euo pipefail
 
 CLE="${GAGARINE_APT_CLE:-FE66B5A900CBE8EBFB8FB079FCA7E8E0C5513B93}"
 RACINE="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
-[ $# -ge 1 ] || { echo "usage : $0 fichier.deb..." >&2; exit 2; }
 for f in "$@"; do [ -f "$f" ] || { echo "introuvable : $f" >&2; exit 2; }; done
 DEBS=()
 for f in "$@"; do DEBS+=("$(readlink -f "$f")"); done
+if [ ${#DEBS[@]} -eq 0 ] && ! git -C "$RACINE" rev-parse -q --verify refs/remotes/origin/gh-pages >/dev/null; then
+  echo "usage : $0 fichier.deb...   (la première publication demande au moins un paquet)" >&2; exit 2
+fi
 
 cd "$RACINE"
 git fetch -q origin gh-pages 2>/dev/null || true
@@ -30,33 +33,24 @@ fi
 APT="$WT/apt"
 mkdir -p "$APT/pool/main"
 touch "$WT/.nojekyll"
-cp "${DEBS[@]}" "$APT/pool/main/"
+[ ${#DEBS[@]} -eq 0 ] || cp "${DEBS[@]}" "$APT/pool/main/"
 cp "$RACINE/data/apt/gagarine.gpg" "$APT/gagarine.gpg"
+cp "$RACINE/data/apt/gagarine.sources" "$APT/gagarine.sources"
 
-cat > "$WT/index.html" <<'H'
-<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Gagarine, dépôt APT</title>
-<meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="font-family:sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem">
-<h1>Gagarine, dépôt APT</h1>
-<p>Garde-RAM pour Linux. Ce dépôt signé permet de mettre Gagarine à jour avec <code>apt upgrade</code>.</p>
-<h2>Installation</h2>
-<pre>sudo curl -fsSL https://mawena.github.io/gagarine/apt/gagarine.gpg -o /usr/share/keyrings/gagarine.gpg
-sudo curl -fsSL https://raw.githubusercontent.com/mawena/gagarine/main/data/apt/gagarine.sources -o /etc/apt/sources.list.d/gagarine.sources
-sudo apt update
-sudo apt install gagarine</pre>
-<p>Ensuite, <code>sudo apt update &amp;&amp; sudo apt upgrade</code> suffit. Les paquets sont aussi sur la page des
-<a href="https://github.com/mawena/gagarine/releases">releases GitHub</a>.</p>
-</body></html>
-H
+# Site : page d'accueil, feuille de style, script, installateur, icône et captures de l'interface
+for f in "$RACINE"/site/*; do cp "$f" "$WT/"; done
+cp "$RACINE/data/icons/hicolor/scalable/apps/io.github.mawena.Gagarine.svg" "$WT/icone.svg"
+rm -rf "$WT/captures"; mkdir -p "$WT/captures"
+cp "$RACINE"/docs/captures/*.png "$WT/captures/"
 
-# Idempotence : rien de nouveau (paquets, clé, page) -> on ne régénère pas les index (Date change à chaque fois)
+# Idempotence : les index ne sont régénérés et signés que si les paquets ou la clé ont changé (Date change à chaque
+# fois) ; un changement du site seul est publié sans toucher aux index.
 git -C "$WT" add -A
 if git -C "$WT" diff --cached --quiet && [ -f "$APT/dists/stable/InRelease" ]; then
-  echo "Dépôt APT déjà à jour."
+  echo "Dépôt APT et site déjà à jour."
   exit 0
 fi
-
+if ! git -C "$WT" diff --cached --quiet -- apt/pool apt/gagarine.gpg || [ ! -f "$APT/dists/stable/InRelease" ]; then
 (
   cd "$APT"
   D=dists/stable/main
@@ -78,6 +72,7 @@ fi
   gpg --batch --yes --local-user "$CLE" --clearsign -o dists/stable/InRelease dists/stable/Release
   gpg --batch --yes --local-user "$CLE" --armor --detach-sign -o dists/stable/Release.gpg dists/stable/Release
 )
+fi
 
 cd "$WT"
 git add -A
@@ -85,7 +80,8 @@ if git diff --cached --quiet; then
   echo "Dépôt APT déjà à jour."
 else
   VERS="$(for d in "${DEBS[@]}"; do basename "$d"; done | tr '\n' ' ')"
+  if [ -n "${VERS% }" ]; then MESSAGE="feat(apt): publication de ${VERS% }"; else MESSAGE="docs(site): page d'accueil mise à jour"; fi
   git -c user.name="$(git -C "$RACINE" config user.name)" -c user.email="$(git -C "$RACINE" config user.email)" \
-    commit -q -m "feat(apt): publication de ${VERS% }"
+    commit -q -m "$MESSAGE"
 fi
 if [ "${GAGARINE_APT_PUSH:-1}" = 1 ]; then git push -q origin gh-pages; echo "gh-pages poussée."; fi
