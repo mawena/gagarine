@@ -337,7 +337,7 @@ class TestFichier(unittest.TestCase):
         self.assertIsNone(pr.dossier_ecriture({}, False))
 
     def test_dossiers_de_lecture(self):
-        self.assertEqual(pr.dossiers_lecture({'GAGARINE_DOSSIER_EXECUTION': '/z'}), ['/z', '/run/gagarine'])
+        self.assertEqual(pr.dossiers_lecture({'GAGARINE_DOSSIER_EXECUTION': '/z'}), ['/z'])
         self.assertEqual(pr.dossiers_lecture({}), ['/run/gagarine'])
 
     def test_fraicheur_de_6_s(self):
