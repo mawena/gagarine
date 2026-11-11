@@ -32,6 +32,9 @@ class Base(unittest.TestCase):
         self.env = {'GAGARINE_ETAT': str(self.etat), 'FILE_ATTENTE_DOSSIER': str(self.tickets), 'HOME': str(self.racine),
                     'PATH': os.environ.get('PATH', '')}
         self.ram = 50.0
+        self.execution = self.racine / 'run'
+        self.execution.mkdir()
+        self.env['GAGARINE_DOSSIER_EXECUTION'] = str(self.execution)
         p = mock.patch.object(li, 'lire_ram', lambda: self.ram)
         p.start()
         self.addCleanup(p.stop)
@@ -146,6 +149,97 @@ class TestParties(Base):
                 mock.patch.object(li, 'compter_figes', side_effect=RuntimeError):
             self.evenement('x')
             self.assertEqual(self.partie(), 'RAM 50 % · fuite : x')
+
+
+class TestProcesseur(Base):
+    def mesure(self, age=1.0, **champs):
+        d = {'t': time.time() - age, 'pourcent': 23.4, 'chaud': False, 'temperature': 60.0, **champs}
+        (self.execution / 'processeur.json').write_text(json.dumps(d))
+
+    def test_cpu_juste_apres_la_ram(self):
+        self.ram = 77
+        self.mesure()
+        self.ticket('a', source='gagarine', etat='en cours')
+        self.assertEqual(self.partie(), 'RAM 77 % · CPU 23 % · file 1 (1 en cours)')
+
+    def test_absent_sans_fichier(self):
+        self.assertEqual(self.partie(), 'RAM 50 %')
+
+    def test_absent_si_trop_ancien(self):
+        self.mesure(age=6.5)
+        self.assertEqual(self.partie(), 'RAM 50 %')
+
+    def test_present_a_la_limite_de_fraicheur(self):
+        self.mesure(age=5.5)
+        self.assertEqual(self.partie(), 'RAM 50 % · CPU 23 %')
+
+    def test_absent_si_illisible_ou_mal_forme(self):
+        (self.execution / 'processeur.json').write_text('{pas du json')
+        self.assertEqual(self.partie(), 'RAM 50 %')
+        for champs in ({'pourcent': None}, {'pourcent': 'x'}, {'t': 'hier'}, {'t': None}, {'pourcent': True}):
+            self.mesure(**champs)
+            self.assertEqual(self.partie(), 'RAM 50 %', champs)
+        (self.execution / 'processeur.json').write_text('[1, 2]')
+        self.assertEqual(self.partie(), 'RAM 50 %')
+
+    def test_mesure_dans_le_futur_lointain_ignoree(self):
+        self.mesure(age=-100)
+        self.assertEqual(self.partie(), 'RAM 50 %')
+
+    def test_couleurs(self):
+        for pct, code in ((0, '32'), (69.4, '32'), (70, '33'), (89, '33'), (89.4, '33'), (90, '31'), (100, '31')):
+            self.mesure(pourcent=pct)
+            self.assertIn(f'\x1b[{code}mCPU {round(pct)} %\x1b[0m', self.partie(True), pct)
+
+    def test_chaud_ajoute_la_temperature_en_rouge(self):
+        self.mesure(pourcent=97.2, chaud=True, temperature=98.0)
+        self.assertEqual(self.partie(), 'RAM 50 % · CPU 97 % 98 °C')
+        self.assertIn('\x1b[31m98 °C\x1b[0m', self.partie(True))
+
+    def test_pas_chaud_pas_de_temperature(self):
+        self.mesure(chaud=False, temperature=98.0)
+        self.assertNotIn('°C', self.partie())
+
+    def test_chaud_sans_temperature(self):
+        self.mesure(chaud=True, temperature=None)
+        self.assertEqual(self.partie(), 'RAM 50 % · CPU 23 %')
+
+    def test_dossier_d_execution_par_defaut_sans_variable(self):
+        del self.env['GAGARINE_DOSSIER_EXECUTION']
+        with mock.patch.object(li, 'DOSSIER_EXECUTION', str(self.execution)):
+            self.mesure()
+            self.assertIn('CPU 23 %', self.partie())
+
+    def test_variable_prioritaire_sur_run(self):
+        autre = self.racine / 'autre'
+        autre.mkdir()
+        (autre / 'processeur.json').write_text(json.dumps({'t': time.time(), 'pourcent': 5}))
+        self.mesure(pourcent=80)
+        with mock.patch.object(li, 'DOSSIER_EXECUTION', str(autre)):
+            self.assertIn('CPU 80 %', self.partie())
+
+    def test_aucune_mesure_directe(self):
+        with mock.patch.object(li, 'lire_json', wraps=li.lire_json) as lire:
+            self.partie()
+        for appel in lire.call_args_list:
+            self.assertNotIn('/proc/', str(appel))
+
+    def test_une_erreur_du_cpu_n_empeche_pas_les_autres_parties(self):
+        with mock.patch.object(li, 'lire_processeur', side_effect=RuntimeError):
+            self.evenement('x')
+            self.assertEqual(self.partie(), 'RAM 50 % · fuite : x')
+
+    def test_toutes_les_parties_dans_l_ordre(self):
+        self.ram = 72
+        self.mesure(pourcent=40)
+        self.ticket('a', source='gagarine', etat='en cours')
+        (self.etat / 'figes.json').write_text(json.dumps({str(MOI): {}}))
+        self.evenement('python3')
+        self.assertEqual(self.partie(), 'RAM 72 % · CPU 40 % · file 1 (1 en cours) · 1 figé · fuite : python3')
+
+    def test_commande_complete(self):
+        self.mesure(pourcent=95)
+        self.assertEqual(self.lancer(['--sans-couleur'])[1], 'RAM 50 % · CPU 95 %\n')
 
 
 class TestCouleurs(Base):

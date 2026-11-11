@@ -39,6 +39,8 @@ class FauxPoste:
         self.total = 16.0
         self.pics = []            # pics rendus à chaque relevé ; None : pas de cgroup
         self.memoires = {}        # scope -> mémoire actuelle (Go) de son cgroup
+        self.cpus = []            # usage_usec rendus à chaque relevé (liste) ; None : illisible
+        self.cpu_scope = {}       # scope -> liste de usage_usec rendus à chaque lecture (état de --etat)
         self.notifs = []
         self.ntfys = []
 
@@ -46,13 +48,20 @@ class FauxPoste:
         return self.total
 
     def cgroup_scope(self, scope):
-        return Path('/cgroup-simule') / scope if self.pics or scope in self.memoires else None
+        return Path('/cgroup-simule') / scope if self.pics or scope in self.memoires or scope in self.cpu_scope else None
 
     def memoire_cgroup(self, chemin):
         return self.memoires.get(Path(chemin).name)
 
     def pic_cgroup(self, chemin):
         return self.pics.pop(0) if self.pics else None
+
+    def cpu_cgroup(self, chemin):
+        nom = Path(chemin).name
+        if nom in self.cpu_scope:
+            valeurs = self.cpu_scope[nom]
+            return valeurs.pop(0) if valeurs else None
+        return self.cpus.pop(0) if self.cpus else None
 
     def notifier(self, titre, texte):
         self.notifs.append((titre, texte))
@@ -470,7 +479,8 @@ class TestEtat(BancFile):
             'ticket': '1762785000000-1234.json', 'position': 1, 'nom': 'rendu vidéo', 'pid': 1234,
             'depuis': '2026-11-10T14:30:00.000Z', 'etat': 'en cours', 'ram': 4, 'coeurs': 4, 'commande': 'ffmpeg …',
             'unite': 'gagarine-travail-1762785000000-1234.scope', 'sortie': '/x.log', 'source': 'gagarine',
-            'priorite': 'normal', 'besoin_go': 4, 'motif': None}])
+            'priorite': 'normal', 'besoin_go': 4, 'motif': None,
+            'coeurs_utilises': None}])
 
     def test_json_ticket_de_l_outil_node(self):
         """Un ticket écrit par l'outil Node : quatre champs, les autres à null, source « autre »."""
@@ -479,7 +489,8 @@ class TestEtat(BancFile):
         self.assertEqual(e['travaux'], [{
             'ticket': '1762785000000-1234.json', 'position': 1, 'nom': 'node', 'pid': 1234,
             'depuis': '2026-11-10T14:30:00.000Z', 'etat': None, 'ram': None, 'coeurs': None, 'commande': None,
-            'unite': None, 'sortie': None, 'source': 'autre', 'priorite': None, 'besoin_go': None, 'motif': None}])
+            'unite': None, 'sortie': None, 'source': 'autre', 'priorite': None, 'besoin_go': None, 'motif': None,
+            'coeurs_utilises': None}])
 
     def test_json_positions_et_ticket_mort_absent(self):
         self.ticket('1-10.json', 10)
