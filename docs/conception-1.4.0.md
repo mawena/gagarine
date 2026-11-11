@@ -224,4 +224,54 @@ tests remplacent. Il n'importe aucun autre module de Gagarine, pour rester lége
 
 ## Précisions apportées pendant les chantiers
 
-(à compléter par chaque chantier : ce qui a été décidé en cours de route.)
+- **Mesure** (`processeur.py`) :
+  - Un programme apparu entre deux relevés n'est compté qu'au relevé suivant. Un numéro repris par un autre programme
+    (heure de démarrage différente) n'est jamais confondu avec l'ancien.
+  - Le premier relevé n'a rien à comparer : `pourcent`, `par_coeur`, `plus_actifs` et `intervalle_s` valent `null`. La
+    mesure directe fait deux relevés à 0,5 s d'écart.
+  - Champ ajouté : `coeurs_performants`, nombre de cœurs physiques P (par `topology/core_id`), pour le texte « 2 cœurs
+    performants (4 fils) » ; `null` hors processeur hybride. `chaud` vaut `false`, jamais `null`, si la température est
+    inconnue.
+  - `types` vaut `null` si les listes P et E ne couvrent pas exactement les cœurs logiques.
+  - Un capteur devenu illisible est recherché de nouveau au relevé suivant. Pour une zone thermique, la critique vient du
+    `trip_point_N_temp` de type `critical`.
+  - Une mesure datée de plus de 6 s dans le futur est refusée, comme une trop ancienne. Si `$RUNTIME_DIRECTORY` contient
+    plusieurs chemins séparés par `:`, le premier est pris.
+  - Coût d'un relevé : environ 27 ms sur le poste chargé (environ 500 lectures de `/proc/PID/stat`), plus que les 10 ms
+    visées ; à surveiller.
+- **Service** (`garde.py`) :
+  - La mesure se fait toutes les 2 s sur l'horloge du garde, à la fin de chaque tour, même quand le tour de RAM sort tôt.
+  - Une erreur est écrite une seule fois sur stderr (« erreur (processeur) : … ») ; le garde continue d'essayer.
+  - `Garde(..., mesureur=None, dossier_cpu=None)` : sans mesureur, rien n'est mesuré ; sans dossier, rien n'est écrit.
+- **Historique** :
+  - Par minute, `cpu` est le pourcentage moyen depuis la ligne précédente (différence des totaux de `/proc/stat`) ;
+    `charge` est celle du dernier relevé ; `actifs` additionne les ticks par nom sur la minute (3 noms au plus, au moins
+    0,01 cœur). Les quatre clés sont toujours écrites, à `null` si absentes.
+  - En JSON, au pas long, `cpu` et `charge` sont des moyennes, `cpu_max` et `temperature` des maxima ; les `null` sont
+    ignorés. `actifs` : 10 au plus, triés par `cpu_min` décroissant puis par nom.
+  - Texte : « Processeur : 18 % en moyenne, au plus 96 % (HH:MM) ; 72 °C au plus », puis « Les plus actifs : nom (N min
+    de processeur), … » (5 noms au plus). Rien s'il n'y a pas de données du processeur.
+- **Commandes** :
+  - `etat` : deux lignes (résumé, plus actifs) juste après la RAM, omises si la mesure n'a pas de pourcentage.
+    « (chaud) » suit la température si besoin. En JSON, `processeur` est toujours présent, `null` si rien n'est lisible.
+  - `gagarine processeur` : une barre de 10 caractères par cœur (`cpu0  P  ██████░░░░  62 %`), puis température,
+    fréquence, charge, pression et plus actifs (« nom (processus PID, utilisateur) : 6,2 cœurs · 44 % », deux décimales
+    sous 0,1 cœur).
+- **File** :
+  - `cpu.stat` est lu par `Poste.cpu_cgroup(chemin)`, qui rend `usage_usec` ou `None`.
+  - Seuls les travaux « en cours » avec un `unite` sont mesurés. Les autres ont `coeurs_utilises: null` : travaux en
+    attente, tickets d'anciens outils, travail hérité, scope sans cgroup.
+  - Le relevé précédent est `{"t", "travaux": {ticket: usage_usec}}`. Il est écrit de façon atomique, dossier en 0700, et
+    seulement si `XDG_RUNTIME_DIR` existe. Sans lui, la commande prend toujours une mesure de 0,3 s.
+  - Une seule pause de 0,3 s couvre tous les travaux.
+  - Valent `null` : un travail absent du relevé précédent, ou un compteur qui recule.
+  - Toute mesure de la commande écrit un nouveau relevé.
+  - `Releveur` garde le plus haut `usage_usec` vu, comme le pic mémoire. `cpu_s` et `coeurs_moyens` ont 2 décimales.
+    `coeurs_moyens` est absent si la durée est nulle, et un travail très court peut n'avoir aucun `cpu_s`.
+  - Textes : une décimale, sans « ,0 », « cœur » au singulier sous 2 (« 0,8 cœur », « 1 cœur », « 5,4 cœurs »).
+- **Ligne d'état** :
+  - Le dossier est `GAGARINE_DOSSIER_EXECUTION` s'il est défini, sinon `/run/gagarine` (exclusif, comme pour le service).
+  - La mesure est fraîche si −1 ≤ maintenant − `t` ≤ 6 s.
+  - Le fichier est ignoré si ce n'est pas un objet, ou si `t` ou `pourcent` n'est pas un nombre (un booléen est refusé).
+  - La température n'apparaît que si `chaud` vaut exactement `true` ; elle est arrondie à l'entier.
+  - Couleurs selon le pourcentage affiché, arrondi.

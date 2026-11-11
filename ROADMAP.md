@@ -169,10 +169,10 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 
 Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 
-- [ ] Module `processeur` : utilisation totale et par cœur, programmes les plus actifs, température, fréquence, cœurs P/E, charge, pression
-- [ ] Le service publie la mesure toutes les 2 s (`/run/gagarine/processeur.json`)
-- [ ] Historique : processeur, charge, température et plus actifs de chaque minute
-- [ ] `gagarine etat` et `etat --json` (`processeur`), nouvelle commande `gagarine processeur [--json]`
+- [x] Module `processeur` : utilisation totale et par cœur, programmes les plus actifs, température, fréquence, cœurs P/E, charge, pression
+- [x] Le service publie la mesure toutes les 2 s (`/run/gagarine/processeur.json`)
+- [x] Historique : processeur, charge, température et plus actifs de chaque minute
+- [x] `gagarine etat` et `etat --json` (`processeur`), nouvelle commande `gagarine processeur [--json]`
 
 ## Phase 28 — Processeur dans la file et la ligne d'état
 
