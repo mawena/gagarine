@@ -113,6 +113,8 @@ class MiseEnForme(unittest.TestCase):
         self.assertEqual(d.formater_coeurs(0.8), '0,8 cœur')
         self.assertEqual(d.formater_coeurs(2), '2,0 cœurs')
         self.assertEqual(d.formater_coeurs(None), '—')
+        self.assertEqual(d.formater_coeurs(0.04), '0,04 cœur')
+        self.assertEqual(d.formater_coeurs(0), '0,0 cœur')
 
     def test_frequence_et_temperature(self):
         self.assertEqual(d.formater_ghz(1850), '1,9 GHz')
@@ -132,11 +134,17 @@ class MiseEnForme(unittest.TestCase):
         self.assertEqual(d.repartition_coeurs(['P', 'E'], 2), '1 cœur performant (P) et 1 économe (E)')
         self.assertEqual(d.repartition_coeurs([], 8), '8 cœurs')
         self.assertEqual(d.repartition_coeurs([], None), '')
+        types = ['P'] * 4 + ['E'] * 10
+        self.assertEqual(d.repartition_coeurs(types, 14, 2), '2 cœurs performants (P, 4 fils) et 10 économes (E)')
+        self.assertEqual(d.repartition_coeurs(types, 14, 4), '4 cœurs performants (P) et 10 économes (E)')
+        self.assertEqual(d.lire_processeur({'par_coeur': [1.0] * 14, 'types': types, 'coeurs_performants': 2})
+                         ['coeurs_performants'], 2)
+        self.assertIsNone(d.lire_processeur({'coeurs_performants': True})['coeurs_performants'])
 
     def test_legende_et_chaud(self):
         p = d.lire_processeur(json.loads(faux('etat'))['processeur'])
         textes = [t for t, _ in d.legende_processeur(p)]
-        self.assertEqual(textes, ['Intel(R) Core(TM) Ultra 7 155U', '4 cœurs performants (P) et 10 économes (E)', '72 °C',
+        self.assertEqual(textes, ['Intel(R) Core(TM) Ultra 7 155U', '2 cœurs performants (P, 4 fils) et 10 économes (E)', '72 °C',
                                   '1,9 GHz sur 4,8 GHz', 'pression 0,0 %'])
         self.assertFalse(any(chaud for _, chaud in d.legende_processeur(p)))
         chaud = d.lire_processeur(json.loads(faux('etat', FAUX_CHAUD='1'))['processeur'])

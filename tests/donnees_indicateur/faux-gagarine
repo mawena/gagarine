@@ -24,7 +24,7 @@ if [ "$FAUX_GAGARINE_FUITE" = oui ]; then
 fi
 cpu=''
 if [ "$FAUX_GAGARINE_CPU" = oui ]; then
-  cpu=', "processeur": {"t": 1762876400.1, "source": "service", "pourcent": 23.4, "nb_coeurs": 14, "charge": [2.41, 1.98, 1.5], "temperature": 72.0, "chaud": false, "plus_actifs": [{"pid": 4242, "nom": "ffmpeg", "coeurs": 6.21, "pourcent": 44.4, "utilisateur": "charles-gamligo", "noyau": false}]}'
+  cpu=', "processeur": {"t": 1762876400.1, "source": "service", "pourcent": 23.4, "nb_coeurs": 14, "charge": [2.41, 1.98, 1.5], "temperature": 72.0, "chaud": false, "plus_actifs": [{"pid": 4242, "nom": "ffmpeg", "coeurs": 6.21, "pourcent": 44.4, "utilisateur": "alice", "noyau": false}]}'
 fi
 case "$1 $2" in
   "etat --json")

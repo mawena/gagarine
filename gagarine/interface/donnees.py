@@ -836,6 +836,7 @@ def lire_processeur(p):
                            'noyau': bool(a.get('noyau'))})
     return {'t': _nombre(p.get('t')), 'source': p.get('source'), 'pourcent': _pourcent_ou_none(p.get('pourcent')),
             'nb_coeurs': nb, 'par_coeur': par_coeur, 'types': types if len(types) == len(par_coeur) or not par_coeur else [],
+            'coeurs_performants': _entier(p.get('coeurs_performants')),
             'modele': p.get('modele') if isinstance(p.get('modele'), str) and p.get('modele').strip() else None,
             'charge': charge, 'pression': _nombre(p.get('pression')),
             'temperature': _nombre(p.get('temperature')), 'temperature_critique': _nombre(p.get('temperature_critique')),
@@ -854,10 +855,12 @@ def lire_actifs(liste):
 
 
 def formater_coeurs(x):
-    """6,2 -> « 6,2 cœurs » ; 0,8 -> « 0,8 cœur » (singulier au-dessous de 2, comme `pluriel`) ; None -> « — »."""
+    """6,2 -> « 6,2 cœurs » ; 0,8 -> « 0,8 cœur » (singulier au-dessous de 2, comme `pluriel`) ; 0,04 -> « 0,04 cœur »
+    (deux décimales sous 0,1, comme `gagarine processeur`) ; None -> « — »."""
     if x is None:
         return '—'
-    return f'{_decimal(float(x))} cœur' + ('' if float(x) < 2 else 's')
+    x = float(x)
+    return f'{_decimal(x, 2 if 0 < x < 0.1 else 1)} cœur' + ('' if x < 2 else 's')
 
 
 def formater_ghz(mhz):
@@ -886,10 +889,15 @@ def detail_processeur(proc, nb_coeurs=None):
     return ' · '.join(morceaux)
 
 
-def repartition_coeurs(types, nb_coeurs=None):
-    """« 4 cœurs performants et 10 économes » ; « 14 cœurs » si le processeur n'est pas hybride ; '' si inconnu."""
+def repartition_coeurs(types, nb_coeurs=None, coeurs_performants=None):
+    """« 4 cœurs performants (P) et 10 économes (E) » ; « 2 cœurs performants (P, 4 fils) et 10 économes (E) » quand les
+    cœurs P ont deux fils (`coeurs_performants`, cœurs physiques, comme `gagarine processeur`) ; « 14 cœurs » si le
+    processeur n'est pas hybride ; '' si inconnu."""
     if types:
         p, e = types.count('P'), types.count('E')
+        if coeurs_performants and 0 < coeurs_performants < p:
+            return (f'{pluriel(coeurs_performants, "cœur performant", "cœurs performants")} (P, {p} fils) et '
+                    f'{pluriel(e, "économe")} (E)')
         return f'{pluriel(p, "cœur performant", "cœurs performants")} (P) et {pluriel(e, "économe")} (E)'
     return f'{nb_coeurs} cœurs' if nb_coeurs else ''
 
@@ -906,7 +914,7 @@ def legende_processeur(proc, nb_coeurs=None):
     morceaux = []
     if proc.get('modele'):
         morceaux.append((proc['modele'], False))
-    repartition = repartition_coeurs(proc.get('types'), nb_coeurs or proc.get('nb_coeurs'))
+    repartition = repartition_coeurs(proc.get('types'), nb_coeurs or proc.get('nb_coeurs'), proc.get('coeurs_performants'))
     if repartition:
         morceaux.append((repartition, False))
     if proc.get('temperature') is not None:
