@@ -133,6 +133,39 @@ class TestEtatJson(Banc2):
         self.assertIn('Service gagarine : active', sortie)
         self.assertIn('Aucun programme figé.', sortie)
 
+    def test_processeur_dans_le_json_de_l_etat(self):
+        self.assertIsNone(self.donnees()['processeur'])
+        self.assertEqual(self.donnees(processeur={'pourcent': 5.0})['processeur'], {'pourcent': 5.0})
+
+    def test_etat_json_et_texte_avec_la_mesure_du_service(self):
+        import time as t
+        from gagarine import processeur as pr
+        run = self.d / 'run'
+        pr.ecrire_fichier(run, {'t': t.time(), 'source': 'service', 'pourcent': 23.4, 'nb_coeurs': 14, 'charge': [2.41, 1, 1],
+                                'temperature': 72.0, 'chaud': False, 'frequence_mhz': 1850,
+                                'plus_actifs': [{'pid': 1, 'nom': 'ffmpeg', 'coeurs': 6.21}]})
+        env = {'GAGARINE_ETAT': str(self.d), 'GAGARINE_CONFIG': os.devnull, 'GAGARINE_DOSSIER_EXECUTION': str(run)}
+        ctx = cli.Contexte(None, root=False, env=env, lancer=lambda c: 'active\n')
+        code, sortie, _ = self.lancer_main(['etat', '--json'], ctx)
+        self.assertEqual(json.loads(sortie)['processeur']['source'], 'service')
+        code, sortie, _ = self.lancer_main(['etat'], ctx)
+        lignes = sortie.splitlines()
+        self.assertTrue(lignes[0].startswith('RAM utilisée :'))
+        self.assertEqual(lignes[1], 'Processeur : 23 % (charge 2,41 pour 14 cœurs) · 72 °C · 1,9 GHz')
+        self.assertEqual(lignes[2], 'Plus actifs : ffmpeg 6,2 cœurs')
+
+    def test_etat_mesure_directe_si_le_service_est_absent(self):
+        from gagarine import processeur as pr
+        env = {'GAGARINE_ETAT': str(self.d), 'GAGARINE_CONFIG': os.devnull, 'GAGARINE_DOSSIER_EXECUTION': str(self.d / 'vide')}
+        ctx = cli.Contexte(None, root=False, env=env, lancer=lambda c: 'active\n')
+        reel = pr.mesure_directe
+        pr.mesure_directe = lambda *a, **k: {'source': 'directe', 'pourcent': 7.0}
+        try:
+            code, sortie, _ = self.lancer_main(['etat', '--json'], ctx)
+            self.assertEqual(json.loads(sortie)['processeur']['source'], 'directe')
+        finally:
+            pr.mesure_directe = reel
+
     def test_swap_ignore_les_lignes_invalides(self):
         self.assertEqual(sy.lire_swaps('Filename Type Size Used Priority\nn’importe quoi\n'), [])
 
