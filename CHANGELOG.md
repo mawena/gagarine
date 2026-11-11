@@ -7,8 +7,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.4.0] - 2026-11-11
+
 Gagarine montre aussi le processeur : utilisation de chaque cœur, programmes les plus actifs, température et fréquence,
-partout où il montrait déjà la RAM.
+partout où il montrait déjà la RAM. Il n'agit jamais sur un programme à cause du processeur : ses actions restent
+réservées à la mémoire.
 
 ### Ajouté
 
@@ -29,6 +32,7 @@ partout où il montrait déjà la RAM.
 ### Modifié
 
 - Le service a un dossier d'exécution, `/run/gagarine` (`RuntimeDirectory`).
+- Captures d'écran refaites, avec un nom d'utilisateur d'exemple.
 
 ## [1.3.0] - 2026-11-10
 
