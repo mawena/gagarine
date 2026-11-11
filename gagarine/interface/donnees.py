@@ -259,10 +259,11 @@ def swap_resume(swap):
 
 
 def nom_swap(s):
-    """« zram (compressé en RAM) » ou « Disque » + nom du périphérique."""
+    """Nom court d'un espace de swap, sous le titre « Swap » : « Compressé en RAM (zram) », « Partition sur disque » ou
+    « Fichier sur disque »."""
     if s.get('zram'):
-        return 'Swap compressé en RAM (zram)'
-    return 'Swap sur disque' if s.get('type') != 'file' else 'Fichier de swap'
+        return 'Compressé en RAM (zram)'
+    return 'Partition sur disque' if s.get('type') != 'file' else 'Fichier sur disque'
 
 
 # --- événements du journal ---------------------------------------------------------------------------------------------
@@ -1114,3 +1115,184 @@ def arguments_plafond(base, appli_id, go):
     """`gagarine applications plafond ID GO|aucun` ; go None ou 0 retire le plafond."""
     valeur = 'aucun' if not go else f'{float(go):g}'
     return list(base) + ['applications', 'plafond', str(appli_id), valeur]
+
+
+# --- nouveau design (1.5.0) : phrase d'état, barre latérale, géométrie des instruments ---------------------------------
+
+def _libres(dispo_mo):
+    return None if dispo_mo is None else f'{formater_taille_mo(dispo_mo)} libres'
+
+
+def phrase_etat(etat=None, ram_pourcent=None, ram_dispo_mo=None, cpu_pourcent=None, maintenant=None):
+    """(niveau, titre, détail) de la phrase en tête de l'Aperçu (docs/conception-1.5.0.md).
+
+    niveau : « calme », « vigilance », « alerte », ou « inconnu » tant que rien n'est mesuré. La première situation vraie
+    l'emporte : service arrêté, programme figé, RAM au seuil, RAM en vigilance, fuite, processeur saturé, sinon calme.
+    etat : `etat --json` normalisé (lire_etat) ou None ; cpu_pourcent : moyenne récente du processeur (10 s)."""
+    reglages = (etat or {}).get('reglages') or {}
+    seuil, vigilance = reglages.get('seuil', 95), reglages.get('vigilance', 85)
+    if etat and (etat.get('service') or {}).get('etat') != 'active':
+        return ('alerte', 'Le service est arrêté : la RAM n’est pas protégée.',
+                'Si la mémoire se remplit, rien n’empêchera le poste de se figer. Démarrez le service.')
+    figes = (etat or {}).get('figes') or []
+    if len(figes) == 1:
+        f = figes[0]
+        quand = f' {depuis(f["depuis"], maintenant)}' if f.get('depuis') is not None else ''
+        return ('alerte', f'{f.get("nom") or "Un programme"} est figé : il attend votre décision.',
+                f'Mis en pause{quand} pour protéger la RAM. Reprenez-le ou arrêtez-le.')
+    if figes:
+        return ('alerte', f'{len(figes)} programmes sont figés : ils attendent votre décision.',
+                'Gagarine les a mis en pause pour protéger la RAM. Reprenez-les ou arrêtez-les.')
+    if ram_pourcent is not None and ram_pourcent >= seuil:
+        return ('alerte', f'La RAM a atteint le seuil : {formater_pourcent(ram_pourcent)} utilisés.',
+                'Gagarine met en pause le programme qui grossit le plus vite, pour protéger le poste.')
+    if ram_pourcent is not None and ram_pourcent >= vigilance:
+        reste = f'Il reste {formater_taille_mo(ram_dispo_mo)} ; ' if ram_dispo_mo is not None else ''
+        return ('vigilance', 'La RAM approche du seuil : Gagarine mesure quatre fois par seconde.',
+                f'{reste}Gagarine interviendra à {seuil:g} %.')
+    fuites = (etat or {}).get('fuites') or []
+    if fuites:
+        f = max(fuites, key=lambda x: x.get('pente_mo_min') or 0)
+        pente = f' (+{formater_pente(f["pente_mo_min"])})' if f.get('pente_mo_min') is not None else ''
+        autres = len(fuites) - 1
+        detail = ('Fuite de mémoire probable : Gagarine interviendra si la RAM approche du seuil.' if not autres else
+                  f'{pluriel(autres, "autre programme", "autres programmes")} grossi{"t" if autres == 1 else "ssent"} aussi ; '
+                  'Gagarine interviendra près du seuil.')
+        return 'vigilance', f'{f.get("nom") or "Un programme"} grossit sans cesse{pente}.', detail
+    if cpu_pourcent is not None and cpu_pourcent >= SEUIL_SATURE:
+        return ('vigilance', f'Le processeur est saturé ({round(cpu_pourcent)} %) : le poste peut ralentir.',
+                'Gagarine n’agit pas sur le processeur : il ne protège que la RAM.')
+    if ram_pourcent is None:
+        return 'inconnu', 'Lecture de l’état du poste…', ''
+    libres = _libres(ram_dispo_mo)
+    titre = 'Le poste respire' + (f' : {libres}' if libres else '')
+    if cpu_pourcent is not None:
+        titre += (', processeur ' if libres else ' : processeur ') + ('calme' if cpu_pourcent < SEUIL_OCCUPE else 'occupé')
+    detail = 'Gagarine mesure la RAM chaque seconde.' if etat else ''
+    return 'calme', titre + '.', detail
+
+
+def compteur_ram(pourcent, reglages=None):
+    """Compteur de l'Aperçu dans la barre latérale : (« 67 % », classe) ; classe None (calme), « vigilance » ou « alerte ».
+    Le pourcentage est arrondi vers le bas, pour que « 85 % » soit toujours en vigilance. (None, None) sans mesure."""
+    if pourcent is None:
+        return None, None
+    niveau = niveau_ram(pourcent, reglages or {})
+    return f'{int(max(0.0, pourcent))} %', None if niveau == 'normal' else niveau
+
+
+def compteur_programmes(etat):
+    """(« 1 figé », « alerte ») s'il y a des programmes figés, sinon (None, None)."""
+    n = len((etat or {}).get('figes') or [])
+    return (f'{n} figé' + ('s' if n > 1 else ''), 'alerte') if n else (None, None)
+
+
+def compteur_file(file):
+    """(« 2 en cours », None) s'il y a des travaux en cours, sinon (None, None). Cœur 1.2 : compte les travaux « en cours »."""
+    if not file:
+        return None, None
+    n = file.get('en_cours')
+    if n is None:
+        n = sum(1 for t in file.get('travaux') or [] if t.get('etat') == 'en cours')
+    return (f'{n} en cours', None) if n else (None, None)
+
+
+def compteurs_navigation(ram_pourcent=None, etat=None, file=None):
+    """{page: (texte, classe)} des compteurs de la barre latérale ; (None, None) : pas de compteur."""
+    return {'apercu': compteur_ram(ram_pourcent, (etat or {}).get('reglages')), 'programmes': compteur_programmes(etat),
+            'file': compteur_file(file), 'journal': (None, None), 'reglages': (None, None)}
+
+
+def etat_service(etat):
+    """(classe du voyant, titre, détail, bouton « Démarrer » ?) du bas de la barre latérale.
+
+    Classe du voyant : '' (calme), « alerte » ou « eteint » (état inconnu)."""
+    if not etat:
+        return 'eteint', 'État du service inconnu', '', False
+    service = etat.get('service') or {}
+    if service.get('etat') == 'active':
+        demarrage = service.get('actif_au_demarrage')
+        detail = '' if demarrage is None else ('Lancé au démarrage du poste' if demarrage else 'Pas lancé au démarrage')
+        return '', 'Service actif', detail, False
+    return 'alerte', 'Service arrêté', 'La RAM n’est pas protégée.', True
+
+
+def disposition_coeurs(nb, largeur, types=None, coeurs_performants=None, largeur_max=36.0):
+    """Place les barres des cœurs logiques sur `largeur` px, alignées à gauche.
+
+    Rend {'barres': [(indice du cœur, x, largeur)], 'groupes': [(type, x0, x1)], 'paires': [(x0, x1)]}.
+    Processeur hybride (types P et E) : les P d'abord. Les fils d'un même cœur P sont côte à côte (2 px d'écart) et
+    forment une paire ; un fil P a la largeur d'un cœur E, donc un cœur P à deux fils est deux fois plus large. Sans
+    second fil connu, un cœur P est 1,5 fois plus large qu'un E. On suppose les fils d'un cœur P consécutifs (cpu0 et
+    cpu1, cpu2 et cpu3…), comme Linux les numérote sur les Intel hybrides. Sans types : des barres égales."""
+    vide = {'barres': [], 'groupes': [], 'paires': []}
+    if nb <= 0:
+        return vide
+    hybride = bool(types) and len(types) == nb and 'P' in types and 'E' in types
+    if not hybride:
+        ecart = 3.0 if nb > 16 else 5.0
+        u = max(2.0, min(largeur_max, (largeur - (nb - 1) * ecart) / nb))
+        return dict(vide, barres=[(i, i * (u + ecart), u) for i in range(nb)])
+    p_ind = [i for i in range(nb) if types[i] == 'P']
+    e_ind = [i for i in range(nb) if types[i] == 'E']
+    p = len(p_ind)
+    cp = coeurs_performants
+    fils = p // cp if cp and 0 < cp < p and p % cp == 0 else 1
+    nb_p = p // fils
+    ecart_fil, ecart_coeur, ecart_groupe = 2.0, (4.0 if nb > 16 else 6.0), 18.0
+    unites = (p if fils > 1 else 1.5 * p) + len(e_ind)
+    fixe = nb_p * (fils - 1) * ecart_fil + (nb_p - 1) * ecart_coeur + ecart_groupe + (len(e_ind) - 1) * ecart_coeur
+    u = max(2.0, min(largeur_max, (largeur - fixe) / unites))
+    barres, paires, x = [], [], 0.0
+    for c in range(nb_p):
+        debut = x
+        for k in range(fils):
+            w = u if fils > 1 else 1.5 * u
+            barres.append((p_ind[c * fils + k], x, w))
+            x += w + ecart_fil
+        x -= ecart_fil
+        if fils > 1:
+            paires.append((debut, x))
+        x += ecart_coeur
+    groupes = [('P', 0.0, x - ecart_coeur)]
+    x += ecart_groupe - ecart_coeur
+    debut = x
+    for i in e_ind:
+        barres.append((i, x, u))
+        x += u + ecart_coeur
+    groupes.append(('E', debut, x - ecart_coeur))
+    return {'barres': barres, 'groupes': groupes, 'paires': paires}
+
+
+def placer_etiquettes(etiquettes, largeur, ecart=4.0):
+    """Étiquettes d'une échelle sans chevauchement : etiquettes = [(x du repère, largeur du texte)] triées par x.
+
+    Rend le x de gauche de chaque texte : centré sur son repère si la place le permet, sinon poussé à droite de la
+    précédente, puis ramené à gauche pour ne pas dépasser `largeur`."""
+    gauches = [min(max(0.0, x - w / 2), max(0.0, largeur - w)) for x, w in etiquettes]
+    for k in range(1, len(gauches)):
+        gauches[k] = max(gauches[k], gauches[k - 1] + etiquettes[k - 1][1] + ecart)
+    for k in range(len(gauches) - 1, -1, -1):
+        limite = largeur - etiquettes[k][1] if k == len(gauches) - 1 else gauches[k + 1] - ecart - etiquettes[k][1]
+        gauches[k] = min(gauches[k], limite)
+    return gauches
+
+
+def enveloppe_haute(points, pas=3.0):
+    """Points (x, y) d'une courbe, triés par x, réduits à un par tranche de `pas` px : celui de plus forte valeur (le plus
+    petit y, l'axe des y descendant). Sur 24 h et 7 jours, des centaines de mesures tiennent dans quelques pixels :
+    le trait reste net et garde les pics. Le premier et le dernier point sont gardés."""
+    if len(points) < 3:
+        return list(points)
+    sortie = [(points[0][0], points[0][1], None)]
+    for x, y in points[1:]:
+        tranche = int(x // pas)
+        if sortie and sortie[-1][2] == tranche:
+            if y < sortie[-1][1]:
+                sortie[-1] = (sortie[-1][0], y, tranche)
+        else:
+            sortie.append((x, y, tranche))
+    resultat = [(x, y) for x, y, _ in sortie]
+    if resultat[-1] != tuple(points[-1]):
+        resultat.append(tuple(points[-1]))
+    return resultat
