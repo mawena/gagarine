@@ -500,6 +500,25 @@ def entete_file(f):
     return f'{f["en_cours"]} en cours sur {f["paralleles"]}'
 
 
+def phrase_motif(motif):
+    """Motif d'attente en une phrase sans double deux-points (1.5.0) ; '' si aucun motif.
+
+    « mémoire : 1,8 Go libres, il en faut 6 » -> « Attend de la mémoire : 1,8 Go libres, il en faut 6 » ;
+    « cœurs : … » -> « Attend des cœurs : … » ; « derrière « x » (normal) » -> « Attend derrière « x » (normal) » ;
+    autre motif -> « Attend : motif ».
+    """
+    motif = ' '.join(str(motif or '').split())
+    if not motif:
+        return ''
+    for prefixe, debut in (('mémoire : ', 'Attend de la mémoire : '), ('cœurs : ', 'Attend des cœurs : '),
+                           ('coeurs : ', 'Attend des cœurs : ')):
+        if motif.startswith(prefixe):
+            return debut + motif[len(prefixe):]
+    if motif.startswith('derrière '):
+        return 'Attend ' + motif
+    return 'Attend : ' + motif
+
+
 def detail_travail_file(t, maintenant=None):
     """Sous-titre d'un travail de la file : état, RAM, cœurs, durée, et pour un travail en attente le motif."""
     en_cours = t.get('etat') == 'en cours'
@@ -514,7 +533,7 @@ def detail_travail_file(t, maintenant=None):
     morceaux.append(depuis(t.get('depuis'), maintenant))
     texte = ' · '.join(morceaux)
     if not en_cours and t.get('motif'):
-        texte += '\nAttend : ' + str(t['motif'])
+        texte += '\n' + phrase_motif(t['motif'])
     return texte
 
 
