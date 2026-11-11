@@ -1,0 +1,3 @@
+/* Gagarine 1.5.0 : couleurs des séries en thème sombre (plus claires, pour rester lisibles sur fond foncé). */
+@define-color gagarine_ram #62a0ea;
+@define-color gagarine_cpu #c061cb;

@@ -10,9 +10,52 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from . import donnees
 from .fenetre import PAGES, Fenetre
+from ..version import VERSION
 
-VERSION = '1.1.0'
+# Feuilles de style de l'interface (1.5.0) : base.css d'abord, puis une par page ; « -sombre » en thème sombre
+STYLES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'styles')
 DEPOT = 'https://github.com/mawena/gagarine'
+
+
+def fichiers_styles(dossier=STYLES):
+    """(clairs, sombres) : base.css puis les autres par ordre alphabétique ; chaque « x-sombre.css » complète « x.css »."""
+    try:
+        noms = sorted(f for f in os.listdir(dossier) if f.endswith('.css'))
+    except OSError:
+        return [], []
+    clairs = sorted((f for f in noms if not f.endswith('-sombre.css')), key=lambda f: (f != 'base.css', f))
+    sombres = [f[:-4] + '-sombre.css' for f in clairs if f[:-4] + '-sombre.css' in noms]
+    return clairs, sombres
+
+
+def charger_styles(display=None, dossier=STYLES):
+    """Charge les styles de l'interface sur l'affichage ; les variantes sombres suivent le thème (Adw.StyleManager)."""
+    display = display or Gdk.Display.get_default()
+    clairs, sombres = fichiers_styles(dossier)
+    if display is None or not clairs:
+        return []
+
+    def fournisseur(fichiers):
+        f = Gtk.CssProvider()
+        textes = []
+        for nom in fichiers:
+            with open(os.path.join(dossier, nom), encoding='utf-8') as fichier:
+                textes.append(fichier.read())
+        f.load_from_string('\n'.join(textes))
+        return f
+    Gtk.StyleContext.add_provider_for_display(display, fournisseur(clairs), Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    if sombres:
+        sombre = fournisseur(sombres)
+        gestion = Adw.StyleManager.get_default()
+
+        def appliquer(*_):
+            if gestion.get_dark():
+                Gtk.StyleContext.add_provider_for_display(display, sombre, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+            else:
+                Gtk.StyleContext.remove_provider_for_display(display, sombre)
+        gestion.connect('notify::dark', appliquer)
+        appliquer()
+    return clairs + sombres
 
 
 def dossier_icones_depot():
@@ -39,6 +82,7 @@ class Application(Adw.Application):
         if dossier and Gdk.Display.get_default():
             Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(dossier)
         Gtk.Window.set_default_icon_name(donnees.APPLICATION_ID)
+        charger_styles()
         a = Gio.SimpleAction.new('a-propos', None)
         a.connect('activate', lambda *_: self.a_propos())
         self.add_action(a)

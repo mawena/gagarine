@@ -1,0 +1,13 @@
+/* Gagarine 1.5.0 : page Programmes, et listes communes avec la File d'attente (docs/conception-1.5.0.md, chantier B).
+   Les règles sont limitées aux deux pages (#programmes, #file : nom des pages pleine largeur). Le bouton plat au texte
+   rouge des actions destructives est la classe `texte-destructif` de base.css. */
+
+/* Section vide : une phrase calme, un peu atténuée. */
+#programmes row.phrase-vide,
+#file row.phrase-vide {
+  color: alpha(currentColor, 0.75);
+}
+#programmes row.phrase-vide image,
+#file row.phrase-vide image {
+  opacity: 0.7;
+}

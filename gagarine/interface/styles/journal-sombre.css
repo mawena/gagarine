@@ -1,0 +1,4 @@
+/* Gagarine 1.5.0 : page « Journal » en thème sombre. Comme libadwaita, les cartes se détachent par leur fond, sans
+   contour ; le bleu du travail est celui de l'accent sombre d'Adwaita. */
+@define-color journal_travail #78aeed;
+@define-color journal_contour transparent;

@@ -1,4 +1,5 @@
-"""Page « Vue d'ensemble » : jauge de la RAM, processeur, courbe, swap, service."""
+"""Page « Aperçu » (1.5.0, docs/conception-1.5.0.md) : phrase d'état et voyant, instruments RAM et processeur côte à côte,
+courbe pleine largeur, puis trois colonnes : swap, plus gros (ou incidents), plus actifs."""
 import gi
 
 gi.require_version('Gtk', '4.0')
@@ -6,71 +7,149 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk
 
 from . import donnees
-from .graphiques import Coeurs, Courbe, Jauge
-from .outils import echappe, etiquette, page_preferences, synchroniser
+from .graphiques import Coeurs, Courbe, Jauge, Palette, couleur_hex
+from .outils import ListeEncadree, PageLarge, Section, Voyant, changer_classe, echappe, etiquette, synchroniser
+
+BASELINE = getattr(Gtk.Align, 'BASELINE_FILL', Gtk.Align.BASELINE)
+TITRES_COURBE = {'5min': 'Les cinq dernières minutes', '24h': 'Les dernières 24 heures', '7j': 'Les 7 derniers jours'}
+NIVEAUX_RAM = {'normal': ('Calme', ''), 'vigilance': ('Vigilance', 'vigilance'), 'alerte': ('Seuil atteint', 'alerte')}
+NIVEAUX_CPU = {'success': '', 'warning': 'vigilance', 'error': 'alerte'}
 
 
-class PageApercu(Adw.PreferencesPage):
+def lecture(valeur, unite):
+    """Balisage d'une lecture d'instrument : grand nombre, unité plus petite et atténuée sur la même ligne de base."""
+    return f'{echappe(valeur)}<span size="40%" weight="normal" fgalpha="62%">{echappe(unite)}</span>'
+
+
+def insecables(morceaux, chaud=None):
+    """Balisage de morceaux séparés par « · » : une ligne ne se coupe qu'entre deux morceaux, jamais au milieu d'une valeur
+    (« 97 °C », « 7,5 Go libres »). morceaux : [texte] ou [(texte, chaud)] ; chaud : couleur des morceaux chauds."""
+    sortie = []
+    for m in morceaux:
+        texte, est_chaud = m if isinstance(m, tuple) else (m, False)
+        style = f' foreground="{chaud}" weight="bold"' if est_chaud and chaud else ''
+        sortie.append(f'<span allow_breaks="false"{style}>{echappe(texte)}</span>')
+    return ' · '.join(sortie)
+
+
+def ligne_info(titre, sous_titre='', icone=None, valeur=None):
+    """Adw.ActionRow d'information sur une ligne : titre et sous-titre coupés avec « … », texte entier en infobulle."""
+    r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(sous_titre), title_lines=1, subtitle_lines=1,
+                      selectable=False, activatable=False)
+    r.set_tooltip_text(f'{titre}\n{sous_titre}' if sous_titre else titre)
+    if icone:
+        r.add_prefix(Gtk.Image.new_from_icon_name(icone))
+    r.valeur = etiquette(valeur or '', ['numeric'])
+    r.valeur.set_visible(bool(valeur))
+    r.add_suffix(r.valeur)
+    return r
+
+
+class PageApercu(PageLarge):
     def __init__(self, fenetre):
-        super().__init__(title='Aperçu', name='apercu', icon_name='computer-symbolic')
+        super().__init__('Aperçu', 'apercu', 'computer-symbolic')
         self.fenetre = fenetre
         self.source = fenetre.source
-        self.lignes_swap = {}
+        self.lignes_swap, self.lignes_gros_direct, self.lignes_actifs_direct = {}, {}, {}
+        self.lignes_incidents, self.lignes_gros, self.lignes_actifs = [], [], []
+        self.periode = '5min'
+        self.palette = Palette()       # couleurs du thème pour les dessins (cachée)
+        self.add(self.palette)
 
-        # mémoire vive
-        groupe = Adw.PreferencesGroup(title='Mémoire vive')
-        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        en_tete = Gtk.Box(spacing=12)
-        self.pourcent = Gtk.Label(label='— %', xalign=0)
-        self.pourcent.add_css_class('title-1')
-        self.pourcent.add_css_class('numeric')
-        self.detail = Gtk.Label(label='', xalign=0, hexpand=True, valign=Gtk.Align.END, wrap=True)
-        self.detail.add_css_class('dim-label')
-        self.statut = Gtk.Label(label='', valign=Gtk.Align.CENTER)
-        self.statut.add_css_class('pill-etat')
-        en_tete.append(self.pourcent)
-        en_tete.append(self.detail)
-        en_tete.append(self.statut)
-        self.jauge = Jauge()
-        boite.append(en_tete)
-        boite.append(self.jauge)
-        self.legende = Gtk.Label(label='', xalign=0, wrap=True)
-        self.legende.add_css_class('dim-label')
-        self.legende.add_css_class('caption')
-        boite.append(self.legende)
-        groupe.add(self._carte(boite))
-        self.add(groupe)
+        self._phrase_etat()
+        self._instruments()
+        self._courbe()
+        self._colonnes_du_bas()
+
+        self.source.connect('ram', lambda *_: self.maj_ram())
+        self.source.connect('etat', lambda *_: self.maj_etat())
+        self.source.connect('historique', lambda *_: self.maj_historique())
+        self.maj_ram()
+        self.maj_etat()
+        self.maj_cpu()
+        self.maj_historique()
+
+    # --- construction ---
+    def _phrase_etat(self):
+        """En tête : voyant, phrase d'état et détail ; bouton vers les Programmes si un programme est figé."""
+        self.tete = Gtk.Box(spacing=16)
+        self.tete.add_css_class('tete-etat')
+        self.voyant = Voyant()
+        self.tete.append(self.voyant)
+        corps = Gtk.Box(spacing=20, hexpand=True)
+        textes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True, valign=Gtk.Align.CENTER)
+        self.titre_etat = Gtk.Label(xalign=0, wrap=True, max_width_chars=72, accessible_role=Gtk.AccessibleRole.HEADING)
+        self.titre_etat.add_css_class('titre-etat')
+        self.detail_etat = Gtk.Label(xalign=0, wrap=True, max_width_chars=90)
+        self.detail_etat.add_css_class('detail-etat')
+        textes.append(self.titre_etat)
+        textes.append(self.detail_etat)
+        corps.append(textes)
+        self.bouton_programmes = Gtk.Button(label='Voir les programmes', valign=Gtk.Align.CENTER, visible=False)
+        self.bouton_programmes.add_css_class('suggested-action')
+        self.bouton_programmes.connect('clicked', lambda _b: self.fenetre.aller_a('programmes'))
+        corps.append(self.bouton_programmes)
+        self.tete.append(corps)
+        self.niveau_etat = None
+        # page moyenne ou étroite : le bouton passe sous la phrase, qui garde toute la largeur
+        for point in (self.point_moyen, self.point_etroit):
+            point.add_setter(corps, 'orientation', Gtk.Orientation.VERTICAL)
+            point.add_setter(corps, 'spacing', 12)
+            point.add_setter(self.bouton_programmes, 'halign', Gtk.Align.START)
+        self.add(self.tete)
+
+    def _instrument(self, titre):
+        """Carte d'instrument : titre et pastille de niveau, lecture et détail, place pour le dessin et sa légende."""
+        carte = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, vexpand=True)
+        for c in ('card', 'panneau', 'instrument'):
+            carte.add_css_class(c)
+        tete = Gtk.Box(spacing=12)
+        nom = Gtk.Label(label=titre, xalign=0, hexpand=True, accessible_role=Gtk.AccessibleRole.HEADING)
+        nom.add_css_class('titre-section')
+        statut = Gtk.Label(label='—', valign=Gtk.Align.CENTER)
+        statut.add_css_class('pastille-niveau')
+        tete.append(nom)
+        tete.append(statut)
+        rangee = Gtk.Box(spacing=14)
+        valeur = Gtk.Label(label=lecture('—', ' %'), use_markup=True, xalign=0, valign=BASELINE)
+        valeur.add_css_class('lecture')
+        detail = Gtk.Label(xalign=0, hexpand=True, wrap=True, valign=BASELINE, use_markup=True)
+        detail.add_css_class('lecture-unite')
+        rangee.append(valeur)
+        rangee.append(detail)
+        carte.append(tete)
+        carte.append(rangee)
+        return carte, statut, valeur, detail
+
+    def _instruments(self):
+        gauche, droite = self.colonnes(2)
+        for colonne in (gauche, droite):
+            colonne.set_valign(Gtk.Align.FILL)       # cartes de même hauteur côte à côte
+        gauche.get_parent().set_vexpand(False)       # mais la rangée ne s'étire pas dans une grande fenêtre
+
+        carte, self.statut, self.pourcent, self.detail = self._instrument('Mémoire vive')
+        self.jauge = Jauge(self.palette)
+        carte.append(self.jauge)
+        self.legende = Gtk.Label(xalign=0, wrap=True)
+        self.legende.add_css_class('legende-instrument')
+        carte.append(self.legende)
+        self.carte_ram = carte
+        gauche.append(carte)
 
         # processeur (1.4.0) : mesure locale chaque seconde, détails de `etat --json` quand le cœur les donne
-        groupe = Adw.PreferencesGroup(title='Processeur')
-        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        en_tete = Gtk.Box(spacing=12)
-        self.cpu_pourcent = Gtk.Label(label='— %', xalign=0)
-        self.cpu_pourcent.add_css_class('title-1')
-        self.cpu_pourcent.add_css_class('numeric')
-        self.cpu_detail = Gtk.Label(label='', xalign=0, hexpand=True, valign=Gtk.Align.END, wrap=True)
-        self.cpu_detail.add_css_class('dim-label')
-        self.cpu_statut = Gtk.Label(label='', valign=Gtk.Align.CENTER)
-        self.cpu_statut.add_css_class('pill-etat')
-        en_tete.append(self.cpu_pourcent)
-        en_tete.append(self.cpu_detail)
-        en_tete.append(self.cpu_statut)
-        self.coeurs = Coeurs()
-        boite.append(en_tete)
-        boite.append(self.coeurs)
-        self.cpu_legende = Gtk.Label(label='', xalign=0, wrap=True, use_markup=True)
-        self.cpu_legende.add_css_class('dim-label')
-        self.cpu_legende.add_css_class('caption')
-        boite.append(self.cpu_legende)
-        groupe.add(self._carte(boite))
-        self.groupe_cpu = groupe
-        self.add(groupe)
+        carte, self.cpu_statut, self.cpu_pourcent, self.cpu_detail = self._instrument('Processeur')
+        self.coeurs = Coeurs(self.palette)
+        carte.append(self.coeurs)
+        self.cpu_legende = Gtk.Label(xalign=0, wrap=True, use_markup=True)
+        self.cpu_legende.add_css_class('legende-instrument')
+        carte.append(self.cpu_legende)
+        self.groupe_cpu = carte
+        droite.append(carte)
 
-        self.groupe_courbe = Adw.PreferencesGroup(title='Les cinq dernières minutes')
-        self.periode = '5min'
-        self.boutons_periode = {}
-        selecteur = Gtk.Box(valign=Gtk.Align.CENTER)
+    def _courbe(self):
+        selecteur = Gtk.Box()
         selecteur.add_css_class('linked')
+        self.boutons_periode = {}
         premier = None
         for cle, libelle, _ in donnees.PERIODES:
             b = Gtk.ToggleButton(label=libelle, active=cle == self.periode)
@@ -82,58 +161,39 @@ class PageApercu(Adw.PreferencesPage):
             b.connect('toggled', self._periode_choisie, cle)
             self.boutons_periode[cle] = b
             selecteur.append(b)
-        self.groupe_courbe.set_header_suffix(selecteur)
-        self.courbe = Courbe(self.source)
-        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        boite.append(self.courbe)
-        self.resume = Gtk.Label(label='', xalign=0, wrap=True)
-        self.resume.add_css_class('dim-label')
-        self.resume.add_css_class('caption')
-        self.resume.set_visible(False)
-        boite.append(self.resume)
-        self.groupe_courbe.add(self._carte(boite))
+        self.groupe_courbe = Section(TITRES_COURBE[self.periode], suffixe=selecteur)
+        carte = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        carte.add_css_class('card')
+        carte.add_css_class('carte-courbe')
+        self.courbe = Courbe(self.source, self.palette)
+        carte.append(self.courbe)
+        self.groupe_courbe.ajouter(carte)
+        self.resume = Gtk.Label(xalign=0, wrap=True, max_width_chars=90, visible=False)
+        self.resume.add_css_class('legende-instrument')
+        self.groupe_courbe.ajouter(self.resume)
+        self.point_etroit.add_setter(self.courbe, 'content-height', 200)
         self.add(self.groupe_courbe)
 
-        # incidents et plus gros programmes de la période (24 h et 7 jours)
-        self.groupe_incidents = Adw.PreferencesGroup(title='Incidents de la période', visible=False)
-        self.lignes_incidents = []
-        self.add(self.groupe_incidents)
-        self.groupe_gros = Adw.PreferencesGroup(
-            title='Les plus gros de la période', visible=False,
-            description='Les programmes qui ont le plus pris de mémoire (pic mesuré une fois par minute).')
-        self.lignes_gros = []
-        self.add(self.groupe_gros)
-        self.groupe_actifs = Adw.PreferencesGroup(
-            title='Les plus actifs de la période', visible=False,
-            description='Les programmes qui ont le plus occupé le processeur, en minutes de processeur (un cœur plein pendant '
-                        'une minute). Les programmes du même nom sont additionnés.')
-        self.lignes_actifs = []
-        self.add(self.groupe_actifs)
+    def _section(self, colonne, titre, description=None, visible=True):
+        section = Section(titre, description)
+        section.liste = section.ajouter(ListeEncadree())
+        section.set_visible(visible)
+        colonne.append(section)
+        return section
 
-        # swap
-        self.groupe_swap = Adw.PreferencesGroup(title='Swap', description='Espace de débordement quand la RAM est pleine.')
-        self.add(self.groupe_swap)
-
-        # service
-        groupe = Adw.PreferencesGroup(title='Gagarine')
-        self.ligne_service = Adw.ActionRow(title='Service', subtitle='État inconnu')
-        self.ligne_service.add_prefix(Gtk.Image.new_from_icon_name('emblem-system-symbolic'))
-        self.etat_service = etiquette('', ['heading'])
-        self.ligne_service.add_suffix(self.etat_service)
-        groupe.add(self.ligne_service)
-        self.ligne_figes = self._ligne_lien('Programmes figés', 'media-playback-pause-symbolic', 'programmes')
-        self.ligne_file = self._ligne_lien('Travaux dans la file d’attente', 'view-list-symbolic', 'file')
-        groupe.add(self.ligne_figes)
-        groupe.add(self.ligne_file)
-        self.add(groupe)
-
-        self.source.connect('ram', lambda *_: self.maj_ram())
-        self.source.connect('etat', lambda *_: self.maj_etat())
-        self.source.connect('etat', lambda *_: self.maj_cpu())
-        self.source.connect('historique', lambda *_: self.maj_historique())
-        self.maj_ram()
-        self.maj_etat()
-        self.maj_cpu()
+    def _colonnes_du_bas(self):
+        swap, gros, actifs = self.colonnes(3)
+        self.groupe_swap = self._section(swap, 'Swap', 'Espace de débordement quand la RAM est pleine.')
+        # 5 minutes : qui charge le poste en ce moment ; 24 h et 7 jours : ce que l'historique a retenu
+        self.groupe_gros_direct = self._section(gros, 'Les plus gros en ce moment', 'Mémoire vive et swap de chaque programme.',
+                                                False)
+        self.groupe_incidents = self._section(gros, 'Incidents de la période', None, False)
+        self.groupe_gros = self._section(gros, 'Les plus gros de la période',
+                                         'Le pic de mémoire de chaque programme, mesuré une fois par minute.', False)
+        self.groupe_actifs_direct = self._section(actifs, 'Les plus actifs en ce moment',
+                                                  'Part du processeur sur les dernières secondes.', False)
+        self.groupe_actifs = self._section(actifs, 'Les plus actifs de la période',
+                                           'En minutes de processeur : un cœur plein pendant une minute.', False)
 
     # --- période de la courbe ---
     def _periode_choisie(self, bouton, cle):
@@ -141,17 +201,26 @@ class PageApercu(Adw.PreferencesPage):
             return
         self.periode = cle
         self.courbe.choisir_periode(cle)
-        titres = {'5min': 'Les cinq dernières minutes', '24h': 'Les dernières 24 heures', '7j': 'Les 7 derniers jours'}
-        self.groupe_courbe.set_title(titres[cle])
+        self.groupe_courbe.set_title(TITRES_COURBE[cle])
         if cle != '5min':
             self.source.suivre_historique(cle)
         self.maj_historique()
+
+    @staticmethod
+    def _remplir(section, lignes, nouvelles):
+        for ligne in lignes:
+            section.liste.remove(ligne)
+        lignes[:] = nouvelles
+        for ligne in nouvelles:
+            section.liste.add(ligne)
+        section.set_visible(bool(nouvelles))
 
     def maj_historique(self):
         long = self.periode != '5min'
         for g in (self.groupe_incidents, self.groupe_gros, self.groupe_actifs):
             g.set_visible(False)
         self.resume.set_visible(long)
+        self.maj_direct()
         if not long:
             return
         hist = self.source.historiques.get(self.periode)
@@ -164,91 +233,106 @@ class PageApercu(Adw.PreferencesPage):
             return
         self.resume.set_label(donnees.resume_historique(hist))
         self.courbe.queue_draw()
-        for ligne in self.lignes_incidents:
-            self.groupe_incidents.remove(ligne)
-        self.lignes_incidents = []
+        incidents = []
         for ev in list(reversed(hist['incidents']))[:6]:
             icone, titre, detail = donnees.decrire_evenement(ev)
-            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), subtitle_lines=2, selectable=False)
-            r.add_prefix(Gtk.Image.new_from_icon_name(icone))
-            r.add_suffix(etiquette(donnees.heure_locale(ev.get('date')), ['dim-label', 'numeric']))
-            self.groupe_incidents.add(r)
-            self.lignes_incidents.append(r)
+            r = ligne_info(titre, detail, icone, donnees.heure_locale(ev.get('date')))
+            r.valeur.add_css_class('dim-label')
+            incidents.append(r)
+        self._remplir(self.groupe_incidents, self.lignes_incidents, incidents)
         n = len(hist['incidents'])
         self.groupe_incidents.set_description(
             '' if not n else f'Marqués par un point rouge sur la courbe{f" ({min(n, 6)} derniers sur {n})" if n > 6 else ""}.')
-        self.groupe_incidents.set_visible(bool(n))
-        for ligne in self.lignes_gros:
-            self.groupe_gros.remove(ligne)
-        self.lignes_gros = []
+        gros = []
         for g in sorted(hist['gros'], key=lambda g: g.get('pic_mo') or 0, reverse=True)[:5]:
             titre, detail = donnees.titre_gros(g)
-            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), selectable=False)
-            r.add_prefix(Gtk.Image.new_from_icon_name('application-x-executable-symbolic'))
-            self.groupe_gros.add(r)
-            self.lignes_gros.append(r)
-        self.groupe_gros.set_visible(bool(self.lignes_gros))
-        for ligne in self.lignes_actifs:
-            self.groupe_actifs.remove(ligne)
-        self.lignes_actifs = []
-        for a in hist['actifs'][:5]:       # vide avec un cœur plus ancien que la 1.4.0 : le groupe reste masqué
+            gros.append(ligne_info(titre, detail, 'application-x-executable-symbolic'))
+        self._remplir(self.groupe_gros, self.lignes_gros, gros)
+        actifs = []
+        for a in hist['actifs'][:5]:       # vide avec un cœur plus ancien que la 1.4.0 : la section reste masquée
             titre, detail = donnees.titre_actif_periode(a)
-            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), selectable=False)
-            r.add_prefix(Gtk.Image.new_from_icon_name('system-run-symbolic'))
-            self.groupe_actifs.add(r)
-            self.lignes_actifs.append(r)
-        self.groupe_actifs.set_visible(bool(self.lignes_actifs))
+            actifs.append(ligne_info(titre, detail, 'system-run-symbolic'))
+        self._remplir(self.groupe_actifs, self.lignes_actifs, actifs)
 
-    def _carte(self, enfant):
-        """Enfant dans une carte arrondie (comme une liste encadrée)."""
-        carte = Gtk.Box()
-        carte.add_css_class('card')
-        enfant.set_margin_top(14)
-        enfant.set_margin_bottom(14)
-        enfant.set_margin_start(16)
-        enfant.set_margin_end(16)
-        enfant.set_hexpand(True)
-        carte.append(enfant)
-        return carte
+    # --- en ce moment : plus gros et plus actifs (5 minutes) ---
+    def maj_direct(self):
+        direct = self.periode == '5min'
+        etat = self.source.etat or {}
+        gros = {g.get('pid'): g for g in (etat.get('plus_gros') or [])[:5]} if direct else {}
+        synchroniser(self.groupe_gros_direct.liste, self.lignes_gros_direct, list(gros), self._creer_direct,
+                     lambda pid, ligne: self._maj_gros_direct(ligne, gros[pid]))
+        self.groupe_gros_direct.set_visible(bool(gros))
+        proc = self.source.processeur() or {}
+        actifs = {a['pid']: a for a in (proc.get('plus_actifs') or [])[:5]} if direct else {}
+        synchroniser(self.groupe_actifs_direct.liste, self.lignes_actifs_direct, list(actifs), self._creer_direct,
+                     lambda pid, ligne: self._maj_actif_direct(ligne, actifs[pid]))
+        self.groupe_actifs_direct.set_visible(bool(actifs))
 
-    def _ligne_lien(self, titre, icone, page):
-        r = Adw.ActionRow(title=titre, activatable=True)
-        r.add_prefix(Gtk.Image.new_from_icon_name(icone))
-        r.valeur = etiquette('', ['numeric'])
-        r.add_suffix(r.valeur)
-        r.add_suffix(Gtk.Image.new_from_icon_name('go-next-symbolic'))
-        r.connect('activated', lambda _r: self.fenetre.aller_a(page))
+    @staticmethod
+    def _creer_direct(_cle):
+        r = ligne_info('', '', None, '')
+        r.valeur.set_visible(True)
         return r
 
+    @staticmethod
+    def _maj_info(ligne, titre, sous_titre, valeur):
+        ligne.set_title(echappe(titre))
+        ligne.set_subtitle(echappe(sous_titre))
+        ligne.set_tooltip_text(f'{titre}\n{sous_titre}')
+        ligne.valeur.set_label(valeur)
+
+    def _maj_gros_direct(self, ligne, g):
+        rss, swap = g.get('rss_mo') or 0, g.get('swap_mo') or 0
+        morceaux = [f'PID {g.get("pid")}']
+        if swap:
+            morceaux.append(f'{donnees.formater_taille_mo(swap)} dans le swap')
+        if g.get('protege'):
+            morceaux.append('protégé')
+        self._maj_info(ligne, g.get('nom') or 'programme', ' · '.join(morceaux), donnees.formater_taille_mo(rss + swap))
+
+    def _maj_actif_direct(self, ligne, a):
+        titre, sous, valeur = donnees.titre_actif(a)
+        self._maj_info(ligne, titre, sous, valeur)
+
+    # --- phrase d'état ---
+    def maj_phrase(self):
+        s = self.source
+        proc = s.processeur()
+        cpu = s.cpu_moyen() if s.cpu_pourcent is not None else (proc or {}).get('pourcent')
+        niveau, titre, detail = donnees.phrase_etat(s.etat, s.ram_pourcent, s.ram_dispo_mo, cpu)
+        self.voyant.set_niveau(niveau)
+        self.titre_etat.set_label(titre)
+        self.detail_etat.set_label(detail)
+        self.detail_etat.set_visible(bool(detail))
+        self.bouton_programmes.set_visible(bool(s.nombre_figes()) and s.service_actif())
+        self.niveau_etat = niveau
+
+    # --- instruments ---
     def maj_ram(self):
         s = self.source
+        self.maj_phrase()
         if s.ram_pourcent is None:
             return
         niveau = s.niveau()
-        self.pourcent.set_label(donnees.formater_pourcent(s.ram_pourcent))
+        self.pourcent.set_label(lecture(donnees.formater_pourcent(s.ram_pourcent)[:-2], ' %'))
         utilise = s.ram_total_mo - s.ram_dispo_mo
-        self.detail.set_label(f'{donnees.formater_taille_mo(utilise)} utilisés sur {donnees.formater_taille_mo(s.ram_total_mo)}'
-                              f' · {donnees.formater_taille_mo(s.ram_dispo_mo)} disponibles')
-        self.jauge.maj(s.ram_pourcent, s.reglages(), niveau)
+        self.detail.set_label(insecables([
+            f'{donnees.formater_taille_mo(utilise)} sur {donnees.formater_taille_mo(s.ram_total_mo)}',
+            f'{donnees.formater_taille_mo(s.ram_dispo_mo)} libres']))
+        r = s.reglages()
+        self.jauge.maj(s.ram_pourcent, r, niveau)
+        self.legende.set_label(f'Vigilance à {r.get("vigilance", 85):g} %, intervention à {r.get("seuil", 95):g} %, '
+                               f'urgence à {r.get("urgence", 98):g} %.')
+        texte, classe = NIVEAUX_RAM[niveau]
+        self.statut.set_label(texte)
+        changer_classe(self.statut, classe)
         self.maj_cpu()
         if self.periode == '5min':
             self.courbe.queue_draw()
-        r = s.reglages()
-        self.legende.set_label(f'Repères : vigilance {r.get("vigilance", 85)} % · seuil d’intervention {r.get("seuil", 95)} % · '
-                               f'urgence {r.get("urgence", 98)} %')
-        textes = {'normal': ('Tout va bien', 'success'), 'vigilance': ('Vigilance', 'warning'),
-                  'alerte': ('Seuil atteint', 'error')}
-        texte, classe = textes[niveau]
-        if s.nombre_figes():
-            texte, classe = donnees.pluriel(s.nombre_figes(), 'programme figé', 'programmes figés'), 'warning'
-        for c in ('success', 'warning', 'error'):
-            self.statut.remove_css_class(c)
-        self.statut.add_css_class(classe)
-        self.statut.set_label(texte)
 
     def maj_cpu(self):
-        """Groupe « Processeur » : mesure locale (% et cœurs, chaque seconde) et détails du service (modèle, types,
-        température, fréquence, pression) quand `etat --json` les donne. Sans mesure du tout, le groupe est masqué."""
+        """Instrument « Processeur » : mesure locale (% et cœurs, chaque seconde) et détails du service (modèle, types,
+        température, fréquence, pression) quand `etat --json` les donne. Sans mesure du tout, la carte est masquée."""
         s = self.source
         proc = s.processeur()
         pct = s.cpu_pourcent if s.cpu_pourcent is not None else (proc or {}).get('pourcent')
@@ -256,65 +340,49 @@ class PageApercu(Adw.PreferencesPage):
         self.groupe_cpu.set_visible(pct is not None)
         if pct is None:
             return
-        self.cpu_pourcent.set_label(donnees.formater_pourcent(pct))
-        self.cpu_detail.set_label(donnees.detail_processeur(proc, len(coeurs) or None))
+        self.cpu_pourcent.set_label(lecture(donnees.formater_pourcent(pct)[:-2], ' %'))
+        detail = donnees.detail_processeur(proc, len(coeurs) or None)
+        self.cpu_detail.set_label(insecables(detail.split(' · ')) if detail else '')
         types = (proc or {}).get('types') or []
-        self.coeurs.maj(coeurs, types if len(types) == len(coeurs) else [])
+        self.coeurs.maj(coeurs, types if len(types) == len(coeurs) else [], (proc or {}).get('coeurs_performants'))
         texte, classe = donnees.pastille_cpu(s.cpu_moyen() if s.cpu_pourcent is not None else pct)
-        for c in ('success', 'warning', 'error'):
-            self.cpu_statut.remove_css_class(c)
-        if classe:
-            self.cpu_statut.add_css_class(classe)
         self.cpu_statut.set_label(texte)
+        changer_classe(self.cpu_statut, NIVEAUX_CPU.get(classe, ''))
         morceaux = donnees.legende_processeur(proc, len(coeurs) or None)
-        self.cpu_legende.set_markup(' · '.join(
-            f'<span foreground="#e66100" weight="bold">{echappe(t)}</span>' if chaud else echappe(t) for t, chaud in morceaux))
+        self.cpu_legende.set_markup(insecables(morceaux, couleur_hex(self, 'gagarine_vigilance')))
         self.cpu_legende.set_visible(bool(morceaux))
         if self.periode == '5min':
             self.courbe.queue_draw()
 
     def maj_etat(self):
+        self.maj_phrase()
+        self.maj_direct()
+        self.maj_cpu()           # modèle, types des cœurs, température : donnés par `etat --json`
         etat = self.source.etat
         if not etat:
             return
         swap = etat['swap']
-        synchroniser(self.groupe_swap, self.lignes_swap, [s.get('nom') for s in swap], self._creer_swap,
+        synchroniser(self.groupe_swap.liste, self.lignes_swap, [s.get('nom') for s in swap], self._creer_swap,
                      lambda cle, ligne: self._maj_swap(ligne, next(s for s in swap if s.get('nom') == cle)))
-        if not swap:
-            self.groupe_swap.set_description('Aucun espace de swap : si la RAM se remplit, rien ne la décharge.')
-        else:
-            self.groupe_swap.set_description('Espace de débordement quand la RAM est pleine.')
-        actif = self.source.service_actif()
-        self.etat_service.set_label('Actif' if actif else 'Arrêté')
-        for c in ('success', 'error'):
-            self.etat_service.remove_css_class(c)
-        self.etat_service.add_css_class('success' if actif else 'error')
-        demarrage = etat['service']['actif_au_demarrage']
-        self.ligne_service.set_subtitle(
-            ('Protège la RAM en continu' if actif else 'La RAM n’est pas protégée') +
-            ('' if demarrage is None else (' · lancé au démarrage du poste' if demarrage else ' · pas lancé au démarrage')))
-        figes, travaux = len(etat['figes']), etat['file']
-        self._valeur(self.ligne_figes, 'Aucun' if not figes else donnees.pluriel(figes, 'programme figé', 'programmes figés'))
-        self._valeur(self.ligne_file, 'Aucun' if not travaux else donnees.pluriel(travaux, 'travail'))
+        self.groupe_swap.liste.set_visible(bool(swap))
+        self.groupe_swap.set_description('Aucun espace de swap : si la RAM se remplit, rien ne la décharge.' if not swap
+                                         else 'Espace de débordement quand la RAM est pleine.')
 
-    @staticmethod
-    def _valeur(ligne, texte):
-        ligne.valeur.set_label(texte)
-
-    def _creer_swap(self, cle):
-        r = Adw.ActionRow()
+    def _creer_swap(self, _cle):
+        r = Adw.ActionRow(title_lines=1, subtitle_lines=1, selectable=False)
         r.add_prefix(Gtk.Image.new_from_icon_name('drive-harddisk-symbolic'))
-        barre = Gtk.LevelBar(min_value=0, max_value=1, valign=Gtk.Align.CENTER)
-        barre.set_size_request(110, -1)
-        r.barre = barre
-        r.valeur = etiquette('', ['numeric'])
-        r.add_suffix(r.valeur)
-        r.add_suffix(barre)
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER)
+        r.valeur = etiquette('', ['numeric', 'caption'])
+        r.barre = Gtk.LevelBar(min_value=0, max_value=1, width_request=96)
+        r.barre.add_css_class('jauge-swap')
+        boite.append(r.valeur)
+        boite.append(r.barre)
+        r.add_suffix(boite)
         return r
 
     def _maj_swap(self, ligne, s):
         taille, utilise = s.get('taille_mo') or 0, s.get('utilise_mo') or 0
         ligne.set_title(donnees.nom_swap(s))
-        ligne.set_subtitle(f'{s.get("nom", "")} · priorité {s.get("priorite", "—")}')
-        ligne.valeur.set_label(f'{donnees.formater_taille_mo(utilise)} / {donnees.formater_taille_mo(taille)}')
+        ligne.set_subtitle(echappe(f'{s.get("nom", "")} · priorité {s.get("priorite", "—")}'))
+        ligne.valeur.set_label(f'{donnees.formater_taille_mo(utilise)} sur {donnees.formater_taille_mo(taille)}')
         ligne.barre.set_value(utilise / taille if taille else 0)

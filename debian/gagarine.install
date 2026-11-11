@@ -3,6 +3,7 @@ bin/gagarine-interface usr/bin
 bin/gagarine-indicateur usr/bin
 gagarine/*.py usr/share/gagarine/gagarine
 gagarine/interface/*.py usr/share/gagarine/gagarine/interface
+gagarine/interface/styles/*.css usr/share/gagarine/gagarine/interface/styles
 gagarine/indicateur/*.py usr/share/gagarine/gagarine/indicateur
 etc/gagarine.conf etc
 systemd/gagarine.service usr/lib/systemd/system

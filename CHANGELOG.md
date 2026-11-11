@@ -7,6 +7,47 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.5.0] - 2026-11-11
+
+Nouveau design de l'interface : elle prend toute la largeur de la fenêtre au lieu d'une colonne étroite et centrée, et
+dit d'un coup d'œil si le poste va bien.
+
+### Modifié
+
+- **Navigation** : une barre latérale remplace les onglets du haut. Elle montre l'état de chaque page en direct (RAM en
+  %, programmes figés, travaux en cours) et l'état du service. En fenêtre étroite, elle se replie derrière un bouton
+  retour.
+- **Pages en pleine largeur**, alignées à gauche, sur deux ou trois colonnes quand la fenêtre est large, et empilées
+  quand elle est étroite.
+- **Aperçu** :
+  - une phrase d'état avec son voyant (« Le poste respire : 4,8 Go libres, processeur calme », « python3 est figé : il
+    attend votre décision ») ;
+  - une échelle graduée de la RAM avec ses zones de vigilance, de seuil et d'urgence ;
+  - les cœurs du processeur, les cœurs performants dessinés plus larges ;
+  - la courbe sur toute la largeur ;
+  - les plus gros et les plus actifs en ce moment, ou sur la période.
+- **Programmes** en deux colonnes ; les sections vides disent ce qui se passe.
+- **File d'attente** :
+  - les travaux en colonnes alignées (RAM annoncée, cœurs, processeur, durée), avec une pastille d'état et un motif
+    d'attente lisible ;
+  - la mémoire apprise et les travaux passés côte à côte.
+- **Journal** : les événements sont groupés par jour, l'heure à gauche comme une frise, et l'icône est teintée selon la
+  gravité. La recherche reste visible en haut.
+- **Réglages** en deux colonnes ; la barre « Enregistrer » n'apparaît que s'il y a une modification.
+- Les boutons destructifs des listes (Arrêter, Annuler, Décharger) sont plats au texte rouge ; seule la confirmation
+  garde le bouton rouge plein.
+- Couleurs et chiffres :
+  - le vert, l'ambre et le rouge ne disent que l'état ; la RAM est en bleu et le processeur en violet, en thème clair
+    comme en sombre ;
+  - chiffres tabulaires pour toutes les valeurs qui changent.
+- Captures d'écran refaites, en grande fenêtre, en thème clair et en fenêtre étroite.
+
+### Corrigé
+
+- La boîte « À propos » affichait la version 1.1.0.
+- `GAGARINE_DOSSIER_EXECUTION`, quand il est défini, est le seul dossier où la mesure du processeur est lue : les tests
+  ne lisent plus le service installé.
+
 ## [1.4.0] - 2026-11-11
 
 Gagarine montre aussi le processeur : utilisation de chaque cœur, programmes les plus actifs, température et fréquence,

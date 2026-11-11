@@ -13,7 +13,7 @@ jour par `sudo apt upgrade`.
 curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh
 ```
 
-![Aperçu de l'interface de Gagarine](docs/captures/apercu.png)
+![Aperçu de l'interface de Gagarine : phrase d'état, instruments de la RAM et du processeur, courbe](docs/captures/apercu-large.png)
 
 ## À quoi ça sert
 
@@ -105,14 +105,16 @@ recommandés (`python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `gir1.2-gtk-3.0`, 
 ## Interface graphique
 
 Lancer **Gagarine** depuis les applications, ou `gagarine-interface` (option `--page=apercu|programmes|file|journal|reglages`).
-Cinq pages :
+Une barre latérale mène aux cinq pages et montre leur état en direct (RAM en %, programmes figés, travaux en cours), avec
+l'état du service en bas. Les pages prennent toute la largeur de la fenêtre, sur deux ou trois colonnes quand elle est
+large, et s'empilent quand elle est étroite. Thèmes clair et sombre.
 
 | Page | Contenu |
 |---|---|
-| **Aperçu** | jauge de la RAM avec les repères (vigilance, seuil, urgence) ; **processeur** : utilisation totale et de chaque cœur (performants et économes), température, fréquence, charge ; courbe de la RAM et du processeur sur 5 minutes, 24 heures ou 7 jours avec les incidents marqués, et les programmes les plus gros et les plus actifs de la période ; swap (zram et disque) ; état du service |
+| **Aperçu** | une phrase qui dit l'état du poste (« Le poste respire », « python3 est figé : il attend votre décision »…) avec son voyant ; échelle graduée de la RAM avec les repères (vigilance, seuil, urgence) ; **processeur** : utilisation totale et de chaque cœur (performants et économes), température, fréquence, charge ; courbe de la RAM et du processeur sur 5 minutes, 24 heures ou 7 jours avec les incidents marqués, et les programmes les plus gros et les plus actifs de la période ; swap (zram et disque) ; état du service |
 | **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; **Fuites en cours** ; **Ménage** des programmes inactifs ; **Applications du bureau** et leur plafond mémoire ; les dix plus gros programmes et les dix plus actifs (processeur) |
 | **File d'attente** | travaux en cours (plusieurs à la fois, avec les cœurs qu'ils utilisent) et en attente avec leur priorité et le motif de l'attente, **Annuler**, **Priorité…**, **Voir la sortie**, **Nouveau travail…** ; **Mémoire apprise** de chaque travail, avec sa tendance ; **Travaux passés** avec leur pic et leurs cœurs en moyenne |
-| **Journal** | tous les événements (garde, file, ménage, service), filtre par type et recherche |
+| **Journal** | tous les événements (garde, file, ménage, service), groupés par jour, avec filtre par type et recherche |
 | **Réglages** | seuils, anticipation et pression, délais, bridage, notifications (fin de travail, téléphone), file (travaux en parallèle), fuites, ménage, sessions Claude, programmes protégés ; service ; essai ; affichage de l'indicateur |
 
 Les actions d'administrateur (réglages, service, essai en administrateur, programme d'un autre utilisateur) passent par
@@ -121,8 +123,9 @@ la RAM est pleine : tout ce qu'elle demande au système se fait en arrière-plan
 
 | | |
 |---|---|
-| ![Programmes figés](docs/captures/programmes.png) | ![File d'attente](docs/captures/file.png) |
-| ![Journal](docs/captures/journal.png) | ![Réglages](docs/captures/reglages.png) |
+| ![Programmes : figés, fuites, plus gros, plus actifs, ménage](docs/captures/programmes-large.png) | ![File d'attente : travaux en colonnes, mémoire apprise, travaux passés](docs/captures/file-large.png) |
+| ![Journal groupé par jour](docs/captures/journal-large.png) | ![Réglages en deux colonnes](docs/captures/reglages-large.png) |
+| ![Aperçu en thème clair](docs/captures/apercu-clair.png) | ![Fenêtre étroite](docs/captures/etroit.png) |
 | ![Processeur dans l'aperçu](docs/captures/apercu-processeur.png) | ![Programmes les plus actifs](docs/captures/programmes-actifs.png) |
 
 *Captures faites avec des données d'exemple.*

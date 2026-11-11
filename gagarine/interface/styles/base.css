@@ -1,0 +1,132 @@
+/* Gagarine 1.5.0 : jetons et classes communes de l'interface (docs/conception-1.5.0.md).
+   Chargé avant les styles des pages (styles/<page>.css) ; base-sombre.css le complète en thème sombre. */
+
+/* Séries : bleu pour la RAM, violet pour le processeur. */
+@define-color gagarine_ram #3584e4;
+@define-color gagarine_cpu #9141ac;
+
+/* Niveaux : seulement pour dire l'état (calme, vigilance, alerte). */
+@define-color gagarine_calme @success_color;
+@define-color gagarine_vigilance @warning_color;
+@define-color gagarine_alerte @error_color;
+
+/* Variantes « fond » des niveaux, pour les aplats (remplissage de la jauge, barres des cœurs) : de l'ambre et du rouge
+   francs dans les deux thèmes, là où @warning_color, fait pour le texte, est jaune pâle en sombre et brun en clair. */
+@define-color gagarine_calme_fond @success_bg_color;
+@define-color gagarine_vigilance_fond @warning_bg_color;
+@define-color gagarine_alerte_fond @error_bg_color;
+
+/* Sondes des dessins Cairo (graphiques.Palette) : étiquettes cachées dont la couleur est le jeton. */
+.sonde-ram { color: @gagarine_ram; }
+.sonde-cpu { color: @gagarine_cpu; }
+.sonde-calme { color: @gagarine_calme; }
+.sonde-vigilance { color: @gagarine_vigilance; }
+.sonde-alerte { color: @gagarine_alerte; }
+.sonde-calme-fond { color: @gagarine_calme_fond; }
+.sonde-vigilance-fond { color: @gagarine_vigilance_fond; }
+.sonde-alerte-fond { color: @gagarine_alerte_fond; }
+
+/* Lectures d'instrument : grands chiffres tabulaires. */
+.lecture {
+  font-size: 40px;
+  font-weight: 300;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+}
+.lecture-unite {
+  font-size: 16px;
+  font-weight: 400;
+  color: alpha(@window_fg_color, 0.62);
+}
+
+/* Phrase d'état en tête de l'Aperçu. */
+.titre-etat {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* Sections des pages pleine largeur. */
+.titre-section {
+  font-size: 15px;
+  font-weight: 700;
+}
+.description-section {
+  color: alpha(@window_fg_color, 0.62);
+}
+
+/* Petit libellé de valeur, en casse normale. */
+.etiquette {
+  font-size: 12px;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.6);
+}
+
+/* Couleur du texte selon le niveau. */
+.niveau-calme { color: @gagarine_calme; }
+.niveau-vigilance { color: @gagarine_vigilance; }
+.niveau-alerte { color: @gagarine_alerte; }
+
+/* Voyant : témoin de tableau de bord, disque coloré avec un halo léger. */
+.voyant {
+  min-width: 14px;
+  min-height: 14px;
+  border-radius: 999px;
+  background-color: @gagarine_calme;
+  box-shadow: 0 0 0 4px alpha(@gagarine_calme, 0.18);
+}
+.voyant.vigilance {
+  background-color: @gagarine_vigilance;
+  box-shadow: 0 0 0 4px alpha(@gagarine_vigilance, 0.2);
+}
+.voyant.alerte {
+  background-color: @gagarine_alerte;
+  box-shadow: 0 0 0 4px alpha(@gagarine_alerte, 0.22);
+}
+.voyant.eteint {
+  background-color: alpha(@window_fg_color, 0.3);
+  box-shadow: none;
+}
+
+/* Compteur vivant à droite d'une ligne (barre latérale). */
+.compteur {
+  font-size: 12px;
+  font-weight: 600;
+  font-feature-settings: "tnum";
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: alpha(@window_fg_color, 0.08);
+}
+.compteur.vigilance {
+  color: @gagarine_vigilance;
+  background-color: alpha(@gagarine_vigilance, 0.14);
+}
+.compteur.alerte {
+  color: @gagarine_alerte;
+  background-color: alpha(@gagarine_alerte, 0.14);
+}
+
+/* Panneau d'instrument : carte de libadwaita avec un peu plus d'air. */
+.panneau {
+  padding: 18px 20px;
+}
+
+/* Barre latérale : état du service en bas, sous la liste des pages. */
+.barre-service {
+  padding: 12px 16px 16px 16px;
+}
+
+/* Action destructive d'une ligne (Arrêter, Annuler, Décharger) : bouton plat au texte rouge. Seule la confirmation a le
+   bouton rouge plein (destructive-action) : une file de cinq travaux ne montre plus cinq boutons rouges. */
+button.texte-destructif {
+  background-color: transparent;
+  color: @destructive_color;
+}
+button.texte-destructif:hover {
+  background-color: alpha(@destructive_color, 0.1);
+}
+button.texte-destructif:active {
+  background-color: alpha(@destructive_color, 0.18);
+}
+button.texte-destructif:disabled {
+  color: alpha(@destructive_color, 0.5);
+}

@@ -1,4 +1,4 @@
-.TH GAGARINE\-INTERFACE 1 "11 novembre 2026" "gagarine 1.4.0" "Commandes de l'utilisateur"
+.TH GAGARINE\-INTERFACE 1 "11 novembre 2026" "gagarine 1.5.0" "Commandes de l'utilisateur"
 .SH NOM
 gagarine\-interface \- interface graphique de Gagarine (GTK 4 et libadwaita)
 .SH SYNOPSIS
@@ -16,7 +16,11 @@ piloter à la souris : reprendre ou arrêter un programme figé, annuler ou lanc
 réglages, démarrer ou arrêter le service, lancer l'essai de la protection, afficher ou masquer l'indicateur de la barre
 du haut.
 .PP
-La page Aperçu montre le processeur (utilisation de chaque cœur, température, fréquence) et la courbe de la RAM et du
+Une barre latérale mène aux pages et montre leur état en direct (RAM en %, programmes figés, travaux en cours), avec
+l'état du service en bas. Les pages prennent toute la largeur de la fenêtre, sur plusieurs colonnes quand elle est
+large ; en fenêtre étroite, tout s'empile et la barre latérale s'ouvre par un bouton retour.
+.PP
+La page Aperçu commence par une phrase qui dit l'état du poste, puis montre la RAM sur une échelle graduée et le processeur (utilisation de chaque cœur, température, fréquence) et la courbe de la RAM et du
 processeur sur 5 minutes, 24 heures ou 7 jours, avec les incidents marqués et les programmes les plus gros et les plus
 actifs de la période. La page Programmes montre aussi les programmes les plus actifs en ce moment et propose le ménage (démons et modèles inactifs, à arrêter ou décharger) et le plafond de mémoire des applications du
 bureau. La page File d'attente montre les cœurs utilisés par chaque travail en cours, la mémoire apprise de chaque travail et

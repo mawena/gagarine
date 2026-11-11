@@ -12,6 +12,7 @@ Contrats de la 1.4.0 (docs/conception-1.4.0.md) : `processeur` de `etat --json`,
 points et `actifs` de `historique --json`, `coeurs_utilises` des travaux en cours et `coeurs_moyens` des travaux passés.
             | v13 (cœur 1.3.x : aucun champ de la 1.4.0 ; v12 et ancien n'en ont pas non plus)
             FAUX_CHAUD = 1 : le processeur est « chaud » (97 °C)
+            FAUX_SERVICE = état du service dans `etat --json` (défaut : active ; inactive pour un service arrêté)
 Les actions (reprendre, arrêter, annuler, service, réglages, essai) ne font rien et le disent.
 """
 import json
@@ -82,7 +83,7 @@ def etat():
                      "ntfy": "gagarine-mawena", "file_ajuster": True, "menage_auto": True, "menage_delai": 30,
                      "claude_bloquer": True, "file_paralleles": 3, "fuite_seuil": 100, "fuite_notifier": True},
         "fichier_reglages": "/etc/gagarine.conf",
-        "service": {"etat": "active", "actif_au_demarrage": True},
+        "service": {"etat": os.environ.get('FAUX_SERVICE', 'active'), "actif_au_demarrage": True},
         "dossier_etat": "/var/lib/gagarine",
         "figes": figes,
         "plus_gros": [
