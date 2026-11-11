@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Captures des pages de l'interface dans docs/captures/, avec le faux gagarine, SOUS Xvfb uniquement :
 
-    dbus-run-session -- xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 tests/donnees_interface/capturer.py [DOSSIER]
+    dbus-run-session -- xvfb-run -a -s "-screen 0 1600x1000x24" env GDK_BACKEND=x11 python3 tests/donnees_interface/capturer.py [DOSSIER]
 
 Refuse de tourner sans Xvfb (jamais d'ouverture de fenêtre sur l'écran réel) et sans session D-Bus privée : l'interface
 est une application unique (org.gagarine…), et sur le bus de la session une interface déjà ouverte serait réveillée
@@ -18,7 +18,7 @@ sys.path.insert(0, RACINE)
 DOSSIER = sys.argv[1] if len(sys.argv) > 1 else os.path.join(RACINE, 'docs', 'captures')
 
 if os.environ.get('GDK_BACKEND') != 'x11' or os.environ.get('DISPLAY', ':1') == ':1' or not os.environ.get('DISPLAY'):
-    sys.exit('À lancer sous Xvfb : xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 ' + sys.argv[0])
+    sys.exit('À lancer sous Xvfb : xvfb-run -a -s "-screen 0 1600x1000x24" env GDK_BACKEND=x11 python3 ' + sys.argv[0])
 
 bus = os.environ.get('DBUS_SESSION_BUS_ADDRESS', '')
 if not bus or bus == f'unix:path=/run/user/{os.getuid()}/bus':
@@ -37,7 +37,8 @@ os.environ.setdefault('GSK_RENDERER', 'cairo')
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, GLib, Gtk
+gi.require_version('Graphene', '1.0')
+from gi.repository import Adw, GLib, Graphene, Gtk
 
 from gagarine.interface.application import Application
 
@@ -102,11 +103,37 @@ def defiler(page, fraction):
     GLib.timeout_add(900, aller)
 
 
+def defiler_vers(page, widget, marge=12):
+    """Fait défiler une page (outils.PageLarge) pour que `widget` soit en haut, une fois la mise en page faite."""
+    def aller():
+        ok, point = widget.compute_point(page.contenu, Graphene.Point())
+        if ok:
+            a = page.defilement.get_vadjustment()
+            a.set_value(max(a.get_lower(), min(point.y - marge, a.get_upper() - a.get_page_size())))
+        return False
+    GLib.timeout_add(900, aller)
+
+
 def periode(f, cle):
     f.pages['apercu'].boutons_periode[cle].set_active(True)
 
 
+def grande(f, page):
+    """Grande fenêtre (1440 × 900), page en haut."""
+    f.set_default_size(1440, 900)
+    defiler(f.pages[page], 0)
+
+
+def theme(nom):
+    """Thème de la capture : sombre (celui du poste), ou clair pour les captures « -clair »."""
+    Adw.StyleManager.get_default().set_color_scheme(
+        Adw.ColorScheme.FORCE_LIGHT if nom.endswith('-clair') else Adw.ColorScheme.FORCE_DARK)
+
+
 def _defileur(w):
+    """Gtk.ScrolledWindow d'une page : `defilement` d'une outils.PageLarge, sinon le premier trouvé dans ses enfants."""
+    if isinstance(getattr(w, 'defilement', None), Gtk.ScrolledWindow):
+        return w.defilement
     pile = [w]
     while pile:
         n = pile.pop()
@@ -124,9 +151,12 @@ def main():
     # (nom du fichier, page, action avant la prise, attente en ms)
     etapes = [
         ('apercu', 'apercu', lambda f: periode(f, '5min'), 1500),
-        ('apercu-24h', 'apercu', lambda f: periode(f, '24h'), 2500),
-        ('apercu-7j', 'apercu', lambda f: (periode(f, '7j'), defiler(f.pages['apercu'], 0.62)), 2500),
-        ('apercu-processeur', 'apercu', lambda f: (periode(f, '5min'), defiler(f.pages['apercu'], 0.38)), 2500),
+        ('apercu-24h', 'apercu', lambda f: (periode(f, '24h'), defiler_vers(f.pages['apercu'], f.pages['apercu'].groupe_courbe)),
+         2500),
+        ('apercu-7j', 'apercu', lambda f: (periode(f, '7j'), defiler_vers(f.pages['apercu'], f.pages['apercu'].groupe_incidents)),
+         2500),
+        ('apercu-processeur', 'apercu', lambda f: (periode(f, '5min'), defiler_vers(f.pages['apercu'], f.pages['apercu'].groupe_cpu)),
+         2500),
         ('programmes', 'programmes', None, 1500),
         ('programmes-actifs', 'programmes', lambda f: defiler(f.pages['programmes'], 0.55), 2500),
         ('programmes-menage', 'programmes', lambda f: defiler(f.pages['programmes'], 0.5), 2500),
@@ -143,6 +173,15 @@ def main():
         ('nouveau-travail', 'file', lambda f: f.pages['file'].nouveau_travail(), 1500),
         ('sortie-travail', 'file', lambda f: f.pages['file'].voir_sortie(next(iter(f.pages['file'].travaux))), 1500),
         ('etroit', 'apercu', lambda f: (periode(f, '24h'), defiler(f.pages['apercu'], 0), f.set_default_size(420, 720)), 2500),
+        # grande fenêtre (1.5.0) : chaque page en 1440 × 900, puis l'Aperçu en thème clair
+        ('apercu-large', 'apercu', lambda f: (periode(f, '5min'), grande(f, 'apercu')), 2500),
+        ('apercu-large-24h', 'apercu', lambda f: (periode(f, '24h'), grande(f, 'apercu'),
+                                                  defiler_vers(f.pages['apercu'], f.pages['apercu'].groupe_courbe)), 2500),
+        ('programmes-large', 'programmes', lambda f: grande(f, 'programmes'), 2000),
+        ('file-large', 'file', lambda f: grande(f, 'file'), 2000),
+        ('journal-large', 'journal', lambda f: grande(f, 'journal'), 2000),
+        ('reglages-large', 'reglages', lambda f: grande(f, 'reglages'), 2000),
+        ('apercu-clair', 'apercu', lambda f: (periode(f, '5min'), grande(f, 'apercu')), 2500),
     ]
 
     # CAPTURES_DEPUIS=nom : reprend à cette capture (les précédentes sont gardées) ; CAPTURES_SEULEMENT=a,b : seulement celles-là
@@ -155,6 +194,7 @@ def main():
     def demarre(_app):
         f = app.fenetre
         f.set_default_size(920, 800)
+        theme('')
         suite = iter(etapes)
 
         def pas():
@@ -164,6 +204,7 @@ def main():
                 app.quit()
                 return GLib.SOURCE_REMOVE
             print('étape', nom, flush=True)
+            theme(nom)
             if f.get_visible_dialog():
                 f.get_visible_dialog().force_close()
             f.aller_a(page)
