@@ -47,7 +47,8 @@ class TestEnregistreur(unittest.TestCase):
     def test_format_de_la_mesure(self):
         self.noter(91.23)
         m = json.loads((self.d / hi.nom_fichier(T0)).read_text())
-        self.assertEqual(set(m), {'date', 'ram', 'disponible_mo', 'swap_mo', 'zram_mo', 'pression', 'gros'})
+        self.assertEqual(set(m), {'date', 'ram', 'disponible_mo', 'swap_mo', 'zram_mo', 'pression', 'gros', 'cpu', 'charge', 'temperature',
+                                'actifs'})
         self.assertEqual(m['ram'], 91.2)
         self.assertEqual(m['gros'], [['b', 900], ['c', 500], ['a', 100]])
         self.assertEqual((self.d / hi.nom_fichier(T0)).stat().st_mode & 0o777, 0o644)
@@ -91,7 +92,8 @@ class TestLecture(unittest.TestCase):
         self.assertEqual(d['depuis_s'], 300)
         self.assertEqual(d['pas_s'], 60)
         self.assertEqual(len(d['points']), 6)   # T0 et les 5 minutes d'avant
-        self.assertEqual(set(d['points'][0]), {'date', 'ram', 'swap_mo', 'zram_mo', 'pression'})
+        self.assertEqual(set(d['points'][0]), {'date', 'ram', 'swap_mo', 'zram_mo', 'pression', 'cpu', 'cpu_max', 'charge',
+                                              'temperature'})
 
     def test_agregation_10_min_au_dela_de_24_h_maximum_garde(self):
         base = (T0 // 600) * 600 - 3 * JOUR
@@ -304,8 +306,10 @@ class TestGardeHistorique(Banc):
         self.assertEqual(m['gros'], [['gros', 3000]])
 
     def test_la_minute_garde_les_champs_du_processeur(self):
-        from gagarine.processeur import Echantillonneur
         class Minute:
+            def mesurer(self):
+                return {}
+
             def prendre_minute(self):
                 return {'cpu': 12.3, 'charge': 1.5, 'temperature': 70.0, 'actifs': [['ffmpeg', 3.0]]}
         self.garde()
@@ -316,6 +320,9 @@ class TestGardeHistorique(Banc):
 
     def test_minute_du_processeur_en_panne_n_empeche_pas_la_ligne(self):
         class Panne:
+            def mesurer(self):
+                return {}
+
             def prendre_minute(self):
                 raise RuntimeError('boum')
         self.garde()

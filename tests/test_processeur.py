@@ -408,8 +408,8 @@ class TestTextes(unittest.TestCase):
     def test_detail(self):
         t = pr.texte_processeur(OBJET)
         self.assertIn('Intel Faux · 2 cœurs performants (4 fils) et 10 économes', t)
-        self.assertIn('  cpu0   P  ██████░░░░  62 %', t)
-        self.assertIn('  cpu13  E  ░░░░░░░░░░  0 %', t)
+        self.assertIn('  cpu0  P  ██████░░░░  62 %', t)
+        self.assertIn('  cpu13 E  ░░░░░░░░░░  0 %', t)
         self.assertIn('Température : 72 °C (critique 110 °C)', t)
         self.assertIn('Fréquence : 1,9 GHz / maximum 4,8 GHz', t)
         self.assertIn('Charge : 2,41 1,98 1,50', t)
