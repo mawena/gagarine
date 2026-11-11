@@ -50,6 +50,11 @@ class FonctionsProgrammes(unittest.TestCase):
         self.assertNotIn('\n', d)
         self.assertEqual(P.detail_fige({'pid': 7}), 'PID 7')
 
+    def test_detail_fuite_sans_la_pente(self):
+        f = {'pid': 6001, 'nom': 'node', 'pente_mo_min': 210, 'depuis': 1000, 'utilisateur': 'alice'}
+        self.assertEqual(P.detail_fuite(f, maintenant=1420), 'PID 6001 · alice · depuis 7 min')
+        self.assertEqual(P.detail_fuite({'pid': 7}), 'PID 7')
+
     def test_detail_programme(self):
         self.assertEqual(P.detail_programme({'pid': 3100, 'utilisateur': 'alice'}), 'PID 3100 · alice')
         self.assertEqual(P.detail_programme({'pid': 880, 'utilisateur': 'root', 'protege': True}), 'PID 880 · root · protégé')
@@ -267,7 +272,7 @@ class TestPagesDesign(unittest.TestCase):
         titre = self.boite(en_cours.titre, page)
         self.assertAlmostEqual(self.boite(en_cours.colonnes['ram'][0], page)[1], titre[1], delta=24)
 
-        etroite = self.ouvrir(largeur=760)
+        etroite = self.ouvrir(largeur=900)
         page = self.montrer(etroite, 'file', lambda p: len(p.lignes) == 5)
         ligne = page.lignes['1762785000000-1234.json']
         self.assertTrue(attendre(lambda: ligne.etroite))
@@ -275,19 +280,56 @@ class TestPagesDesign(unittest.TestCase):
         titre, ram = self.boite(ligne.titre, page), self.boite(ligne.colonnes['ram'][0], page)
         self.assertGreater(ram[1], titre[1] + 10)                       # les valeurs passent sous le nom
         self.assertAlmostEqual(ram[0], titre[0], delta=2)
+        actions, valeurs = self.boite(ligne.actions, page), self.boite(ligne.valeurs, page)
+        if ligne.disposition == 'moyenne':                              # actions à droite des valeurs
+            self.assertGreater(actions[0], valeurs[0] + valeurs[2] - 1)
+        else:                                                           # actions sur leur propre ligne
+            self.assertGreater(actions[1], valeurs[1] + 10)
+
+    def regler_largeur_page(self, f, page, cible, hauteur=960):
+        """Redimensionne la fenêtre pour que la page fasse `cible` px de large (la barre latérale éventuelle est déduite)."""
+        for _ in range(3):      # la fenêtre a des bords : on corrige d'après la largeur obtenue
+            largeur, _h = f.get_default_size()
+            f.set_default_size(largeur - (page.get_width() - cible), hauteur)
+            if attendre(lambda: abs(page.get_width() - cible) <= 2, 3):
+                break
+        self.assertLessEqual(abs(page.get_width() - cible), 2, f'largeur de page {page.get_width()}')
+        attendre(lambda: False, 0.4)
 
     def test_point_de_rupture_des_travaux(self):
-        """Entre LARGE_SP et TRAVAUX_SP, les colonnes de la page restent côte à côte, mais les travaux passent en étroit."""
+        """Entre LARGE_SP et TRAVAUX_SP, les colonnes de la page restent côte à côte, mais les travaux passent en moyen."""
         f = self.ouvrir(largeur=1580)
-        page = self.montrer(f, 'file', lambda p: len(p.lignes) == 5)
-        largeur = page.get_width()
-        f.set_default_size(1580 - (largeur - (outils_large() + F.TRAVAUX_SP) // 2), 960)
-        self.assertTrue(attendre(lambda: outils_large() < page.get_width() <= F.TRAVAUX_SP, 5),
-                        f'largeur de page {page.get_width()}')
-        self.assertTrue(attendre(lambda: page.get_current_breakpoint() == page.point_travaux))
-        self.assertTrue(all(r.etroite for r in page.lignes.values()))
-        self.assertTrue(attendre(lambda: page.lignes_passes))
+        page = self.montrer(f, 'file', lambda p: len(p.lignes) == 5 and p.lignes_passes)
+        self.regler_largeur_page(f, page, (outils_large() + F.TRAVAUX_SP) // 2)
+        self.assertEqual(page.get_current_breakpoint(), page.point_travaux)
+        self.assertEqual({r.disposition for r in page.lignes.values()}, {'moyenne'})
         self.assertFalse(any(r.etroite for r in page.lignes_passes if isinstance(r, F.LigneColonnes)))
+        appris, passes = self.boite(page.groupe_appris, page), self.boite(page.groupe_passes, page)
+        self.assertLess(appris[0] + appris[2], passes[0])               # colonnes encore côte à côte
+
+    def test_travaux_etroits_et_colonnes_empilees(self):
+        """Entre ETROITE_SP et TRAVAUX_ETROITS_SP : actions sur leur propre ligne, colonnes de la page empilées."""
+        from gagarine.interface.outils import ETROITE_SP
+        f = self.ouvrir(largeur=1000)
+        page = self.montrer(f, 'file', lambda p: len(p.lignes) == 5 and p.lignes_passes)
+        self.regler_largeur_page(f, page, (ETROITE_SP + F.TRAVAUX_ETROITS_SP) // 2)
+        self.assertEqual(page.get_current_breakpoint(), page.point_travaux_etroits)
+        self.assertEqual({r.disposition for r in page.lignes.values()}, {'etroite'})
+        self.assertFalse(any(r.etroite for r in page.lignes_passes if isinstance(r, F.LigneColonnes)))
+        appris, passes = self.boite(page.groupe_appris, page), self.boite(page.groupe_passes, page)
+        self.assertAlmostEqual(appris[0], passes[0], delta=1)            # empilées
+        self.assertGreater(passes[1], appris[1])
+        self.assertLessEqual(page.contenu.get_width(), page.get_width())   # rien ne déborde
+
+    def test_rien_ne_deborde_a_420(self):
+        from gi.repository import Gtk
+        f = self.ouvrir(largeur=420, hauteur=760)
+        for nom, pret in (('file', lambda p: len(p.lignes) == 5 and p.lignes_passes),
+                          ('programmes', lambda p: p.lignes_figes and p.lignes_menage and p.lignes_applis)):
+            page = self.montrer(f, nom, pret)
+            minimum = page.contenu.measure(Gtk.Orientation.HORIZONTAL, -1)[0]      # marges comprises
+            self.assertLessEqual(minimum, page.get_width(), nom)
+        self.assertEqual({r.disposition for r in f.pages['file'].lignes.values()}, {'etroite'})
 
     def test_cœur_1_3_marche_toujours(self):
         f = self.ouvrir('v13')

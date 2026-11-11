@@ -89,6 +89,16 @@ def detail_fige(f, maintenant=None):
     return ' · '.join(morceaux)
 
 
+def detail_fuite(f, maintenant=None):
+    """Sous-titre d'une fuite, sans la pente (elle est à droite) : « PID 6001 · alice · depuis 7 min »."""
+    morceaux = [f'PID {f.get("pid")}']
+    if f.get('utilisateur'):
+        morceaux.append(str(f['utilisateur']))
+    if f.get('depuis') is not None:
+        morceaux.append(donnees.depuis(f['depuis'], maintenant))
+    return ' · '.join(morceaux)
+
+
 def detail_programme(p):
     """« PID 3100 · alice » (+ « protégé », « noyau ») : sous-titre d'un des plus gros ou des plus actifs."""
     morceaux = [f'PID {p.get("pid")}']
@@ -279,6 +289,8 @@ class PageProgrammes(PageLarge):
         self.lignes_applis, self.applis = {}, {}
         droite.append(self.groupe_applis)
 
+        # fenêtre étroite : le sous-titre d'un programme figé (depuis quand, PID, commande) passe sur deux lignes
+        self.connect('notify::current-breakpoint', lambda *_: self._disposer_figes())
         self.source.connect('etat', lambda *_: self.maj())
         self.source.connect('menage', lambda *_: self.maj_menage())
         self.source.connect('applications', lambda *_: self.maj_applications())
@@ -327,6 +339,13 @@ class PageProgrammes(PageLarge):
                 self._maj_fige(pid, ligne, maintenant)
 
     # --- programmes figés ---
+    def _lignes_sous_titre_figes(self):
+        return 2 if self.get_current_breakpoint() == self.point_etroit else 1
+
+    def _disposer_figes(self):
+        for ligne in self.lignes_figes.values():
+            ligne.set_subtitle_lines(self._lignes_sous_titre_figes())
+
     def _creer_fige(self, pid):
         r = rangee_programme('media-playback-pause-symbolic')
         r.icone.add_css_class('error')
@@ -338,6 +357,7 @@ class PageProgrammes(PageLarge):
         r.add_suffix(r.valeur)
         r.add_suffix(r.reprendre)
         r.add_suffix(r.arreter)
+        r.set_subtitle_lines(self._lignes_sous_titre_figes())
         return r
 
     def _maj_fige(self, pid, ligne, maintenant=None):
@@ -360,9 +380,8 @@ class PageProgrammes(PageLarge):
 
     def _maj_fuite(self, pid, ligne):
         f = self.fuites[pid]
-        titre, detail = donnees.detail_fuite(f)
-        ligne.set_title(echappe(titre))
-        ligne.set_subtitle(echappe(detail))
+        ligne.set_title(echappe(f.get('nom') or 'programme'))
+        ligne.set_subtitle(echappe(detail_fuite(f)))
         ligne.pente.set_label('+' + donnees.formater_pente(f.get('pente_mo_min')) if f.get('pente_mo_min') is not None else '')
 
     # --- les plus gros ---

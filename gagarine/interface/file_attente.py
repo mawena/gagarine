@@ -2,9 +2,12 @@
 nouveau travail, sortie d'un travail ; dessous, en deux colonnes, la mémoire apprise et les travaux passés.
 
 Chaque travail est une ligne en colonnes : rang, nom et commande, colonnes de valeurs alignées d'une ligne à l'autre
-(RAM annoncée, cœurs, processeur utilisé, durée), état et priorité, actions plates. Quand la page est trop étroite
-(moins de `TRAVAUX_SP`), les valeurs passent sous le nom ; la mémoire apprise et les travaux passés font de même sous
-`outils.ETROITE_SP`.
+(RAM annoncée, cœurs, processeur utilisé, durée), état et priorité, actions plates. Trois dispositions, selon la largeur
+de la page :
+- « large » (plus de `TRAVAUX_SP`) : tout sur une ligne ;
+- « moyenne » : les valeurs passent sous le nom, les actions à leur droite ;
+- « étroite » (moins de `TRAVAUX_ETROITS_SP`) : les actions passent sur leur propre ligne.
+La mémoire apprise et les travaux passés passent leurs valeurs sous le nom seulement sous `outils.ETROITE_SP`.
 """
 import os
 import subprocess
@@ -17,14 +20,16 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import donnees
-from .outils import LARGE_SP, PageLarge, bouton, confirmer, synchroniser
+from .outils import ETROITE_SP, LARGE_SP, PageLarge, bouton, confirmer, synchroniser
 from .programmes import SectionListe, infobulle_si_coupe, libelle_accessible, ligne_vide_phrase, nombre_fr
 
 LIGNES_MAX = 12   # travaux affichés dans chaque liste de l'historique
 DESCRIPTION_APPRIS = ('Gagarine retient la mémoire que prend chaque travail pour annoncer la bonne quantité la fois '
                       'suivante.')
 TAILLE_MAX_SORTIE = 64 * 1024   # on n'affiche que la fin d'un journal volumineux
-TRAVAUX_SP = 1120   # en dessous (largeur de la page), les valeurs d'un travail passent sous son nom
+TRAVAUX_SP = 1120          # en dessous (largeur de la page), les valeurs d'un travail passent sous son nom
+TRAVAUX_ETROITS_SP = 720   # en dessous, ses actions passent sur leur propre ligne
+DISPOSITIONS = ('large', 'moyenne', 'etroite')
 
 VIDE_FILE = ('Aucun travail dans la file. Lancez un travail lourd avec « Nouveau travail… » ou avec la commande '
              '« gagarine file ».')
@@ -32,10 +37,10 @@ VIDE_APPRIS = 'Rien d’appris pour l’instant : après le premier travail de l
 VIDE_PASSES = 'Aucun travail terminé ces 7 derniers jours.'
 
 # colonnes de valeurs : (clé, libellé, largeur minimale en caractères)
-COLONNES_TRAVAIL = [('ram', 'RAM annoncée', 6), ('coeurs', 'Cœurs', 3), ('processeur', 'Processeur', 10),
-                    ('duree', 'Durée', 10)]
+COLONNES_TRAVAIL = [('ram', 'RAM annoncée', 6), ('coeurs', 'Cœurs', 3), ('processeur', 'Processeur', 9),
+                    ('duree', 'Durée', 9)]
 COLONNES_APPRIS = [('pic', 'Pic habituel', 6), ('annonce', 'Annoncé', 6)]
-COLONNES_PASSE = [('duree', 'Durée', 10), ('pic', 'Pic', 6), ('processeur', 'Processeur', 9)]
+COLONNES_PASSE = [('duree', 'Durée', 9), ('pic', 'Pic', 6), ('processeur', 'Processeur', 9)]
 
 
 # --- fonctions pures (testées sans GTK) --------------------------------------------------------------------------------
@@ -147,7 +152,8 @@ class LigneColonnes(Gtk.ListBoxRow):
     - des colonnes de valeurs (petit libellé `.etiquette` au-dessus de la valeur, chiffres tabulaires), alignées d'une
       ligne à l'autre par les Gtk.SizeGroup de `groupes` (un par clé de colonne, partagé par toute la liste) ;
     - un bloc d'état et un bloc d'actions, facultatifs.
-    `disposer(True)` passe l'état en haut à droite, les valeurs sous le titre et les actions dessous (fenêtre étroite).
+    `disposer(disposition)` : « large » (tout sur une ligne), « moyenne » (état en haut à droite, valeurs sous le titre,
+    actions à leur droite) ou « etroite » (actions sur leur propre ligne). `etroite` est vrai hors de « large ».
     `get_title()` rend le titre, `get_subtitle()` la description complète, lue par les lecteurs d'écran.
     """
 
@@ -176,7 +182,7 @@ class LigneColonnes(Gtk.ListBoxRow):
             self.valeurs.append(boite)
         self.prefixe = self.etat = self.actions = None
         self._description = ''
-        self.etroite = None
+        self.disposition = None
 
     def placer(self, prefixe=None, etat=None, actions=None):
         """Met en place les blocs facultatifs ; à appeler une fois, avant `disposer()`."""
@@ -194,17 +200,22 @@ class LigneColonnes(Gtk.ListBoxRow):
         self.textes.append(libelle)
         return libelle
 
-    def disposer(self, etroite):
-        etroite = bool(etroite)
-        if etroite == self.etroite:
+    @property
+    def etroite(self):
+        return self.disposition not in (None, 'large')
+
+    def disposer(self, disposition):
+        if disposition not in DISPOSITIONS:
+            disposition = 'etroite' if disposition is True else 'large'
+        if disposition == self.disposition:
             return
-        self.etroite = etroite
-        if etroite:
-            places = [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.etat, 2, 0, 1), (self.valeurs, 1, 1, 2),
-                      (self.actions, 1, 2, 2)]
-        else:
-            places = [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.valeurs, 2, 0, 1), (self.etat, 3, 0, 1),
-                      (self.actions, 4, 0, 1)]
+        self.disposition = disposition
+        places = {'large': [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.valeurs, 2, 0, 1),
+                            (self.etat, 3, 0, 1), (self.actions, 4, 0, 1)],
+                  'moyenne': [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.etat, 2, 0, 1),
+                              (self.valeurs, 1, 1, 1), (self.actions, 2, 1, 1)],
+                  'etroite': [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.etat, 2, 0, 1),
+                              (self.valeurs, 1, 1, 2), (self.actions, 1, 2, 2)]}[disposition]
         gestion = self.grille.get_layout_manager()
         for w, colonne, rang, largeur in places:
             if w is None:
@@ -213,10 +224,16 @@ class LigneColonnes(Gtk.ListBoxRow):
             enfant.set_column(colonne)
             enfant.set_row(rang)
             enfant.set_column_span(largeur)
-        alignement = Gtk.Align.START if etroite else Gtk.Align.CENTER
+        large = disposition == 'large'
+        # en étroit, des espacements plus serrés : à 420 px de fenêtre, les quatre colonnes tiennent sous le nom
+        espace = 12 if disposition == 'etroite' else 16
+        self.grille.set_column_spacing(espace)
+        self.valeurs.set_spacing(espace)
         for w in (self.prefixe, self.etat):
             if w is not None:
-                w.set_valign(alignement)
+                w.set_valign(Gtk.Align.CENTER if large else Gtk.Align.START)
+        if self.etat is not None:      # sur deux rangs, l'état se cale à droite, au-dessus des actions
+            self.etat.set_halign(Gtk.Align.FILL if large else Gtk.Align.END)
 
     def valeur(self, cle, texte, libelle=None):
         _boite, nom, valeur = self.colonnes[cle]
@@ -353,11 +370,18 @@ class PageFile(PageLarge):
         gauche.append(self.groupe_appris)
         droite.append(self.groupe_passes)
 
-        # point de rupture des travaux : entre `LARGE_SP` et `TRAVAUX_SP`, les colonnes de la page restent côte à côte
-        # mais une ligne de travail n'a plus la place ; en dessous, `point_moyen` et `point_etroit` s'appliquent
+        # points de rupture des travaux. PageLarge n'applique qu'un point à la fois (le dernier ajouté qui correspond) :
+        # - `point_travaux` (entre LARGE_SP et TRAVAUX_SP) : les colonnes de la page restent côte à côte, mais une ligne
+        #   de travail n'a plus la place ;
+        # - `point_travaux_etroits` (entre ETROITE_SP et TRAVAUX_ETROITS_SP) : il reprend l'empilement des colonnes de
+        #   `point_moyen`, et les actions d'un travail passent sur leur propre ligne.
         self.point_travaux = Adw.Breakpoint.new(
             Adw.BreakpointCondition.parse(f'min-width: {LARGE_SP + 1}sp and max-width: {TRAVAUX_SP}sp'))
+        self.point_travaux_etroits = Adw.Breakpoint.new(
+            Adw.BreakpointCondition.parse(f'min-width: {ETROITE_SP + 1}sp and max-width: {TRAVAUX_ETROITS_SP}sp'))
+        gauche.get_parent().empiler_avec(self.point_travaux_etroits)
         self.add_breakpoint(self.point_travaux)
+        self.add_breakpoint(self.point_travaux_etroits)
         self.connect('notify::current-breakpoint', lambda *_: self.disposer())
 
         self.source.suivre_historique('7j')
@@ -368,19 +392,23 @@ class PageFile(PageLarge):
         self.maj()
 
     # --- disposition ---
-    def travaux_etroits(self):
-        """Les valeurs d'un travail passent sous son nom dès qu'un point de rupture s'applique (page < TRAVAUX_SP)."""
-        return self.get_current_breakpoint() is not None
+    def disposition_travaux(self):
+        """« large » sans point de rupture ; « etroite » sous TRAVAUX_ETROITS_SP ; « moyenne » entre les deux."""
+        point = self.get_current_breakpoint()
+        if point is None:
+            return 'large'
+        return 'etroite' if point in (self.point_etroit, self.point_travaux_etroits) else 'moyenne'
 
-    def listes_etroites(self):
-        return self.get_current_breakpoint() == self.point_etroit
+    def disposition_listes(self):
+        """Mémoire apprise et travaux passés : valeurs sous le nom seulement sous ETROITE_SP."""
+        return 'etroite' if self.get_current_breakpoint() == self.point_etroit else 'large'
 
     def disposer(self):
         for ligne in self.lignes.values():
-            ligne.disposer(self.travaux_etroits())
+            ligne.disposer(self.disposition_travaux())
         for ligne in self.lignes_appris + self.lignes_passes:
             if isinstance(ligne, LigneColonnes):
-                ligne.disposer(self.listes_etroites())
+                ligne.disposer(self.disposition_listes())
 
     # --- travaux ---
     def maj(self):
@@ -402,7 +430,7 @@ class PageFile(PageLarge):
 
     def _creer(self, cle):
         ligne = LigneTravail(self, cle, self.groupes_travaux)
-        ligne.disposer(self.travaux_etroits())
+        ligne.disposer(self.disposition_travaux())
         return ligne
 
     def _maj_ligne(self, cle, ligne):
@@ -432,7 +460,7 @@ class PageFile(PageLarge):
             if trop_bas:      # l'annonce est sous le pic habituel : en ambre, avec le mot dans le sous-titre
                 r.valeur('annonce', valeurs['annonce']).add_css_class('warning')
             r.decrire(titre, detail + (f'\n{sous}' if niveau else ''))
-            r.disposer(self.listes_etroites())
+            r.disposer(self.disposition_listes())
             self._ajouter(self.groupe_appris, self.lignes_appris, r)
         if not travaux:
             self._ajouter(self.groupe_appris, self.lignes_appris, ligne_vide_phrase(VIDE_APPRIS, 'dialog-information-symbolic'))
@@ -462,7 +490,7 @@ class PageFile(PageLarge):
                 r.valeur(cle, valeur)
             r.montrer_colonne('processeur', avec_processeur)
             r.decrire(titre, donnees.detail_travail_passe(t)[1])
-            r.disposer(self.listes_etroites())
+            r.disposer(self.disposition_listes())
             self._ajouter(self.groupe_passes, self.lignes_passes, r)
         if not travaux:
             self._ajouter(self.groupe_passes, self.lignes_passes, ligne_vide_phrase(VIDE_PASSES, 'dialog-information-symbolic'))
