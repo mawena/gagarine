@@ -123,6 +123,11 @@ def _go(x):
     return f'{x:g}'
 
 
+def _coeurs(x):
+    """Des cœurs en français, virgule décimale : 5,4 cœurs ; 1,4 cœur ; 0,8 cœur ; 8 cœurs."""
+    return f'{x:.1f}'.replace('.', ',').removesuffix(',0') + (' cœurs' if round(x, 1) >= 2 else ' cœur')
+
+
 def detail_lisible(e):
     """Le détail d'un événement, avec ses unités : pour le garde, `ram` est le % de RAM utilisée ; pour la file, `ram`,
     `declare`, `limite` et `pic_go` sont des Go, `duree` des secondes ; pour le ménage, `memoire_mo` des Mo."""
@@ -141,7 +146,9 @@ def detail_lisible(e):
     if action == 'travail-fin':
         parties = [f'code {e["code"]}' if e.get('code') is not None else None,
                    f'{round(e["duree"])} s' if isinstance(e.get('duree'), (int, float)) else None,
-                   f'pic {_go(e["pic_go"])} Go' if isinstance(e.get('pic_go'), (int, float)) else None]
+                   f'pic {_go(e["pic_go"])} Go' if isinstance(e.get('pic_go'), (int, float)) else None,
+                   f'{_coeurs(e["coeurs_moyens"])} en moyenne' if isinstance(e.get('coeurs_moyens'), (int, float))
+                   and not isinstance(e['coeurs_moyens'], bool) else None]
         return ', '.join(x for x in parties if x)
     if action == 'travail-annule':
         return 'arrêté en cours' if e.get('en_cours') else 'annulé en attente'
