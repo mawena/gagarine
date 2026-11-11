@@ -6,8 +6,8 @@
 Une section vide reste visible et dit en une ligne ce qui se passe. Seules les sections qu'un cœur ancien ne connaît pas
 restent masquées (fuites avant la 1.3.0, ménage et applications avant la 1.2.0, processeur avant la 1.4.0).
 
-Les aides de liste (`Liste`, `SectionListe`, `ligne_vide_phrase`, `infobulle_si_coupe`, `rangee_programme`) servent
-aussi à la page « File d'attente ».
+Les aides de liste (`SectionListe`, `ligne_vide_phrase`, `infobulle_si_coupe`, `rangee_programme`, `DESTRUCTIF`)
+servent aussi à la page « File d'attente ».
 """
 import getpass
 import time
@@ -19,7 +19,11 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk
 
 from . import donnees
-from .outils import PageLarge, Section, bouton, confirmer, echappe, etiquette, synchroniser
+from .outils import ListeEncadree, PageLarge, Section, bouton, confirmer, echappe, etiquette, synchroniser
+
+# action destructive d'une ligne : bouton plat au texte rouge (`texte-destructif` de base.css : libadwaita 1.5 n'a pas de
+# bouton plat destructif) ; seule la confirmation a le bouton rouge plein
+DESTRUCTIF = ['flat', 'destructive-action', 'texte-destructif']
 
 DESCRIPTION_FIGES = ('Gagarine fige le programme qui grossit le plus vite quand la RAM approche du seuil. Vous décidez '
                      'ensuite de le reprendre ou de l’arrêter.')
@@ -200,32 +204,13 @@ def libelle_accessible(widget, texte):
     widget.update_property([Gtk.AccessibleProperty.LABEL], [texte])
 
 
-class Liste(Gtk.ListBox):
-    """Liste en carte (`boxed-list`), sans sélection ; `add()` pour `outils.synchroniser`."""
-
-    def __init__(self, **proprietes):
-        super().__init__(selection_mode=Gtk.SelectionMode.NONE, **proprietes)
-        self.add_css_class('boxed-list')
-
-    def add(self, rangee):
-        self.append(rangee)
-
-
 class SectionListe(Section):
-    """outils.Section dont le corps est une `Liste` (`liste`) ; `get_title()` et `get_description()` comme un
-    Adw.PreferencesGroup."""
+    """outils.Section dont le corps est une outils.ListeEncadree (`liste`), pour `outils.synchroniser`."""
 
     def __init__(self, titre, description=None, suffixe=None, visible=True):
         super().__init__(titre, description, suffixe)
         self.set_visible(visible)
-        self.liste = Liste()
-        self.ajouter(self.liste)
-
-    def get_title(self):
-        return self.titre.get_label()
-
-    def get_description(self):
-        return self.description.get_label()
+        self.liste = self.ajouter(ListeEncadree())
 
 
 # --- page -----------------------------------------------------------------------------------------------------------------
@@ -253,8 +238,9 @@ class PageProgrammes(PageLarge):
         # fuites, visible seulement quand il y en a (sinon, la phrase de `vide_fuites`)
         self.section_fuites = Section('Fuites en cours', DESCRIPTION_FUITES)
         self.section_fuites.set_visible(False)
-        self.groupe_fuites = Liste(visible=False)
-        self.liste_vide_fuites = Liste()
+        self.groupe_fuites = ListeEncadree()
+        self.groupe_fuites.set_visible(False)
+        self.liste_vide_fuites = ListeEncadree()
         self.vide_fuites = ligne_vide_phrase(phrase_vide_fuites({}))
         self.liste_vide_fuites.add(self.vide_fuites)
         self.section_fuites.ajouter(self.groupe_fuites)
@@ -339,12 +325,23 @@ class PageProgrammes(PageLarge):
                 self._maj_fige(pid, ligne, maintenant)
 
     # --- programmes figés ---
-    def _lignes_sous_titre_figes(self):
-        return 2 if self.get_current_breakpoint() == self.point_etroit else 1
-
     def _disposer_figes(self):
         for ligne in self.lignes_figes.values():
-            ligne.set_subtitle_lines(self._lignes_sous_titre_figes())
+            self._disposer_fige(ligne)
+
+    def _disposer_fige(self, ligne):
+        """Fenêtre étroite : sous-titre sur deux lignes, Reprendre et Arrêter en boutons à icône (infobulle et libellé
+        accessible gardés), pour laisser la place au nom du programme."""
+        etroite = self.get_current_breakpoint() == self.point_etroit
+        ligne.set_subtitle_lines(2 if etroite else 1)
+        for bouton_, libelle, icone in ((ligne.reprendre, 'Reprendre', 'media-playback-start-symbolic'),
+                                        (ligne.arreter, 'Arrêter', 'process-stop-symbolic')):
+            if etroite:
+                bouton_.set_icon_name(icone)
+                bouton_.set_tooltip_text(libelle)
+            else:
+                bouton_.set_label(libelle)
+                bouton_.set_tooltip_text(None)
 
     def _creer_fige(self, pid):
         r = rangee_programme('media-playback-pause-symbolic')
@@ -353,11 +350,11 @@ class PageProgrammes(PageLarge):
         r.valeur = etiquette('', ['numeric'])
         r.valeur.set_tooltip_text('Mémoire du programme quand il a été figé')
         r.reprendre = bouton('Reprendre', lambda: self.reprendre(pid), ['flat'])
-        r.arreter = bouton('Arrêter', lambda: self.demander_arret(pid), ['flat', 'destructive-action'])
+        r.arreter = bouton('Arrêter', lambda: self.demander_arret(pid), DESTRUCTIF)
         r.add_suffix(r.valeur)
         r.add_suffix(r.reprendre)
         r.add_suffix(r.arreter)
-        r.set_subtitle_lines(self._lignes_sous_titre_figes())
+        self._disposer_fige(r)
         return r
 
     def _maj_fige(self, pid, ligne, maintenant=None):
@@ -459,7 +456,7 @@ class PageProgrammes(PageLarge):
         r = rangee_programme('user-trash-symbolic')
         r.valeur = etiquette('', ['numeric'])
         r.valeur.set_tooltip_text('Mémoire gardée')
-        r.action = bouton('Arrêter', lambda: self.demander_menage(cle), ['flat', 'destructive-action'])
+        r.action = bouton('Arrêter', lambda: self.demander_menage(cle), DESTRUCTIF)
         self.largeur_menage.add_widget(r.action)
         r.add_suffix(r.valeur)
         r.add_suffix(r.action)

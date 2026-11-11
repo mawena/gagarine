@@ -6,7 +6,8 @@ Chaque travail est une ligne en colonnes : rang, nom et commande, colonnes de va
 de la page :
 - « large » (plus de `TRAVAUX_SP`) : tout sur une ligne ;
 - « moyenne » : les valeurs passent sous le nom, les actions à leur droite ;
-- « étroite » (moins de `TRAVAUX_ETROITS_SP`) : les actions passent sur leur propre ligne.
+- « étroite » (moins de `TRAVAUX_ETROITS_SP`) : les actions passent sur leur propre ligne ;
+- « très étroite » (moins de `outils.ETROITE_SP`) : les valeurs passent en deux colonnes, pour tenir dans 360 px.
 La mémoire apprise et les travaux passés passent leurs valeurs sous le nom seulement sous `outils.ETROITE_SP`.
 """
 import os
@@ -21,7 +22,7 @@ from gi.repository import Adw, GLib, Gtk, Pango
 
 from . import donnees
 from .outils import ETROITE_SP, LARGE_SP, PageLarge, bouton, confirmer, synchroniser
-from .programmes import SectionListe, infobulle_si_coupe, libelle_accessible, ligne_vide_phrase, nombre_fr
+from .programmes import DESTRUCTIF, SectionListe, infobulle_si_coupe, libelle_accessible, ligne_vide_phrase, nombre_fr
 
 LIGNES_MAX = 12   # travaux affichés dans chaque liste de l'historique
 DESCRIPTION_APPRIS = ('Gagarine retient la mémoire que prend chaque travail pour annoncer la bonne quantité la fois '
@@ -29,7 +30,7 @@ DESCRIPTION_APPRIS = ('Gagarine retient la mémoire que prend chaque travail pou
 TAILLE_MAX_SORTIE = 64 * 1024   # on n'affiche que la fin d'un journal volumineux
 TRAVAUX_SP = 1120          # en dessous (largeur de la page), les valeurs d'un travail passent sous son nom
 TRAVAUX_ETROITS_SP = 720   # en dessous, ses actions passent sur leur propre ligne
-DISPOSITIONS = ('large', 'moyenne', 'etroite')
+DISPOSITIONS = ('large', 'moyenne', 'etroite', 'tres-etroite')
 
 VIDE_FILE = ('Aucun travail dans la file. Lancez un travail lourd avec « Nouveau travail… » ou avec la commande '
              '« gagarine file ».')
@@ -150,11 +151,18 @@ class LigneColonnes(Gtk.ListBoxRow):
     - préfixe (icône ou rang), puis le titre et des lignes de détail (une ligne chacune, coupées avec « … », entières en
       infobulle) ;
     - des colonnes de valeurs (petit libellé `.etiquette` au-dessus de la valeur, chiffres tabulaires), alignées d'une
-      ligne à l'autre par les Gtk.SizeGroup de `groupes` (un par clé de colonne, partagé par toute la liste) ;
+      ligne à l'autre par les Gtk.SizeGroup de `groupes` (un par clé de colonne, partagé par toute la liste) ; elles sont
+      dans une Gtk.Grid, sur une ligne, ou deux par ligne en « tres-etroite » (les colonnes masquées ne laissent pas de
+      trou) ;
     - un bloc d'état et un bloc d'actions, facultatifs.
     `disposer(disposition)` : « large » (tout sur une ligne), « moyenne » (état en haut à droite, valeurs sous le titre,
-    actions à leur droite) ou « etroite » (actions sur leur propre ligne). `etroite` est vrai hors de « large ».
+    actions à leur droite), « etroite » (actions sur leur propre ligne) ou « tres-etroite » (valeurs deux par ligne).
+    `etroite` est vrai hors de « large ».
     `get_title()` rend le titre, `get_subtitle()` la description complète, lue par les lecteurs d'écran.
+
+    Avec un bloc d'actions et `groupes['textes']`, la disposition « large » groupe le nom et les valeurs à gauche (nom de
+    largeur commune, bornée en caractères) et laisse la place libre avant les actions, calées à droite : sur un grand
+    écran, les valeurs restent près du nom au lieu d'être rejetées à l'autre bout de la ligne.
     """
 
     def __init__(self, colonnes, groupes):
@@ -164,10 +172,16 @@ class LigneColonnes(Gtk.ListBoxRow):
                                margin_end=12)
         self.set_child(self.grille)
         self.textes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True, valign=Gtk.Align.CENTER)
-        self.titre = infobulle_si_coupe(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, width_chars=8))
+        self.titre = infobulle_si_coupe(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, width_chars=8,
+                                                  max_width_chars=48))
+        if 'textes' in groupes:
+            groupes['textes'].add_widget(self.textes)
         self.textes.append(self.titre)
-        self.valeurs = Gtk.Box(spacing=16, valign=Gtk.Align.CENTER)
+        self.valeurs = Gtk.Grid(column_spacing=16, row_spacing=8, valign=Gtk.Align.CENTER)
+        self.valeurs.add_css_class('valeurs')
         self.colonnes = {}
+        self.ordre = [c[0] for c in colonnes]
+        self.par_ligne = len(colonnes)
         for cle, libelle, largeur in colonnes:
             boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
             nom = Gtk.Label(label=libelle, xalign=0)
@@ -179,7 +193,7 @@ class LigneColonnes(Gtk.ListBoxRow):
             boite.append(valeur)
             groupes[cle].add_widget(boite)
             self.colonnes[cle] = (boite, nom, valeur)
-            self.valeurs.append(boite)
+            self.valeurs.attach(boite, len(self.colonnes) - 1, 0, 1, 1)
         self.prefixe = self.etat = self.actions = None
         self._description = ''
         self.disposition = None
@@ -193,7 +207,8 @@ class LigneColonnes(Gtk.ListBoxRow):
 
     def ajouter_detail(self, classes=()):
         """Ajoute une ligne de détail sous le titre (petite, atténuée, coupée avec infobulle) ; la rend."""
-        libelle = infobulle_si_coupe(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, width_chars=8))
+        libelle = infobulle_si_coupe(Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, width_chars=8,
+                                               max_width_chars=64))
         libelle.add_css_class('subtitle')
         for c in classes:
             libelle.add_css_class(c)
@@ -215,7 +230,8 @@ class LigneColonnes(Gtk.ListBoxRow):
                   'moyenne': [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.etat, 2, 0, 1),
                               (self.valeurs, 1, 1, 1), (self.actions, 2, 1, 1)],
                   'etroite': [(self.prefixe, 0, 0, 1), (self.textes, 1, 0, 1), (self.etat, 2, 0, 1),
-                              (self.valeurs, 1, 1, 2), (self.actions, 1, 2, 2)]}[disposition]
+                              (self.valeurs, 1, 1, 2), (self.actions, 1, 2, 2)]}[
+                      'etroite' if disposition == 'tres-etroite' else disposition]
         gestion = self.grille.get_layout_manager()
         for w, colonne, rang, largeur in places:
             if w is None:
@@ -225,15 +241,32 @@ class LigneColonnes(Gtk.ListBoxRow):
             enfant.set_row(rang)
             enfant.set_column_span(largeur)
         large = disposition == 'large'
-        # en étroit, des espacements plus serrés : à 420 px de fenêtre, les quatre colonnes tiennent sous le nom
-        espace = 12 if disposition == 'etroite' else 16
+        # en étroit, des espacements plus serrés ; en très étroit, deux valeurs par ligne (fenêtre de 360 px)
+        espace = 12 if disposition in ('etroite', 'tres-etroite') else 16
         self.grille.set_column_spacing(espace)
-        self.valeurs.set_spacing(espace)
+        self.valeurs.set_column_spacing(espace)
+        self.par_ligne = 2 if disposition == 'tres-etroite' else len(self.colonnes)
+        self._ranger_valeurs()
+        # une seule colonne prend la place libre (sinon les valeurs ne seraient plus alignées d'une ligne à l'autre) :
+        # les actions en « large » quand il y en a, le nom sinon
+        actions_extensibles = large and self.actions is not None
+        self.textes.set_hexpand(not actions_extensibles)
+        if self.actions is not None:
+            self.actions.set_hexpand(actions_extensibles)
         for w in (self.prefixe, self.etat):
             if w is not None:
                 w.set_valign(Gtk.Align.CENTER if large else Gtk.Align.START)
         if self.etat is not None:      # sur deux rangs, l'état se cale à droite, au-dessus des actions
             self.etat.set_halign(Gtk.Align.FILL if large else Gtk.Align.END)
+
+    def _ranger_valeurs(self):
+        """Place les colonnes visibles dans la grille des valeurs, `par_ligne` par ligne, sans trou."""
+        gestion = self.valeurs.get_layout_manager()
+        visibles = [cle for cle in self.ordre if self.colonnes[cle][0].get_visible()]
+        for i, cle in enumerate(visibles):
+            enfant = gestion.get_layout_child(self.colonnes[cle][0])
+            enfant.set_column(i % self.par_ligne)
+            enfant.set_row(i // self.par_ligne)
 
     def valeur(self, cle, texte, libelle=None):
         _boite, nom, valeur = self.colonnes[cle]
@@ -243,7 +276,9 @@ class LigneColonnes(Gtk.ListBoxRow):
         return valeur
 
     def montrer_colonne(self, cle, visible):
-        self.colonnes[cle][0].set_visible(visible)
+        if self.colonnes[cle][0].get_visible() != visible:
+            self.colonnes[cle][0].set_visible(visible)
+            self._ranger_valeurs()
 
     def decrire(self, titre, description):
         self.titre.set_label(titre)
@@ -292,7 +327,7 @@ class LigneTravail(LigneColonnes):
         self.sortie = bouton('Voir la sortie', lambda: page.voir_sortie(cle), ['flat'])
         self.changer = bouton('Priorité…', lambda: page.changer_priorite(cle), ['flat'],
                               aide='Changer la priorité de ce travail en attente')
-        self.annuler = bouton('Annuler', lambda: page.demander_annulation(cle), ['flat', 'destructive-action'])
+        self.annuler = bouton('Annuler', lambda: page.demander_annulation(cle), DESTRUCTIF)
         for b in (self.sortie, self.changer, self.annuler):
             interieur.append(b)
         actions.append(interieur)
@@ -349,7 +384,7 @@ class PageFile(PageLarge):
         self.lignes = {}
         self.travaux = {}
         self.avec_processeur = False
-        self.groupes_travaux = _groupes(COLONNES_TRAVAIL, ('etat', 'actions'))
+        self.groupes_travaux = _groupes(COLONNES_TRAVAIL, ('textes', 'etat', 'actions'))
         self.groupes_appris = _groupes(COLONNES_APPRIS)
         self.groupes_passes = _groupes(COLONNES_PASSE)
 
@@ -397,7 +432,9 @@ class PageFile(PageLarge):
         point = self.get_current_breakpoint()
         if point is None:
             return 'large'
-        return 'etroite' if point in (self.point_etroit, self.point_travaux_etroits) else 'moyenne'
+        if point == self.point_etroit:
+            return 'tres-etroite'
+        return 'etroite' if point == self.point_travaux_etroits else 'moyenne'
 
     def disposition_listes(self):
         """Mémoire apprise et travaux passés : valeurs sous le nom seulement sous ETROITE_SP."""

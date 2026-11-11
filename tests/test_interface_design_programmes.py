@@ -179,6 +179,13 @@ class TestPagesDesign(unittest.TestCase):
         ok, r = widget.compute_bounds(page)
         return (r.get_x(), r.get_y(), r.get_width()) if ok else None
 
+    def sans_debordement(self, page):
+        """Les valeurs et les actions de chaque travail restent dans leur ligne (rien ne déborde sur la suivante)."""
+        for r in page.lignes.values():
+            for w in (r.valeurs, r.actions, r.textes):
+                self.assertLessEqual(self.boite(w, r)[1] + w.get_height(), r.get_height() + 1, r.get_title())
+                self.assertLessEqual(self.boite(w, r)[0] + w.get_width(), r.get_width() + 1, r.get_title())
+
     def montrer(self, f, nom, condition):
         f.aller_a(nom)
         page = f.pages[nom]
@@ -213,11 +220,12 @@ class TestPagesDesign(unittest.TestCase):
         self.assertTrue(fige.reprendre.has_css_class('flat'))
         self.assertFalse(fige.reprendre.has_css_class('destructive-action'))
         for b in [fige.arreter] + [r.action for r in prog.lignes_menage.values()]:
-            self.assertTrue(b.has_css_class('flat') and b.has_css_class('destructive-action'), b.get_label())
+            self.assertTrue(all(b.has_css_class(c) for c in ('flat', 'destructive-action', 'texte-destructif')),
+                            b.get_label())
         self.assertTrue(all(r.plafond.has_css_class('flat') for r in prog.lignes_applis.values()))
         fichier = self.montrer(f, 'file', lambda p: len(p.lignes) == 5)
         for r in fichier.lignes.values():
-            self.assertTrue(r.annuler.has_css_class('flat') and r.annuler.has_css_class('destructive-action'))
+            self.assertTrue(all(r.annuler.has_css_class(c) for c in ('flat', 'destructive-action', 'texte-destructif')))
             self.assertTrue(r.sortie.has_css_class('flat') and r.changer.has_css_class('flat'))
             self.assertFalse(r.sortie.has_css_class('destructive-action'))
         self.assertTrue(fichier.bouton_nouveau.has_css_class('suggested-action'))
@@ -271,6 +279,11 @@ class TestPagesDesign(unittest.TestCase):
         self.assertEqual(len(xs), 1)
         titre = self.boite(en_cours.titre, page)
         self.assertAlmostEqual(self.boite(en_cours.colonnes['ram'][0], page)[1], titre[1], delta=24)
+        # les valeurs suivent le nom ; la place libre est avant les actions, calées à droite
+        textes, ram = self.boite(en_cours.textes, page), self.boite(en_cours.colonnes['ram'][0], page)
+        self.assertAlmostEqual(ram[0], textes[0] + textes[2] + 16, delta=2)
+        annuler, liste = self.boite(en_cours.annuler, page), self.boite(page.groupe.liste, page)
+        self.assertAlmostEqual(annuler[0] + annuler[2], liste[0] + liste[2] - 12, delta=3)
 
         etroite = self.ouvrir(largeur=900)
         page = self.montrer(etroite, 'file', lambda p: len(p.lignes) == 5)
@@ -280,6 +293,7 @@ class TestPagesDesign(unittest.TestCase):
         titre, ram = self.boite(ligne.titre, page), self.boite(ligne.colonnes['ram'][0], page)
         self.assertGreater(ram[1], titre[1] + 10)                       # les valeurs passent sous le nom
         self.assertAlmostEqual(ram[0], titre[0], delta=2)
+        self.sans_debordement(page)
         actions, valeurs = self.boite(ligne.actions, page), self.boite(ligne.valeurs, page)
         if ligne.disposition == 'moyenne':                              # actions à droite des valeurs
             self.assertGreater(actions[0], valeurs[0] + valeurs[2] - 1)
@@ -303,6 +317,7 @@ class TestPagesDesign(unittest.TestCase):
         self.regler_largeur_page(f, page, (outils_large() + F.TRAVAUX_SP) // 2)
         self.assertEqual(page.get_current_breakpoint(), page.point_travaux)
         self.assertEqual({r.disposition for r in page.lignes.values()}, {'moyenne'})
+        self.sans_debordement(page)
         self.assertFalse(any(r.etroite for r in page.lignes_passes if isinstance(r, F.LigneColonnes)))
         appris, passes = self.boite(page.groupe_appris, page), self.boite(page.groupe_passes, page)
         self.assertLess(appris[0] + appris[2], passes[0])               # colonnes encore côte à côte
@@ -315,21 +330,34 @@ class TestPagesDesign(unittest.TestCase):
         self.regler_largeur_page(f, page, (ETROITE_SP + F.TRAVAUX_ETROITS_SP) // 2)
         self.assertEqual(page.get_current_breakpoint(), page.point_travaux_etroits)
         self.assertEqual({r.disposition for r in page.lignes.values()}, {'etroite'})
+        self.sans_debordement(page)
         self.assertFalse(any(r.etroite for r in page.lignes_passes if isinstance(r, F.LigneColonnes)))
         appris, passes = self.boite(page.groupe_appris, page), self.boite(page.groupe_passes, page)
         self.assertAlmostEqual(appris[0], passes[0], delta=1)            # empilées
         self.assertGreater(passes[1], appris[1])
         self.assertLessEqual(page.contenu.get_width(), page.get_width())   # rien ne déborde
 
-    def test_rien_ne_deborde_a_420(self):
+    def test_rien_ne_deborde_a_360(self):
+        """Fenêtre la plus étroite (360 px) : les colonnes de valeurs passent à la ligne, rien ne déborde."""
         from gi.repository import Gtk
-        f = self.ouvrir(largeur=420, hauteur=760)
+        f = self.ouvrir(largeur=360, hauteur=760)
         for nom, pret in (('file', lambda p: len(p.lignes) == 5 and p.lignes_passes),
                           ('programmes', lambda p: p.lignes_figes and p.lignes_menage and p.lignes_applis)):
             page = self.montrer(f, nom, pret)
             minimum = page.contenu.measure(Gtk.Orientation.HORIZONTAL, -1)[0]      # marges comprises
             self.assertLessEqual(minimum, page.get_width(), nom)
-        self.assertEqual({r.disposition for r in f.pages['file'].lignes.values()}, {'etroite'})
+        self.assertEqual({r.disposition for r in f.pages['file'].lignes.values()}, {'tres-etroite'})
+        ligne = f.pages['file'].lignes['1762785000000-1234.json']
+        ram, proc, duree = (self.boite(ligne.colonnes[c][0], f.pages['file']) for c in ('ram', 'processeur', 'duree'))
+        self.assertGreater(proc[1], ram[1] + 10)                        # deux valeurs par ligne
+        self.assertAlmostEqual(proc[0], ram[0], delta=1)
+        self.assertAlmostEqual(duree[1], proc[1], delta=1)
+        self.sans_debordement(f.pages['file'])
+        fige = f.pages['programmes'].lignes_figes[4242]                 # boutons à icône, pour laisser place au nom
+        self.assertEqual((fige.reprendre.get_icon_name(), fige.arreter.get_icon_name()),
+                         ('media-playback-start-symbolic', 'process-stop-symbolic'))
+        self.assertEqual(fige.arreter.get_tooltip_text(), 'Arrêter')
+        self.assertEqual(fige.get_subtitle_lines(), 2)
 
     def test_cœur_1_3_marche_toujours(self):
         f = self.ouvrir('v13')
