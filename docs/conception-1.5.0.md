@@ -206,4 +206,52 @@ Elles sont définies dans `gagarine/interface/styles/base.css` (et `base-sombre.
 
 ## Précisions apportées pendant les chantiers
 
-(à compléter)
+- **Fenêtre** :
+  - `Adw.NavigationSplitView`, barre latérale de 248 à 280 px (20 %). Elle se replie sous 640 sp, et le contenu
+    s'affiche d'abord.
+  - Le bandeau « service arrêté » n'apparaît qu'en fenêtre étroite : en fenêtre large, la barre latérale le dit déjà.
+  - Compteur de la RAM arrondi vers le bas (84,9 donne « 84 % », jamais un « 85 % » calme). Il est neutre en calme,
+    coloré en vigilance et en alerte.
+- **Fondations ajoutées** :
+  - `outils.ListeEncadree`, `outils.Voyant`, `outils.changer_classe` ;
+  - `PageLarge.fixer_en_haut(barre)`, et la classe `etroite` sur `PageLarge.contenu` (posée par les signaux `apply` et
+    `unapply`) ;
+  - `button.texte-destructif`, le bouton plat au texte rouge, que libadwaita 1.5 n'a pas ;
+  - les jetons `gagarine_{calme,vigilance,alerte}_fond` pour les aplats.
+- **Couleurs des dessins** : `graphiques.Palette`, une étiquette cachée par jeton (`.sonde-*`), lue par `get_color()`
+  (`lookup_color` est déprécié). Les couleurs suivent le thème clair ou sombre.
+- **Accent** : sur le poste (Yaru-red-dark), `@accent_color` est rouge. Il n'est jamais utilisé pour une série ni pour un
+  état normal ; le bleu des travaux du journal est fixe. Les `suggested-action` restent rouges : c'est le choix du système.
+- **Aperçu** :
+  - En 5 min, les colonnes du bas sont le swap, puis « Les plus gros en ce moment » et « Les plus actifs en ce moment »
+    (lus dans `etat --json`). En 24 h et 7 jours, on y trouve les incidents et les plus gros de la période, puis les plus
+    actifs de la période. La rangée n'est jamais vide.
+  - Phrase d'état « inconnu » (voyant éteint) avant la première mesure. Le bouton « Voir les programmes » ne s'affiche que
+    pour un programme figé, et il passe sous la phrase quand la page fait moins de 1000 sp.
+  - Valeurs insécables (« 97 °C », « 7,5 Go libres ») : un morceau n'est jamais coupé en fin de ligne.
+- **Instruments** :
+  - Cœurs : un fil P a la largeur d'un cœur E, donc un cœur P à deux fils est deux fois plus large (1,5 fois sans second
+    fil connu), avec une accolade sous chaque paire. Les fils d'un même cœur sont supposés numérotés à la suite.
+  - Échelle de la RAM : les repères 85, 95 et 98 sont au-dessus de la bande, écartés pour ne pas se chevaucher, et une
+    aiguille marque le niveau actuel.
+  - Courbe : la RAM est toujours bleue, avec une aire en dégradé discret et le dernier point marqué. Sur 24 h et 7 jours,
+    elle garde un point par tranche de 3 px, le plus haut, pour que les pics restent visibles. Textes en Pango, avec la
+    police du système et des chiffres tabulaires.
+  - Swap : barres neutres, et noms courts (« Compressé en RAM (zram) », « Partition sur disque »).
+- **Journal** :
+  - Le jour est porté par la première ligne de chaque jour (« Aujourd’hui », « Hier », « Lundi 9 novembre »,
+    « Dimanche 1er novembre », l'année si elle diffère), en français écrit en dur. Le jour entre dans la signature de mise
+    à jour : après minuit, « Aujourd’hui » devient « Hier ».
+  - Cartes par jour dessinées par des bordures de ligne : un contour fin en clair, aucun en sombre.
+  - Teintes : limite en alerte ; bridage impossible, fuite d'un travail et travail terminé avec un code non nul en
+    vigilance (icône d'avertissement) ; travail annulé en bleu des travaux.
+  - Recherche et filtre dans une barre fixe ; Échap vide la recherche. Infobulle seulement si le texte est coupé, et le
+    texte complet est dans la description accessible.
+  - Lignes gardées par clé (date, action, processus, nom, rang) : aucun clignotement.
+- **Réglages** :
+  - À gauche : Seuils, Agir avant le seuil, Délais et bridage, Programmes protégés, Notifications. À droite : File
+    d'attente (avec les sessions Claude), Fuites, Ménage, Service, Essai, Barre du haut.
+  - La barre d'enregistrement n'apparaît, fixe en bas, que s'il y a une modification. En étroit, le message passe
+    au-dessus des boutons.
+  - Service : voyant, puis « Démarrer » s'il est arrêté, sinon « Redémarrer » et « Arrêter » (plat, texte rouge). Les
+    boutons inutiles sont masqués, et non plus grisés.
