@@ -196,7 +196,7 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 
 Conception : [docs/conception-1.5.0.md](docs/conception-1.5.0.md).
 
-- [ ] Conception, styles de base (clair et sombre), pages pleine largeur (`PageLarge`), sections et colonnes
+- [x] Conception, styles de base (clair et sombre), pages pleine largeur (`PageLarge`), sections et colonnes
 
 ## Phase 32 — Fenêtre et Aperçu
 
