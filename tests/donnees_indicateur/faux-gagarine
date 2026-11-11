@@ -4,6 +4,7 @@
 # FAUX_GAGARINE_MENAGE : normal (deux candidats), vide, absent (commande inconnue, code 2) ; commandes de docs/conception-1.2.0.md.
 # FAUX_GAGARINE_FUITE=oui : contrats de la 1.3.0 (docs/conception-1.3.0.md) : `fuites` dans `etat --json`, `en_cours` et
 # `paralleles` dans `file --etat --json` (trois travaux dont deux en cours). Sans cette variable : cœur 1.2.x.
+# FAUX_GAGARINE_CPU=oui : contrat de la 1.4.0 (docs/conception-1.4.0.md) : `processeur` dans `etat --json` (ffmpeg à 6,2 cœurs).
 mode="${FAUX_GAGARINE_MODE:-normal}"
 journal="${FAUX_GAGARINE_JOURNAL:-}"
 [ -n "$journal" ] && echo "$@" >> "$journal"
@@ -21,6 +22,10 @@ if [ "$FAUX_GAGARINE_FUITE" = oui ]; then
   file_en_tete=', "paralleles": 3, "en_cours": 2'
   travaux_extra=', {"ticket": "1762785050000-1280.json", "position": 2, "nom": "tests", "pid": 1280, "depuis": "2026-11-10T14:31:00.000Z", "etat": "en cours", "ram": 2, "coeurs": 2, "priorite": "fond", "besoin_go": 2, "commande": "pytest", "unite": null, "sortie": null, "source": "gagarine"}, {"ticket": "1762785100000-1301.json", "position": 3, "nom": "rendu", "pid": 1301, "depuis": "2026-11-10T14:32:00.000Z", "etat": "en attente", "ram": 6, "coeurs": 8, "priorite": "normal", "besoin_go": 6, "motif": "2 travaux en cours", "commande": "ffmpeg", "unite": null, "sortie": null, "source": "gagarine"}'
 fi
+cpu=''
+if [ "$FAUX_GAGARINE_CPU" = oui ]; then
+  cpu=', "processeur": {"t": 1762876400.1, "source": "service", "pourcent": 23.4, "nb_coeurs": 14, "charge": [2.41, 1.98, 1.5], "temperature": 72.0, "chaud": false, "plus_actifs": [{"pid": 4242, "nom": "ffmpeg", "coeurs": 6.21, "pourcent": 44.4, "utilisateur": "charles-gamligo", "noyau": false}]}'
+fi
 case "$1 $2" in
   "etat --json")
     cat <<JSON
@@ -31,7 +36,7 @@ case "$1 $2" in
  "reglages": {"seuil": 95, "urgence": 98, "vigilance": 85, "grace": 10, "vidage_max": 60, "delai_fige": 600,
               "reste_si_repris": 256, "notifications": true, "proteges": ""},
  "fichier_reglages": "/etc/gagarine.conf", "service": {"etat": "active", "actif_au_demarrage": true},
- "dossier_etat": "/var/lib/gagarine", "figes": $figes, "plus_gros": [], "file": {"travaux": 1}$fuites}
+ "dossier_etat": "/var/lib/gagarine", "figes": $figes, "plus_gros": [], "file": {"travaux": 1}$fuites$cpu}
 JSON
     ;;
   "file --etat")

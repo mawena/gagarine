@@ -186,6 +186,7 @@ def lire_etat(texte):
         'plus_gros': _liste(d, 'plus_gros'),
         'file': (d.get('file') or {}).get('travaux', 0) if isinstance(d.get('file'), dict) else 0,
         'fuites': [f for f in _liste(d, 'fuites') if isinstance(f.get('pid'), int)],   # 1.3.0 : absent d'un cœur plus ancien
+        'processeur': lire_processeur(d.get('processeur')),   # 1.4.0 : None d'un cœur plus ancien
     }
 
 
@@ -216,14 +217,16 @@ def lire_historique(texte, maintenant=None):
     for p in _liste(d, 'points'):
         t, ram = en_timestamp(p.get('date')), p.get('ram')
         if t is not None and isinstance(ram, (int, float)) and not isinstance(ram, bool):
-            points.append({'t': t, 'ram': float(ram), 'pression': p.get('pression'), 'swap_mo': p.get('swap_mo')})
+            points.append({'t': t, 'ram': float(ram), 'pression': p.get('pression'), 'swap_mo': p.get('swap_mo'),
+                           'cpu': _pourcent_ou_none(p.get('cpu')), 'cpu_max': _pourcent_ou_none(p.get('cpu_max')),
+                           'charge': _nombre(p.get('charge')), 'temperature': _nombre(p.get('temperature'))})
     points.sort(key=lambda p: p['t'])
     incidents = sorted(_liste(d, 'incidents'), key=lambda e: en_timestamp(e.get('date')) or 0)
     travaux = sorted(_liste(d, 'travaux'), key=lambda t: en_timestamp(t.get('date')) or 0, reverse=True)
     depuis_s = d.get('depuis_s')
     return {'depuis_s': depuis_s if isinstance(depuis_s, (int, float)) and depuis_s > 0 else None,
             'pas_s': d.get('pas_s'), 'points': points, 'incidents': incidents, 'gros': _liste(d, 'gros'),
-            'travaux': travaux}
+            'travaux': travaux, 'actifs': lire_actifs(d.get('actifs'))}
 
 
 def lire_menage(texte):
@@ -505,6 +508,8 @@ def detail_travail_file(t, maintenant=None):
         morceaux.append(f'{formater_go(ram)} de RAM')
     if t.get('coeurs') is not None:
         morceaux.append(pluriel(t['coeurs'], 'cœur'))
+    if en_cours and t.get('coeurs_utilises') is not None:     # 1.4.0
+        morceaux.append('processeur : ' + formater_coeurs(t['coeurs_utilises']))
     morceaux.append(depuis(t.get('depuis'), maintenant))
     texte = ' · '.join(morceaux)
     if not en_cours and t.get('motif'):
@@ -733,6 +738,222 @@ def message_erreur_commande(argv, code, erreur, delai=False, absente=False):
     return None
 
 
+# --- processeur (1.4.0) ------------------------------------------------------------------------------------------------
+
+SEUIL_OCCUPE = 50      # % : au-dessous, le processeur est « calme »
+SEUIL_SATURE = 90      # % : à partir de là, il est « saturé »
+FENETRE_PASTILLE = 10  # secondes de moyenne pour la pastille d'état
+
+
+def lire_proc_stat(texte):
+    """Relevé de /proc/stat : {'total': (occupé, total), 'coeurs': [(occupé, total), …]} en ticks.
+
+    total = user + nice + system + idle + iowait + irq + softirq + steal (guest et guest_nice sont déjà dans user et nice) ;
+    occupé = total − idle − iowait. Les cœurs sont dans l'ordre cpu0…cpuN. ErreurDonnees si la ligne « cpu » manque."""
+    total, coeurs = None, []
+    for ligne in (texte or '').splitlines():
+        m = re.match(r'(cpu\d*)\s+(.*)', ligne)
+        if not m:
+            continue
+        try:
+            v = [int(x) for x in m.group(2).split()]
+        except ValueError:
+            continue
+        v = (v + [0] * 8)[:8]
+        somme = sum(v)
+        mesure = (somme - v[3] - v[4], somme)
+        if m.group(1) == 'cpu':
+            total = mesure
+        else:
+            coeurs.append(mesure)
+    if total is None:
+        raise ErreurDonnees('/proc/stat illisible')
+    return {'total': total, 'coeurs': coeurs}
+
+
+def pourcent_entre(avant, apres):
+    """% occupé entre deux relevés (occupé, total) ; None s'ils ne sont pas comparables (aucun tick écoulé, compteur remonté)."""
+    if avant is None or apres is None:
+        return None
+    dt = apres[1] - avant[1]
+    if dt <= 0:
+        return None
+    return max(0.0, min(100.0, 100.0 * (apres[0] - avant[0]) / dt))
+
+
+def pourcents_coeurs(avant, apres):
+    """Liste des % par cœur entre deux relevés complets ; vide si le nombre de cœurs a changé."""
+    if not avant or not apres or len(avant['coeurs']) != len(apres['coeurs']):
+        return []
+    return [pourcent_entre(a, b) or 0.0 for a, b in zip(avant['coeurs'], apres['coeurs'])]
+
+
+def niveau_cpu(pourcent):
+    """« normal » (< 50 %), « vigilance » (50 à 89 %) ou « alerte » (90 % et plus) : couleur d'une barre ou de la pastille."""
+    if pourcent is None or pourcent < SEUIL_OCCUPE:
+        return 'normal'
+    return 'alerte' if pourcent >= SEUIL_SATURE else 'vigilance'
+
+
+def pastille_cpu(pourcent):
+    """(texte, classe libadwaita) de la pastille : Calme, Occupé ou Saturé ; (« — », None) sans mesure."""
+    if pourcent is None:
+        return '—', None
+    niveau = niveau_cpu(pourcent)
+    return {'normal': ('Calme', 'success'), 'vigilance': ('Occupé', 'warning'), 'alerte': ('Saturé', 'error')}[niveau]
+
+
+def moyenne_recente(mesures, maintenant, fenetre=FENETRE_PASTILLE):
+    """Moyenne des (instant, valeur) des `fenetre` dernières secondes ; None s'il n'y en a pas."""
+    valeurs = [v for t, v in mesures if maintenant - t <= fenetre and v is not None]
+    return sum(valeurs) / len(valeurs) if valeurs else None
+
+
+def _nombre(v):
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _pourcent_ou_none(v):
+    v = _nombre(v)
+    return None if v is None else max(0.0, min(100.0, v))
+
+
+def lire_processeur(p):
+    """Normalise l'objet `processeur` de `etat --json` (contrat de docs/conception-1.4.0.md) ; None s'il est absent ou
+    inutilisable. Tout champ illisible vaut None."""
+    if not isinstance(p, dict):
+        return None
+    par_coeur = [_pourcent_ou_none(x) or 0.0 for x in p['par_coeur']] if isinstance(p.get('par_coeur'), list) else []
+    types = [x for x in p['types'] if x in ('P', 'E')] if isinstance(p.get('types'), list) else []
+    nb = _entier(p.get('nb_coeurs')) or len(par_coeur) or None
+    charge = [float(x) for x in p['charge'] if _nombre(x) is not None] if isinstance(p.get('charge'), list) else []
+    actifs = []
+    for a in _liste(p, 'plus_actifs'):
+        coeurs = _nombre(a.get('coeurs'))
+        if coeurs is not None and isinstance(a.get('pid'), int):
+            actifs.append({'pid': a['pid'], 'nom': a.get('nom') or 'programme', 'coeurs': coeurs,
+                           'pourcent': _pourcent_ou_none(a.get('pourcent')), 'utilisateur': a.get('utilisateur'),
+                           'noyau': bool(a.get('noyau'))})
+    return {'t': _nombre(p.get('t')), 'source': p.get('source'), 'pourcent': _pourcent_ou_none(p.get('pourcent')),
+            'nb_coeurs': nb, 'par_coeur': par_coeur, 'types': types if len(types) == len(par_coeur) or not par_coeur else [],
+            'modele': p.get('modele') if isinstance(p.get('modele'), str) and p.get('modele').strip() else None,
+            'charge': charge, 'pression': _nombre(p.get('pression')),
+            'temperature': _nombre(p.get('temperature')), 'temperature_critique': _nombre(p.get('temperature_critique')),
+            'chaud': bool(p.get('chaud')), 'frequence_mhz': _nombre(p.get('frequence_mhz')),
+            'frequence_max_mhz': _nombre(p.get('frequence_max_mhz')), 'plus_actifs': actifs}
+
+
+def lire_actifs(liste):
+    """`actifs` de `historique --json` : [{nom, pic_coeurs, minutes, cpu_min}], triés par cpu_min décroissant ; [] si absent."""
+    actifs = []
+    for a in liste if isinstance(liste, list) else []:
+        if isinstance(a, dict) and a.get('nom') and _nombre(a.get('cpu_min')) is not None:
+            actifs.append({'nom': a['nom'], 'pic_coeurs': _nombre(a.get('pic_coeurs')), 'minutes': _nombre(a.get('minutes')),
+                           'cpu_min': float(a['cpu_min'])})
+    return sorted(actifs, key=lambda a: a['cpu_min'], reverse=True)
+
+
+def formater_coeurs(x):
+    """6,2 -> « 6,2 cœurs » ; 0,8 -> « 0,8 cœur » (singulier au-dessous de 2, comme `pluriel`) ; None -> « — »."""
+    if x is None:
+        return '—'
+    return f'{_decimal(float(x))} cœur' + ('' if float(x) < 2 else 's')
+
+
+def formater_ghz(mhz):
+    """1850 -> « 1,9 GHz » ; 800 -> « 0,8 GHz » ; None -> « — »."""
+    return '—' if mhz is None else f'{_decimal(float(mhz) / 1000)} GHz'
+
+
+def formater_temperature(degres):
+    return '—' if degres is None else f'{round(float(degres))} °C'
+
+
+def formater_charge(x):
+    return '—' if x is None else _decimal(float(x), 2) if float(x) < 10 else _decimal(float(x))
+
+
+def detail_processeur(proc, nb_coeurs=None):
+    """« charge 2,4 · 14 cœurs · 1,9 GHz » : ce que l'on sait, dans cet ordre (la charge et la fréquence viennent du service)."""
+    morceaux = []
+    if proc and proc.get('charge'):
+        morceaux.append(f'charge {_decimal(proc["charge"][0])}')
+    nb = nb_coeurs or (proc or {}).get('nb_coeurs')
+    if nb:
+        morceaux.append(f'{nb} cœurs')
+    if proc and proc.get('frequence_mhz') is not None:
+        morceaux.append(formater_ghz(proc['frequence_mhz']))
+    return ' · '.join(morceaux)
+
+
+def repartition_coeurs(types, nb_coeurs=None):
+    """« 4 cœurs performants et 10 économes » ; « 14 cœurs » si le processeur n'est pas hybride ; '' si inconnu."""
+    if types:
+        p, e = types.count('P'), types.count('E')
+        return f'{pluriel(p, "cœur performant", "cœurs performants")} (P) et {pluriel(e, "économe")} (E)'
+    return f'{nb_coeurs} cœurs' if nb_coeurs else ''
+
+
+def est_chaud(proc):
+    """Vrai si le service dit `chaud` (température ≥ critique − 15, ou ≥ 90 °C si la critique est inconnue)."""
+    return bool(proc and proc.get('chaud'))
+
+
+def legende_processeur(proc, nb_coeurs=None):
+    """Morceaux de la légende sous les cœurs : [(texte, chaud)] — modèle, répartition P/E, température, fréquence, pression."""
+    if not proc:
+        return []
+    morceaux = []
+    if proc.get('modele'):
+        morceaux.append((proc['modele'], False))
+    repartition = repartition_coeurs(proc.get('types'), nb_coeurs or proc.get('nb_coeurs'))
+    if repartition:
+        morceaux.append((repartition, False))
+    if proc.get('temperature') is not None:
+        morceaux.append((formater_temperature(proc['temperature']) + (' (chaud)' if est_chaud(proc) else ''), est_chaud(proc)))
+    if proc.get('frequence_mhz') is not None:
+        f = formater_ghz(proc['frequence_mhz'])
+        if proc.get('frequence_max_mhz') is not None:
+            f += ' sur ' + formater_ghz(proc['frequence_max_mhz'])
+        morceaux.append((f, False))
+    if proc.get('pression') is not None:
+        morceaux.append((f'pression {formater_pourcent(proc["pression"])}', False))
+    return morceaux
+
+
+def ordre_coeurs(types, nb):
+    """Ordre d'affichage des cœurs logiques : les P d'abord puis les E, chacun dans son ordre ; sans types, l'ordre du système.
+    Rend la liste des indices."""
+    indices = list(range(nb))
+    if types and len(types) == nb:
+        indices.sort(key=lambda i: (types[i] != 'P', i))
+    return indices
+
+
+def titre_actif(a):
+    """Programme de `plus_actifs` -> (titre, sous-titre, valeur à droite) : « 1,4 cœur · 10 % »."""
+    sous = [f'PID {a["pid"]}']
+    if a.get('utilisateur'):
+        sous.append(a['utilisateur'])
+    if a.get('noyau'):
+        sous.append('noyau')
+    valeur = formater_coeurs(a['coeurs'])
+    if a.get('pourcent') is not None:
+        valeur += f' · {round(a["pourcent"])} %'
+    return a.get('nom') or 'programme', ' · '.join(sous), valeur
+
+
+def titre_actif_periode(a):
+    """Élément de `actifs` de l'historique -> (titre, détail) : « pic 6,2 cœurs · 42 min de processeur »."""
+    morceaux = []
+    if a.get('pic_coeurs') is not None:
+        morceaux.append(f'pic {formater_coeurs(a["pic_coeurs"])}')
+    morceaux.append(f'{round(a["cpu_min"])} min de processeur')
+    if a.get('minutes'):
+        morceaux.append(f'parmi les plus actifs pendant {formater_duree(a["minutes"] * 60)}')
+    return a['nom'], ' · '.join(morceaux)
+
+
 # --- historique : périodes de la courbe ----------------------------------------------------------------------------------
 
 # (clé de `historique --depuis`, libellé, durée en secondes)
@@ -769,7 +990,13 @@ def resume_historique(hist, maintenant=None):
     pic = max(hist['points'], key=lambda p: p['ram'])
     texte = f'Pic à {formater_pourcent(pic["ram"])}, {heure_locale(pic["t"], maintenant)}'
     n = len(hist['incidents'])
-    return texte + (' · aucun incident' if not n else f' · {pluriel(n, "incident")}')
+    texte += ' · aucun incident' if not n else f' · {pluriel(n, "incident")}'
+    avec_cpu = [p for p in hist['points'] if p.get('cpu_max') is not None or p.get('cpu') is not None]
+    if avec_cpu:     # 1.4.0 : les anciens points n'ont pas de processeur
+        haut = max(avec_cpu, key=lambda p: p['cpu_max'] if p.get('cpu_max') is not None else p['cpu'])
+        valeur = haut['cpu_max'] if haut.get('cpu_max') is not None else haut['cpu']
+        texte += f' · processeur au plus {formater_pourcent(valeur)} ({heure_locale(haut["t"], maintenant)})'
+    return texte
 
 
 def titre_gros(g):
@@ -791,6 +1018,8 @@ def detail_travail_passe(t, maintenant=None):
         morceaux.append(f'durée {formater_duree(t["duree"])}')
     if (t.get('pic_go') or 0) > 0:
         morceaux.append(f'pic {formater_go(round(float(t["pic_go"]), 1))}')
+    if t.get('coeurs_moyens') is not None:     # 1.4.0
+        morceaux.append(f'{formater_coeurs(t["coeurs_moyens"])} en moyenne')
     morceaux.append('terminé' if reussi else f'échec (code {code})')
     return titre, ' · '.join(morceaux), reussi
 

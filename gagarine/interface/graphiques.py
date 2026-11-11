@@ -1,4 +1,4 @@
-"""Jauge de la RAM et courbe des cinq dernières minutes, dessinées avec Cairo."""
+"""Jauge de la RAM, courbe RAM et processeur, et barres des cœurs, dessinées avec Cairo."""
 import math
 import time
 
@@ -13,6 +13,10 @@ from .source import DUREE_COURBE
 
 # couleurs de secours si le thème ne les définit pas (bleu, orange, rouge de GNOME)
 COULEURS = {'normal': (0.21, 0.52, 0.89), 'vigilance': (0.90, 0.38, 0.0), 'alerte': (0.88, 0.11, 0.14)}
+
+
+# ligne du processeur sur la courbe : violet, distinct des trois couleurs de niveau de la RAM
+COULEUR_CPU = (0.57, 0.34, 0.76)
 
 
 def couleur_niveau(niveau):
@@ -90,31 +94,42 @@ class Jauge(Gtk.DrawingArea):
 
 
 class Courbe(Gtk.DrawingArea):
-    """Courbe de la RAM utilisée, avec les repères de réglage : les 5 dernières minutes (lues en direct dans
-    /proc/meminfo) ou les dernières 24 h et 7 jours (historique du service), incidents marqués."""
+    """Courbe de la RAM utilisée et, en seconde ligne, du processeur, avec les repères de réglage : les 5 dernières minutes
+    (lues en direct dans /proc/meminfo et /proc/stat) ou les dernières 24 h et 7 jours (historique du service), incidents
+    marqués."""
 
     def __init__(self, source):
         super().__init__()
         self.source = source
         self.periode = '5min'
-        self.set_content_height(190)
+        self.set_content_height(204)
         self.set_hexpand(True)
         self.set_draw_func(self._dessiner)
         self._etiquette()
 
     def _etiquette(self):
         self.update_property([Gtk.AccessibleProperty.LABEL],
-                             [f'Courbe de la mémoire vive utilisée, {donnees.libelle_periode(self.periode)}'])
+                             [f'Courbe de la mémoire vive utilisée et du processeur, {donnees.libelle_periode(self.periode)}'])
 
     def choisir_periode(self, periode):
         self.periode = periode
         self._etiquette()
         self.queue_draw()
 
+    @staticmethod
+    def _trait(cr, points, couleur, epaisseur):
+        cr.set_line_width(epaisseur)
+        cr.set_line_join(1)
+        cr.move_to(*points[0])
+        for x, y in points[1:]:
+            cr.line_to(x, y)
+        cr.set_source_rgb(*couleur)
+        cr.stroke()
+
     def _dessiner(self, _zone, cr, largeur, hauteur):
         fg = self.get_color()
         cr.select_font_face('sans-serif')
-        gauche, droite, haut, bas = 8, 46, 12, 22
+        gauche, droite, haut, bas = 8, 46, 26, 22
         w, h = largeur - gauche - droite, hauteur - haut - bas
         reglages = self.source.reglages()
 
@@ -159,27 +174,32 @@ class Courbe(Gtk.DrawingArea):
             points = [(gauche + w * (1 - (maintenant - t) / DUREE_COURBE), y_de(p)) for t, p in self.source.historique
                       if maintenant - t <= DUREE_COURBE]
             incidents = []
+            points_cpu = [(gauche + w * (1 - (maintenant - t) / DUREE_COURBE), y_de(p))
+                          for t, p in self.source.cpu_historique if maintenant - t <= DUREE_COURBE]
         else:
             hist = self.source.historiques.get(self.periode)
             duree = donnees.duree_periode(self.periode)
             maintenant = time.time()
-            points, incidents = [], []
+            points, incidents, points_cpu = [], [], []
             if hist:
                 for pt in hist['points']:
                     f = donnees.fraction_temps(pt['t'], maintenant, duree)
                     if f is not None:
                         points.append((gauche + w * max(0.0, min(1.0, f)), y_de(pt['ram'])))
+                        if pt.get('cpu') is not None:
+                            points_cpu.append((gauche + w * max(0.0, min(1.0, f)), y_de(pt['cpu'])))
                 for ev in hist['incidents']:
                     f = donnees.fraction_temps(donnees.en_timestamp(ev.get('date')) or 0, maintenant, duree)
                     if f is not None:
                         incidents.append((gauche + w * max(0.0, min(1.0, f)), ev))
             if len(points) < 2:
                 _texte(cr, 'Pas encore assez de mesures pour cette période', gauche + w / 2, haut + h / 2, 12, fg, 0.6, 'centre')
+        epaisseur = 2 if self.periode == '5min' else 1.5
+        cr.save()
+        cr.rectangle(gauche, haut, w, h + 1)
+        cr.clip()
         if len(points) >= 2:
             r, g, b = couleur_niveau(self.source.niveau())
-            cr.save()
-            cr.rectangle(gauche, haut, w, h + 1)
-            cr.clip()
             cr.move_to(points[0][0], haut + h)
             for x, y in points:
                 cr.line_to(x, y)
@@ -187,14 +207,20 @@ class Courbe(Gtk.DrawingArea):
             cr.close_path()
             cr.set_source_rgba(r, g, b, 0.18)
             cr.fill()
-            cr.set_line_width(2 if self.periode == '5min' else 1.5)
-            cr.set_line_join(1)
-            cr.move_to(*points[0])
-            for x, y in points[1:]:
-                cr.line_to(x, y)
-            cr.set_source_rgb(r, g, b)
+            self._trait(cr, points, (r, g, b), epaisseur)
+        if len(points_cpu) >= 2:       # processeur : un simple trait par-dessus, sans remplissage
+            self._trait(cr, points_cpu, COULEUR_CPU, epaisseur)
+        cr.restore()
+        # légende « RAM — Processeur »
+        x = gauche
+        for libelle, couleur in (('RAM', couleur_niveau(self.source.niveau())), ('Processeur', COULEUR_CPU)):
+            cr.set_source_rgb(*couleur)
+            cr.set_line_width(3)
+            cr.move_to(x, 8)
+            cr.line_to(x + 16, 8)
             cr.stroke()
-            cr.restore()
+            _texte(cr, libelle, x + 21, 12, 11, fg, 0.8)
+            x += 21 + cr.text_extents(libelle).x_advance + 16
         # incidents : trait fin et point en haut de la courbe
         r, g, b = COULEURS['alerte']
         for x, ev in incidents:
@@ -206,3 +232,67 @@ class Courbe(Gtk.DrawingArea):
             cr.set_source_rgb(r, g, b)
             cr.arc(x, haut - 3, 3.5, 0, 2 * math.pi)
             cr.fill()
+
+
+class Coeurs(Gtk.DrawingArea):
+    """Une barre verticale par cœur logique, les P puis les E, avec une étiquette P/E sous chaque groupe si le processeur
+    est hybride. La couleur suit la charge du cœur comme la jauge suit celle de la RAM."""
+
+    def __init__(self):
+        super().__init__()
+        self.pourcents = []
+        self.types = []
+        self.set_content_height(84)
+        self.set_hexpand(True)
+        self.set_draw_func(self._dessiner)
+        self.update_property([Gtk.AccessibleProperty.LABEL], ['Charge de chaque cœur du processeur'])
+
+    def maj(self, pourcents, types=None):
+        self.pourcents, self.types = list(pourcents or []), list(types or [])
+        self.set_visible(bool(self.pourcents))
+        self.queue_draw()
+
+    def _dessiner(self, _zone, cr, largeur, hauteur):
+        n = len(self.pourcents)
+        if not n:
+            return
+        fg = self.get_color()
+        cr.select_font_face('sans-serif')
+        hybride = len(self.types) == n
+        bas = 16 if hybride else 2       # place des étiquettes P/E
+        h = hauteur - bas
+        ordre = donnees.ordre_coeurs(self.types if hybride else None, n)
+        ecart = 3 if n > 16 else 5
+        groupe = 10 if hybride else 0    # espace entre le dernier P et le premier E
+        largeur_barre = max(4.0, min(34.0, (largeur - (n - 1) * ecart - groupe) / n))
+        x = 0.0
+        debut_groupe, precedent = 0.0, None
+        for position, i in enumerate(ordre):
+            type_ = self.types[i] if hybride else None
+            if precedent is not None and type_ != precedent:
+                self._etiquette(cr, precedent, debut_groupe, x - ecart, hauteur, fg)
+                x += groupe
+                debut_groupe = x
+            precedent = type_
+            pct = max(0.0, min(100.0, self.pourcents[i]))
+            cr.set_source_rgba(fg.red, fg.green, fg.blue, 0.12)
+            _rect_arrondi(cr, x, 0, largeur_barre, h, 3)
+            cr.fill()
+            plein = h * pct / 100
+            if plein > 0.5:
+                r, g, b = couleur_niveau(donnees.niveau_cpu(pct))
+                cr.save()
+                _rect_arrondi(cr, x, 0, largeur_barre, h, 3)
+                cr.clip()
+                cr.set_source_rgb(r, g, b)
+                cr.rectangle(x, h - max(plein, 3), largeur_barre, max(plein, 3))
+                cr.fill()
+                cr.restore()
+            x += largeur_barre + ecart
+        if hybride:
+            self._etiquette(cr, precedent, debut_groupe, x - ecart, hauteur, fg)
+
+    @staticmethod
+    def _etiquette(cr, type_, x1, x2, hauteur, fg):
+        texte = 'P : performants' if type_ == 'P' else 'E : économes'
+        _texte(cr, texte, (x1 + x2) / 2, hauteur - 3, 10, fg, 0.65, 'centre')
