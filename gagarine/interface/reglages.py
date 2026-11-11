@@ -49,7 +49,8 @@ class PageReglages(PageLarge):
         g_seuils = groupe('seuils', gauche, 'Seuils', 'Pourcentage de RAM utilisée à partir duquel Gagarine agit.')
         g_tot = groupe('anticipation', gauche, 'Agir avant le seuil',
                        'Gagarine peut intervenir avant que la RAM n’atteigne le seuil.')
-        g_delais = groupe('delais', gauche, 'Délais et bridage')
+        g_delais = groupe('delais', gauche, 'Délais et bridage',
+                          'Le temps laissé à un programme figé, et ce qu’un programme repris peut encore demander.')
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_NOMBRES:
             ligne = Adw.SpinRow.new_with_range(mini, maxi, 1)
             ligne.set_title(f'{titre} ({unite})')
@@ -67,7 +68,8 @@ class PageReglages(PageLarge):
         self.proteges.connect('changed', self._modifie)
         g_proteges.add(self.proteges)
 
-        g_notif = groupe('notifications', gauche, 'Notifications')
+        g_notif = groupe('notifications', gauche, 'Notifications',
+                         'Sur le bureau, et sur le téléphone avec ntfy.')
         self.notifications = Adw.SwitchRow(title='Boutons dans les notifications',
                                            subtitle='Boutons « Arrêter » et « Reprendre » dans le bureau')
         self.notifications.connect('notify::active', self._modifie)
@@ -84,7 +86,8 @@ class PageReglages(PageLarge):
         g_notif.add(self.ntfy)
 
         # --- colonne de droite : file, fuites, ménage, puis ce qui agit tout de suite ---
-        g_file = groupe('file', droite, 'File d’attente')
+        g_file = groupe('file', droite, 'File d’attente',
+                        'Les travaux lourds passent par la file : combien à la fois, et ce qui est refusé hors d’elle.')
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_FILE_130:
             g_file.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
         g_file.add(self._ligne_interrupteur('file_ajuster'))
@@ -106,7 +109,8 @@ class PageReglages(PageLarge):
         self._essai(groupe('essai', droite, 'Essai',
                            'Un programme d’essai grossit : Gagarine doit le figer, le ranger dans le swap puis '
                            'l’arrêter. Sans risque pour vos autres programmes ; refusé au-delà de 80 % de RAM.'))
-        self._indicateur(groupe('indicateur', droite, 'Barre du haut'))
+        self._indicateur(groupe('indicateur', droite, 'Barre du haut',
+                                'L’indicateur de Gagarine, à côté de l’horloge, s’affiche à l’ouverture de session.'))
 
         # --- barre d'enregistrement, fixe en bas de la page, visible seulement quand un réglage est modifié ---
         self._barre_enregistrement()
@@ -116,7 +120,7 @@ class PageReglages(PageLarge):
 
     # --- construction ---
     def _barre_enregistrement(self):
-        self.titre_modifs = Gtk.Label(label='Modifications non enregistrées', xalign=0)
+        self.titre_modifs = Gtk.Label(label='Modifications non enregistrées', xalign=0, wrap=True)
         self.titre_modifs.add_css_class('heading')
         self.message_reglages = Gtk.Label(wrap=True, xalign=0, label='')
         self.message_reglages.add_css_class('message-reglages')
@@ -128,13 +132,17 @@ class PageReglages(PageLarge):
         self.bouton_enregistrer = Gtk.Button(label='Enregistrer', valign=Gtk.Align.CENTER, sensitive=False)
         self.bouton_enregistrer.add_css_class('suggested-action')
         self.bouton_enregistrer.connect('clicked', lambda _b: self.enregistrer())
-        self.barre = Gtk.Box(spacing=10, margin_start=28, margin_end=28, margin_top=10, margin_bottom=10)
+        boutons = Gtk.Box(spacing=10, halign=Gtk.Align.END, valign=Gtk.Align.CENTER)
+        boutons.append(self.bouton_annuler)
+        boutons.append(self.bouton_enregistrer)
+        self.barre = Gtk.Box(spacing=16, margin_start=28, margin_end=28, margin_top=10, margin_bottom=10)
         self.barre.add_css_class('barre-enregistrement')
         self.barre.append(textes)
-        self.barre.append(self.bouton_annuler)
-        self.barre.append(self.bouton_enregistrer)
-        for prop in ('margin-start', 'margin-end'):
-            self.point_etroit.add_setter(self.barre, prop, 14)
+        self.barre.append(boutons)
+        # fenêtre étroite : le message au-dessus, les boutons dessous
+        for prop, valeur in (('margin-start', 14), ('margin-end', 14), ('orientation', Gtk.Orientation.VERTICAL),
+                             ('spacing', 8)):
+            self.point_etroit.add_setter(self.barre, prop, valeur)
         self.point_etroit.add_setter(self.bouton_annuler, 'label', 'Annuler')
 
         # la page de PageLarge passe dans une vue à barre fixe en bas
@@ -184,7 +192,9 @@ class PageReglages(PageLarge):
                                          bottom_margin=8, left_margin=10, right_margin=10,
                                          wrap_mode=Gtk.WrapMode.WORD_CHAR)
         self.sortie_essai.update_property([Gtk.AccessibleProperty.LABEL], ['Sortie de l’essai'])
-        self.defile_essai = Gtk.ScrolledWindow(child=self.sortie_essai, min_content_height=130, visible=False)
+        self.sortie_essai.add_css_class('sortie-essai')
+        self.defile_essai = Gtk.ScrolledWindow(child=self.sortie_essai, min_content_height=130, visible=False,
+                                               overflow=Gtk.Overflow.HIDDEN)
         self.defile_essai.add_css_class('card')
         zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12)
         zone.append(liste_verdict)
@@ -209,14 +219,14 @@ class PageReglages(PageLarge):
         ligne = Adw.SpinRow.new_with_range(mini, maxi, 1)
         ligne.set_title(f'{titre} ({unite})')
         ligne.set_subtitle(aide)
-        ligne.set_subtitle_lines(3)
+        ligne.set_subtitle_lines(0)     # en fenêtre étroite, l'aide prend les lignes qu'il lui faut
         ligne.connect('notify::value', self._modifie)
         self.champs[cle] = ligne
         return ligne
 
     def _ligne_interrupteur(self, cle):
         titre, aide = donnees.REGLAGES_BOOLEENS[cle]
-        ligne = Adw.SwitchRow(title=titre, subtitle=aide, subtitle_lines=3)
+        ligne = Adw.SwitchRow(title=titre, subtitle=aide, subtitle_lines=0)
         ligne.connect('notify::active', self._modifie)
         self.interrupteurs[cle] = ligne
         return ligne

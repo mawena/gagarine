@@ -99,6 +99,16 @@ class TestTeintes(unittest.TestCase):
         for action, teinte in attendu.items():
             self.assertEqual(J.teinte_evenement({'action': action}), teinte, action)
 
+    def test_travail_echoue_en_vigilance_sans_coche(self):
+        echoue = {'action': 'travail-fin', 'code': 1}
+        self.assertEqual(J.teinte_evenement(echoue), 'vigilance')
+        self.assertEqual(J.icone_evenement(echoue, 'object-select-symbolic'), 'dialog-warning-symbolic')
+        for reussi in ({'action': 'travail-fin', 'code': 0}, {'action': 'travail-fin'}):
+            self.assertEqual(J.teinte_evenement(reussi), 'travail')
+            self.assertEqual(J.icone_evenement(reussi, 'object-select-symbolic'), 'object-select-symbolic')
+        self.assertEqual(J.icone_evenement({'action': 'fige', 'code': 1}, 'media-playback-pause-symbolic'),
+                         'media-playback-pause-symbolic')
+
     def test_action_inconnue_neutre(self):
         self.assertEqual(J.teinte_evenement({'action': 'nouvelle-action-du-coeur'}), 'neutre')
         self.assertEqual(J.teinte_evenement({}), 'neutre')

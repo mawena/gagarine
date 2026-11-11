@@ -63,10 +63,11 @@ list.journal > row.dernier-du-jour .ligne-evenement {
   font-size: smaller;
 }
 
-/* Pastille teintée selon le type d'événement. */
+/* Pastille teintée selon le type d'événement, entre l'heure et le texte. */
 .pastille-evenement {
   min-width: 30px;
   min-height: 30px;
+  margin: 0 14px 0 12px;
   border-radius: 999px;
   color: alpha(@card_fg_color, 0.72);
   background-color: alpha(@card_fg_color, 0.07);
@@ -86,4 +87,17 @@ list.journal > row.dernier-du-jour .ligne-evenement {
 .pastille-evenement.travail {
   color: @journal_travail;
   background-color: alpha(@journal_travail, 0.13);
+}
+
+/* Fenêtre étroite (classe posée par le point de rupture de la page) : lignes plus serrées, le texte garde la place. */
+list.journal.etroite .ligne-evenement {
+  padding: 8px 12px 8px 10px;
+}
+list.journal.etroite .pastille-evenement {
+  min-width: 26px;
+  min-height: 26px;
+  margin: 0 10px 0 8px;
+}
+list.journal.etroite .heure-evenement {
+  font-size: smaller;
 }

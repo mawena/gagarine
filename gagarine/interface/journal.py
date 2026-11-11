@@ -37,9 +37,24 @@ TOUTES_TEINTES = ('alerte', 'vigilance', 'calme', 'travail', 'neutre')
 
 # --- fonctions pures ---------------------------------------------------------------------------------------------------
 
+def travail_echoue(ev):
+    """Travail de la file terminé avec un code de sortie non nul."""
+    return ev.get('action') == 'travail-fin' and ev.get('code') not in (0, None)
+
+
 def teinte_evenement(ev):
-    """« alerte », « vigilance », « calme », « travail » ou « neutre » (action inconnue : neutre)."""
+    """« alerte », « vigilance », « calme », « travail » ou « neutre » (action inconnue : neutre).
+
+    Un travail terminé en erreur (code non nul) passe en vigilance : il mérite qu'on le remarque.
+    """
+    if travail_echoue(ev):
+        return 'vigilance'
     return TEINTES.get(ev.get('action'), 'neutre')
+
+
+def icone_evenement(ev, icone):
+    """Icône de la pastille : celle de donnees.decrire_evenement, sauf la coche d'un travail échoué."""
+    return 'dialog-warning-symbolic' if travail_echoue(ev) else icone
 
 
 def _date_locale(t):
@@ -134,7 +149,7 @@ class LigneEvenement(Gtk.ListBoxRow):
         self.entete.append(self.jour)
         self.entete.append(self.nombre)
 
-        self.carte = Gtk.Box(spacing=14)
+        self.carte = Gtk.Box()          # écarts dans journal.css (plus serrés en fenêtre étroite)
         self.carte.add_css_class('ligne-evenement')
         self.heure = Gtk.Label(width_chars=8, xalign=0, valign=Gtk.Align.CENTER)
         self.heure.add_css_class('heure-evenement')
@@ -169,7 +184,7 @@ class LigneEvenement(Gtk.ListBoxRow):
         heure = heure_evenement(ev)
         self.texte_titre, self.texte_detail = titre, detail
         self.heure.set_label(heure)
-        self.pastille.set_from_icon_name(icone)
+        self.pastille.set_from_icon_name(icone_evenement(ev, icone))
         teinte = teinte_evenement(ev)
         if teinte != self.teinte:
             if self.teinte:
@@ -230,6 +245,9 @@ class PageJournal(PageLarge):
         self.barre.append(self.filtre)
         for prop in ('margin-start', 'margin-end'):
             self.point_etroit.add_setter(self.barre, prop, 14)
+        # fenêtre étroite : lignes plus serrées (une classe sur la liste plutôt qu'un réglage par ligne)
+        self.point_etroit.connect('apply', lambda *_: self.liste.add_css_class('etroite'))
+        self.point_etroit.connect('unapply', lambda *_: self.liste.remove_css_class('etroite'))
 
         # la page de PageLarge passe dans une vue à barre fixe (la barre reste visible quand on fait défiler)
         self.set_child(None)

@@ -17,3 +17,9 @@
 .page-reglages button.texte-destructif:active {
   background-color: alpha(@destructive_color, 0.18);
 }
+
+/* Sortie de l'essai : le texte sur le fond de sa carte (coins arrondis), pas sur un rectangle de vue. */
+.page-reglages textview.sortie-essai,
+.page-reglages textview.sortie-essai > text {
+  background-color: transparent;
+}
