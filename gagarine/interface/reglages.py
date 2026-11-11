@@ -1,4 +1,10 @@
-"""Page « Réglages » : seuils, délais, service, essai et indicateur de la barre du haut."""
+"""Page « Réglages » (1.5.0) : seuils, délais, file, service, essai et indicateur, en deux colonnes sur grand écran.
+
+Colonne de gauche, la garde : seuils, agir avant le seuil, délais et bridage, programmes protégés, notifications.
+Colonne de droite : file d'attente (et sessions Claude), fuites, ménage, service, essai, barre du haut. Les colonnes
+s'empilent sous 1000 sp de page (outils.PageLarge). Une barre fixe en bas de la page apparaît dès qu'un réglage est
+modifié : « Annuler les modifications » et « Enregistrer » (avec le mot de passe d'administrateur, par pkexec).
+"""
 import os
 import subprocess
 
@@ -9,22 +15,41 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import donnees
-from .outils import bouton, confirmer, echappe, etiquette
+from .outils import PageLarge, bouton, confirmer, echappe, etiquette
+
+# Répartition des groupes : (clé, colonne). Les hauteurs des deux colonnes restent proches.
+GROUPES_GAUCHE = ('seuils', 'anticipation', 'delais', 'proteges', 'notifications')
+GROUPES_DROITE = ('file', 'fuites', 'menage', 'service', 'essai', 'indicateur')
 
 
-class PageReglages(Adw.PreferencesPage):
+class PageReglages(PageLarge):
     def __init__(self, fenetre):
-        super().__init__(title='Réglages', name='reglages', icon_name='preferences-system-symbolic')
+        super().__init__('Réglages', 'reglages', 'preferences-system-symbolic')
+        self.add_css_class('page-reglages')
         self.fenetre = fenetre
         self.source = fenetre.source
         self.courants = {}
         self.champs = {}
+        self.interrupteurs = {}
+        self.groupes = {}
         self.en_cours_chargement = False
         self.essai = None
 
-        # --- seuils et délais ---
-        g_seuils = Adw.PreferencesGroup(title='Seuils', description='Pourcentage de RAM utilisée à partir duquel Gagarine agit.')
-        g_delais = Adw.PreferencesGroup(title='Délais et bridage')
+        gauche, droite = self.colonnes(2)
+        self.colonne_gauche, self.colonne_droite = gauche, droite
+        self.rangee = gauche.get_parent()
+
+        def groupe(cle, colonne, titre, description=None):
+            g = Adw.PreferencesGroup(title=titre, description=description)
+            colonne.append(g)
+            self.groupes[cle] = g
+            return g
+
+        # --- colonne de gauche : la garde ---
+        g_seuils = groupe('seuils', gauche, 'Seuils', 'Pourcentage de RAM utilisée à partir duquel Gagarine agit.')
+        g_tot = groupe('anticipation', gauche, 'Agir avant le seuil',
+                       'Gagarine peut intervenir avant que la RAM n’atteigne le seuil.')
+        g_delais = groupe('delais', gauche, 'Délais et bridage')
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_NOMBRES:
             ligne = Adw.SpinRow.new_with_range(mini, maxi, 1)
             ligne.set_title(f'{titre} ({unite})')
@@ -32,19 +57,17 @@ class PageReglages(Adw.PreferencesPage):
             ligne.connect('notify::value', self._modifie)
             self.champs[cle] = ligne
             (g_seuils if unite == '%' else g_delais).add(ligne)
-        self.add(g_seuils)
-        self.add(g_delais)
-
-        self.interrupteurs = {}
-        # --- agir plus tôt (1.2.0) ---
-        g_tot = Adw.PreferencesGroup(title='Agir avant le seuil',
-                                     description='Gagarine peut intervenir avant que la RAM n’atteigne le seuil.')
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_ANTICIPATION:
             g_tot.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
-        self.add(g_tot)
 
-        # --- notifications ---
-        g_notif = Adw.PreferencesGroup(title='Notifications')
+        g_proteges = groupe('proteges', gauche, 'Programmes protégés',
+                            'Gagarine ne fige ni n’arrête jamais ces programmes, en plus de sa liste intégrée '
+                            '(systemd, gnome-shell, sshd, dbus…).')
+        self.proteges = Adw.EntryRow(title='Noms de programmes, en expression régulière (ex. postgres|mysqld)')
+        self.proteges.connect('changed', self._modifie)
+        g_proteges.add(self.proteges)
+
+        g_notif = groupe('notifications', gauche, 'Notifications')
         self.notifications = Adw.SwitchRow(title='Boutons dans les notifications',
                                            subtitle='Boutons « Arrêter » et « Reprendre » dans le bureau')
         self.notifications.connect('notify::active', self._modifie)
@@ -54,81 +77,94 @@ class PageReglages(Adw.PreferencesPage):
             g_notif.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
         self.ntfy = Adw.EntryRow(title='ntfy : sujet ou adresse (notifications sur le téléphone)')
         self.ntfy.connect('changed', self._modifie)
-        self.essai_ntfy = bouton('Envoyer un essai', self.envoyer_essai_ntfy, aide='Envoie un message d’essai à ce sujet ntfy')
+        self.essai_ntfy = bouton('Envoyer un essai', self.envoyer_essai_ntfy, ['flat'],
+                                 aide='Envoie un message d’essai à ce sujet ntfy')
         self.essai_ntfy.set_sensitive(False)
         self.ntfy.add_suffix(self.essai_ntfy)
         g_notif.add(self.ntfy)
-        self.add(g_notif)
 
-        # --- file, ménage, sessions Claude ---
-        g_file = Adw.PreferencesGroup(title='File d’attente')
+        # --- colonne de droite : file, fuites, ménage, puis ce qui agit tout de suite ---
+        g_file = groupe('file', droite, 'File d’attente')
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_FILE_130:
             g_file.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
         g_file.add(self._ligne_interrupteur('file_ajuster'))
-        self.add(g_file)
-        g_fuites = Adw.PreferencesGroup(title='Fuites de mémoire',
-                                        description='Gagarine repère un programme qui grossit régulièrement, bien avant le seuil.')
+        g_file.add(self._ligne_interrupteur('claude_bloquer'))      # sessions Claude : travaux lourds hors de la file
+        g_fuites = groupe('fuites', droite, 'Fuites de mémoire',
+                          'Gagarine repère un programme qui grossit régulièrement, bien avant le seuil.')
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_FUITES:
             g_fuites.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
         g_fuites.add(self._ligne_interrupteur('fuite_notifier'))
-        self.add(g_fuites)
-        g_menage = Adw.PreferencesGroup(title='Ménage',
-                                        description='Démons Gradle et Kotlin, modèles de LM Studio et d’Ollama restés inactifs.')
+        g_menage = groupe('menage', droite, 'Ménage',
+                          'Démons Gradle et Kotlin, modèles de LM Studio et d’Ollama restés inactifs.')
         g_menage.add(self._ligne_interrupteur('menage_auto'))
         for cle, titre, aide, unite, mini, maxi in donnees.REGLAGES_MENAGE:
             g_menage.add(self._ligne_nombre(cle, titre, aide, unite, mini, maxi))
-        self.add(g_menage)
-        g_claude = Adw.PreferencesGroup(title='Sessions Claude')
-        g_claude.add(self._ligne_interrupteur('claude_bloquer'))
-        self.add(g_claude)
 
-        g_autres = Adw.PreferencesGroup(title='Protection')
-        self.proteges = Adw.EntryRow(title='Programmes protégés en plus (expression régulière)')
-        self.proteges.connect('changed', self._modifie)
-        g_autres.add(self.proteges)
-        self.add(g_autres)
+        self._service(groupe('service', droite, 'Service',
+                             'Le service Gagarine tourne en arrière-plan, avec les droits d’administrateur. Chaque '
+                             'action demande votre mot de passe.'))
+        self._essai(groupe('essai', droite, 'Essai',
+                           'Un programme d’essai grossit : Gagarine doit le figer, le ranger dans le swap puis '
+                           'l’arrêter. Sans risque pour vos autres programmes ; refusé au-delà de 80 % de RAM.'))
+        self._indicateur(groupe('indicateur', droite, 'Barre du haut'))
 
-        g_enreg = Adw.PreferencesGroup()
-        self.message_reglages = Gtk.Label(wrap=True, xalign=0, label='', margin_top=6)
-        self.message_reglages.add_css_class('dim-label')
-        self.bouton_enregistrer = Gtk.Button(label='Enregistrer', halign=Gtk.Align.END, sensitive=False)
-        self.bouton_enregistrer.add_css_class('suggested-action')
-        self.bouton_enregistrer.add_css_class('pill')
-        self.bouton_enregistrer.connect('clicked', lambda _b: self.enregistrer())
-        self.bouton_annuler = Gtk.Button(label='Annuler les modifications', halign=Gtk.Align.END, sensitive=False)
-        self.bouton_annuler.add_css_class('pill')
+        # --- barre d'enregistrement, fixe en bas de la page, visible seulement quand un réglage est modifié ---
+        self._barre_enregistrement()
+
+        self.source.connect('etat', lambda *_: self.recharger())
+        self.recharger()
+
+    # --- construction ---
+    def _barre_enregistrement(self):
+        self.titre_modifs = Gtk.Label(label='Modifications non enregistrées', xalign=0)
+        self.titre_modifs.add_css_class('heading')
+        self.message_reglages = Gtk.Label(wrap=True, xalign=0, label='')
+        self.message_reglages.add_css_class('message-reglages')
+        textes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True, valign=Gtk.Align.CENTER)
+        textes.append(self.titre_modifs)
+        textes.append(self.message_reglages)
+        self.bouton_annuler = Gtk.Button(label='Annuler les modifications', valign=Gtk.Align.CENTER, sensitive=False)
         self.bouton_annuler.connect('clicked', lambda _b: self.recharger(force=True))
-        boutons = Gtk.Box(spacing=8, halign=Gtk.Align.END)
-        boutons.append(self.bouton_annuler)
-        boutons.append(self.bouton_enregistrer)
-        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        boite.append(boutons)
-        boite.append(self.message_reglages)
-        g_enreg.add(boite)
-        self.add(g_enreg)
+        self.bouton_enregistrer = Gtk.Button(label='Enregistrer', valign=Gtk.Align.CENTER, sensitive=False)
+        self.bouton_enregistrer.add_css_class('suggested-action')
+        self.bouton_enregistrer.connect('clicked', lambda _b: self.enregistrer())
+        self.barre = Gtk.Box(spacing=10, margin_start=28, margin_end=28, margin_top=10, margin_bottom=10)
+        self.barre.add_css_class('barre-enregistrement')
+        self.barre.append(textes)
+        self.barre.append(self.bouton_annuler)
+        self.barre.append(self.bouton_enregistrer)
+        for prop in ('margin-start', 'margin-end'):
+            self.point_etroit.add_setter(self.barre, prop, 14)
+        self.point_etroit.add_setter(self.bouton_annuler, 'label', 'Annuler')
 
-        # --- service ---
-        g_service = Adw.PreferencesGroup(title='Service', description='Le service Gagarine tourne en arrière-plan, avec les droits '
-                                         'd’administrateur. Chaque action demande votre mot de passe.')
+        # la page de PageLarge passe dans une vue à barre fixe en bas
+        self.set_child(None)
+        self.vue = Adw.ToolbarView(content=self.defilement, bottom_bar_style=Adw.ToolbarStyle.RAISED,
+                                   reveal_bottom_bars=False)
+        self.vue.add_bottom_bar(self.barre)
+        self.set_child(self.vue)
+
+    def _service(self, g_service):
         self.ligne_service = Adw.ActionRow(title='Service Gagarine', subtitle='État inconnu')
+        self.voyant_service = Gtk.Box(valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER, margin_start=4, margin_end=4,
+                                      accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        self.voyant_service.add_css_class('voyant')
+        self.voyant_service.add_css_class('eteint')
+        self.ligne_service.add_prefix(self.voyant_service)
         self.etat_service = etiquette('', ['heading'])
         self.ligne_service.add_suffix(self.etat_service)
         g_service.add(self.ligne_service)
-        ligne_boutons = Adw.ActionRow(title='Actions')
+        self.ligne_commandes = Adw.ActionRow(title='Commandes')
         self.boutons_service = {
-            'demarrer': bouton('Démarrer', lambda: self.service('demarrer', 'Service démarré')),
-            'arreter': bouton('Arrêter', self.demander_arret_service, ['destructive-action']),
+            'demarrer': bouton('Démarrer', lambda: self.service('demarrer', 'Service démarré'), ['suggested-action']),
             'redemarrer': bouton('Redémarrer', lambda: self.service('redemarrer', 'Service redémarré')),
+            'arreter': bouton('Arrêter', self.demander_arret_service, ['flat', 'destructive-action', 'texte-destructif']),
         }
         for b in self.boutons_service.values():
-            ligne_boutons.add_suffix(b)
-        g_service.add(ligne_boutons)
-        self.add(g_service)
+            self.ligne_commandes.add_suffix(b)
+        g_service.add(self.ligne_commandes)
 
-        # --- essai ---
-        g_essai = Adw.PreferencesGroup(
-            title='Essai', description='Un programme d’essai grossit : Gagarine doit le figer, le ranger dans le swap puis '
-                                       'l’arrêter. Sans risque pour vos autres programmes ; refusé au-delà de 80 % de RAM.')
+    def _essai(self, g_essai):
         ligne_essai = Adw.ActionRow(title='Vérifier que la protection fonctionne',
                                     subtitle='En administrateur, l’essai teste aussi le rangement dans le swap')
         self.lancer_essai = bouton('Lancer l’essai', lambda: self.lancer_essai_cmd(False))
@@ -144,18 +180,18 @@ class PageReglages(Adw.PreferencesPage):
         liste_verdict.append(self.verdict)
         self.liste_verdict = liste_verdict
         liste_verdict.set_visible(False)
-        self.sortie_essai = Gtk.TextView(editable=False, cursor_visible=False, monospace=True, top_margin=8, bottom_margin=8,
-                                         left_margin=10, right_margin=10, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        self.sortie_essai = Gtk.TextView(editable=False, cursor_visible=False, monospace=True, top_margin=8,
+                                         bottom_margin=8, left_margin=10, right_margin=10,
+                                         wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        self.sortie_essai.update_property([Gtk.AccessibleProperty.LABEL], ['Sortie de l’essai'])
         self.defile_essai = Gtk.ScrolledWindow(child=self.sortie_essai, min_content_height=130, visible=False)
         self.defile_essai.add_css_class('card')
         zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12)
         zone.append(liste_verdict)
         zone.append(self.defile_essai)
         g_essai.add(zone)
-        self.add(g_essai)
 
-        # --- indicateur ---
-        g_ind = Adw.PreferencesGroup(title='Barre du haut')
+    def _indicateur(self, g_ind):
         self.ligne_indicateur = Adw.SwitchRow(title='Afficher dans la barre du haut',
                                               subtitle='Montre la RAM en permanence et donne accès aux actions urgentes')
         self.chemin_autostart = donnees.fichier_autostart_indicateur()
@@ -163,13 +199,10 @@ class PageReglages(Adw.PreferencesPage):
         self.ligne_indicateur.set_active(donnees.indicateur_affiche(self.chemin_autostart))
         if not self.commande_indicateur:
             self.ligne_indicateur.set_sensitive(False)
-            self.ligne_indicateur.set_subtitle('L’indicateur n’est pas installé (paquet gagarine, programme gagarine-indicateur)')
+            self.ligne_indicateur.set_subtitle('L’indicateur n’est pas installé (paquet gagarine, programme '
+                                               'gagarine-indicateur)')
         self.ligne_indicateur.connect('notify::active', self._indicateur_change)
         g_ind.add(self.ligne_indicateur)
-        self.add(g_ind)
-
-        self.source.connect('etat', lambda *_: self.recharger())
-        self.recharger()
 
     # --- réglages ---
     def _ligne_nombre(self, cle, titre, aide, unite, mini, maxi):
@@ -229,7 +262,10 @@ class PageReglages(Adw.PreferencesPage):
         erreur = donnees.verifier_reglages(self.valeurs()) if sale else None
         self.bouton_enregistrer.set_sensitive(sale and erreur is None)
         self.bouton_annuler.set_sensitive(sale)
-        self.message_reglages.set_label(erreur or ('L’enregistrement demande votre mot de passe d’administrateur.' if sale else ''))
+        self.message_reglages.set_label(erreur or ('L’enregistrement demande votre mot de passe d’administrateur.'
+                                                   if sale else ''))
+        (self.message_reglages.add_css_class if erreur else self.message_reglages.remove_css_class)('error')
+        self.vue.set_reveal_bottom_bars(sale)
         for cle in ('vigilance', 'seuil', 'urgence'):
             (self.champs[cle].add_css_class if erreur else self.champs[cle].remove_css_class)('error')
 
@@ -279,22 +315,30 @@ class PageReglages(Adw.PreferencesPage):
             return
         actif = self.source.service_actif()
         nom = etat['service']['etat']
-        self.etat_service.set_label('Actif' if actif else ('Arrêté' if nom in ('inactive', 'failed') else nom.capitalize()))
+        arrete = nom in ('inactive', 'failed')
+        self.etat_service.set_label('Actif' if actif else ('Arrêté' if arrete else nom.capitalize()))
         for c in ('success', 'error'):
             self.etat_service.remove_css_class(c)
         self.etat_service.add_css_class('success' if actif else 'error')
+        for c in ('alerte', 'eteint'):
+            self.voyant_service.remove_css_class(c)
+        if not actif:
+            self.voyant_service.add_css_class('alerte' if arrete else 'eteint')
         self.ligne_service.set_subtitle(f'Fichier de réglages : {etat["fichier_reglages"]}')
-        self.boutons_service['demarrer'].set_sensitive(not actif)
-        self.boutons_service['arreter'].set_sensitive(actif)
-        self.boutons_service['redemarrer'].set_sensitive(actif)
+        # seules les commandes utiles sont montrées : Démarrer quand il est arrêté, sinon Redémarrer et Arrêter
+        self.boutons_service['demarrer'].set_visible(not actif)
+        self.boutons_service['redemarrer'].set_visible(actif)
+        self.boutons_service['arreter'].set_visible(actif)
+        for b in self.boutons_service.values():
+            b.set_sensitive(True)
 
     def service(self, action, message):
         self.fenetre.executer(donnees.commande_admin() + ['service', action], message)
 
     def demander_arret_service(self):
         confirmer(self.fenetre, 'Arrêter le service Gagarine ?',
-                  'La RAM ne sera plus protégée tant que le service sera arrêté : un programme qui grossit pourrait figer le poste.',
-                  'Arrêter le service', lambda: self.service('arreter', 'Service arrêté'))
+                  'La RAM ne sera plus protégée tant que le service sera arrêté : un programme qui grossit pourrait '
+                  'figer le poste.', 'Arrêter le service', lambda: self.service('arreter', 'Service arrêté'))
 
     # --- essai ---
     def lancer_essai_cmd(self, admin):
@@ -339,7 +383,8 @@ class PageReglages(Adw.PreferencesPage):
         self.sortie_texte += ligne + '\n'
         tampon = self.sortie_essai.get_buffer()
         tampon.insert(tampon.get_end_iter(), ligne + '\n')
-        GLib.idle_add(lambda: self.defile_essai.get_vadjustment().set_value(self.defile_essai.get_vadjustment().get_upper()))
+        GLib.idle_add(lambda: self.defile_essai.get_vadjustment().set_value(
+            self.defile_essai.get_vadjustment().get_upper()))
         flux.read_line_async(GLib.PRIORITY_DEFAULT, None, self._ligne_essai, processus)
 
     def _fin_essai(self, processus, res):

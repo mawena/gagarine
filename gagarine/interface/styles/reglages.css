@@ -1,0 +1,19 @@
+/* Gagarine 1.5.0 : page « Réglages » (reglages.py). */
+
+/* Barre d'enregistrement, fixe en bas de la page : le message est atténué, sauf une erreur (classe .error). */
+.page-reglages .message-reglages:not(.error) {
+  color: alpha(currentColor, 0.62);
+}
+
+/* Action destructive d'une ligne (« Arrêter » le service) : bouton plat au texte rouge ; seule la confirmation a le
+   bouton rouge plein (docs/conception-1.5.0.md, « Actions »). */
+.page-reglages button.texte-destructif {
+  background-color: transparent;
+  color: @destructive_color;
+}
+.page-reglages button.texte-destructif:hover {
+  background-color: alpha(@destructive_color, 0.1);
+}
+.page-reglages button.texte-destructif:active {
+  background-color: alpha(@destructive_color, 0.18);
+}

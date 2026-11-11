@@ -1,0 +1,89 @@
+/* Gagarine 1.5.0 : page « Journal » (journal.py). Les événements en frise, une carte par jour.
+   Une ligne de la liste porte l'en-tête de son jour : la carte est dessinée sur `.ligne-evenement`, pas sur la liste. */
+
+/* Travail de la file : bleu d'Adwaita, fixe. L'accent du bureau peut être rouge ou orange (Yaru) et se confondrait
+   alors avec l'alerte ou la vigilance. */
+@define-color journal_travail #3584e4;
+/* Contour des cartes en thème clair (libadwaita le fait par une ombre, qui déborderait ici d'une ligne sur l'autre). */
+@define-color journal_contour rgba(0, 0, 0, 0.09);
+
+list.journal {
+  background: none;
+  color: inherit;
+}
+list.journal > row {
+  padding: 0;
+  background: none;
+  border: none;
+}
+/* Le contour de focus va sur la carte de la ligne, pas sur l'en-tête du jour. */
+list.journal > row:focus:focus-visible {
+  outline-width: 0;
+}
+list.journal > row:focus:focus-visible .ligne-evenement {
+  outline: 2px solid alpha(@accent_color, 0.5);
+  outline-offset: -2px;
+}
+
+/* En-tête du jour, au-dessus de sa carte. */
+.entete-jour {
+  margin: 26px 4px 10px 4px;
+}
+list.journal > row.premier-de-la-liste .entete-jour {
+  margin-top: 4px;
+}
+
+/* Une ligne : morceau de carte ; la première et la dernière du jour arrondissent les coins. */
+.ligne-evenement {
+  background-color: @card_bg_color;
+  color: @card_fg_color;
+  padding: 8px 16px 8px 14px;
+  min-height: 42px;
+  border-style: solid;
+  border-width: 1px 1px 0 1px;
+  border-color: @card_shade_color @journal_contour @journal_contour @journal_contour;
+}
+list.journal > row.premier-du-jour .ligne-evenement {
+  border-top-color: @journal_contour;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+list.journal > row.dernier-du-jour .ligne-evenement {
+  border-bottom-width: 1px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* La frise : l'heure dans une colonne fixe, aux chiffres tabulaires. */
+.heure-evenement {
+  font-feature-settings: "tnum";
+  color: alpha(@card_fg_color, 0.68);
+}
+.detail-evenement {
+  font-size: smaller;
+}
+
+/* Pastille teintée selon le type d'événement. */
+.pastille-evenement {
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+  color: alpha(@card_fg_color, 0.72);
+  background-color: alpha(@card_fg_color, 0.07);
+}
+.pastille-evenement.alerte {
+  color: @gagarine_alerte;
+  background-color: alpha(@gagarine_alerte, 0.13);
+}
+.pastille-evenement.vigilance {
+  color: @gagarine_vigilance;
+  background-color: alpha(@gagarine_vigilance, 0.15);
+}
+.pastille-evenement.calme {
+  color: @gagarine_calme;
+  background-color: alpha(@gagarine_calme, 0.14);
+}
+.pastille-evenement.travail {
+  color: @journal_travail;
+  background-color: alpha(@journal_travail, 0.13);
+}
