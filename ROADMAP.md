@@ -184,10 +184,10 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 - [x] Aperçu : groupe « Processeur » (jauge, barres des cœurs, température, fréquence), courbe RAM + processeur, plus actifs de la période
 - [x] Programmes : « Les plus actifs » ; file : cœurs utilisés
 - [x] Indicateur : « RAM 77 % · CPU 23 % », ligne du processeur dans le menu
-- [ ] Captures d'écran
+- [x] Captures d'écran
 
 ## Phase 30 — Paquet, documentation et release 1.4.0
 
-- [ ] Paquet, pages de manuel, README, CHANGELOG, site, metainfo
+- [x] Paquet, pages de manuel, README, CHANGELOG, site, metainfo
 - [ ] Release 1.4.0, GitHub et dépôt APT
 - [ ] Mise en place : `apt upgrade` (par l'utilisateur), vérification du service, de l'interface et de la ligne d'état
