@@ -96,6 +96,8 @@ class PageLarge(Adw.BreakpointBin):
     - `add(widget)` / `remove(widget)` : comme Adw.PreferencesPage ;
     - `colonnes(n)` : n colonnes côte à côte au-delà de `large` sp de page, empilées en dessous ;
     - `defilement` : la Gtk.ScrolledWindow de la page ;
+    - `fixer_en_haut(barre)` : barre fixe au-dessus du défilement (recherche, filtres), aux marges de la page ;
+    - classe `etroite` sur `contenu` quand la page est étroite, pour adapter en CSS les lignes créées à la volée ;
     - `get_title()`, `get_icon_name()` et le nom (`get_name()`) servent à la fenêtre, comme pour Adw.PreferencesPage.
     Les points de rupture portent sur la largeur de la page, pas de la fenêtre (la barre latérale est déduite).
     """
@@ -118,6 +120,24 @@ class PageLarge(Adw.BreakpointBin):
             self.point_etroit.add_setter(self.contenu, prop, valeur)
         self.add_breakpoint(self.point_moyen)
         self.add_breakpoint(self.point_etroit)
+        # les setters ne valent que pour les widgets déjà créés : une classe sert aux lignes ajoutées ensuite
+        self.point_etroit.connect('apply', lambda *_: self.contenu.add_css_class('etroite'))
+        self.point_etroit.connect('unapply', lambda *_: self.contenu.remove_css_class('etroite'))
+        self.vue = None
+
+    def fixer_en_haut(self, barre):
+        """Place `barre` en haut de la page, hors du défilement : elle reste visible quand on fait défiler. Ses marges de
+        côté suivent celles de la page (28 px, 14 px en page étroite). Rend la barre."""
+        if self.vue is None:
+            self.set_child(None)
+            self.vue = Adw.ToolbarView(content=self.defilement, top_bar_style=Adw.ToolbarStyle.FLAT)
+            self.set_child(self.vue)
+        barre.set_margin_start(28)
+        barre.set_margin_end(28)
+        for prop in ('margin-start', 'margin-end'):
+            self.point_etroit.add_setter(barre, prop, 14)
+        self.vue.add_top_bar(barre)
+        return barre
 
     def get_title(self):
         return self._titre
@@ -191,6 +211,16 @@ class Section(Gtk.Box):
         self.description.set_label(description or '')
         self.description.set_visible(bool(description))
 
+    # mêmes noms qu'Adw.PreferencesGroup, pour les pages et les tests qui les lisent
+    def get_title(self):
+        return self.titre.get_label()
+
+    def set_title(self, titre):
+        self.set_titre(titre)
+
+    def get_description(self):
+        return self.description.get_label()
+
     def set_suffixe(self, widget):
         """Remplace les actions de droite (None : aucune)."""
         if self.suffixe is not None:
@@ -203,3 +233,52 @@ class Section(Gtk.Box):
     def ajouter(self, widget):
         self.corps.append(widget)
         return widget
+
+
+class ListeEncadree(Gtk.ListBox):
+    """Liste encadrée de libadwaita (`boxed-list`) pour des Adw.ActionRow ; `add`/`remove` comme Adw.PreferencesGroup,
+    donc utilisable avec `synchroniser`."""
+
+    def __init__(self):
+        super().__init__(selection_mode=Gtk.SelectionMode.NONE, valign=Gtk.Align.START)
+        self.add_css_class('boxed-list')
+
+    def add(self, ligne):
+        self.append(ligne)
+
+
+NIVEAUX_VOYANT = {'calme': '', 'normal': '', 'vigilance': 'vigilance', 'alerte': 'alerte', 'inconnu': 'eteint',
+                  'eteint': 'eteint', '': ''}
+MOTS_NIVEAU = {'': 'calme', 'vigilance': 'vigilance', 'alerte': 'alerte', 'eteint': 'inconnu'}
+
+
+class Voyant(Gtk.Box):
+    """Voyant de tableau de bord (classe `.voyant` de base.css) : disque coloré selon le niveau, avec un halo léger.
+
+    Le niveau est aussi donné en toutes lettres aux lecteurs d'écran (« Niveau : alerte »)."""
+
+    def __init__(self, niveau='inconnu'):
+        super().__init__(valign=Gtk.Align.START, halign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.IMG)
+        self.add_css_class('voyant')
+        self.niveau = None
+        self.set_niveau(niveau)
+
+    def set_niveau(self, niveau):
+        classe = NIVEAUX_VOYANT.get(niveau, 'eteint')
+        if classe == self.niveau:
+            return
+        for c in ('vigilance', 'alerte', 'eteint'):
+            self.remove_css_class(c)
+        if classe:
+            self.add_css_class(classe)
+        self.niveau = classe
+        self.update_property([Gtk.AccessibleProperty.LABEL], [f'Niveau : {MOTS_NIVEAU[classe]}'])
+
+
+def changer_classe(widget, classe, possibles=('vigilance', 'alerte')):
+    """Retire de `widget` les classes `possibles`, puis ajoute `classe` (si elle n'est pas vide)."""
+    for c in possibles:
+        if c != classe:
+            widget.remove_css_class(c)
+    if classe:
+        widget.add_css_class(classe)

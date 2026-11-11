@@ -2,7 +2,7 @@
 
 La fenêtre ne s'ouvre que si GAGARINE_TESTS_GTK=1, pour ne jamais ouvrir de fenêtre sur l'écran réel :
 
-    GAGARINE_TESTS_GTK=1 xvfb-run -a -s "-screen 0 1280x860x24" env GDK_BACKEND=x11 python3 -m unittest discover -s tests -t .
+    GAGARINE_TESTS_GTK=1 dbus-run-session -- xvfb-run -a -s "-screen 0 1600x1000x24" env GDK_BACKEND=x11 python3 -m unittest discover -s tests -t .
 """
 import os
 import sys
@@ -29,6 +29,13 @@ try:
     GTK = os.environ.get('GAGARINE_TESTS_GTK') == '1' and Gdk.Display.get_default() is not None
 except (NameError, ImportError, ValueError):
     GTK = False
+
+
+try:
+    from gagarine.interface.application import STYLES, fichiers_styles
+    STYLES_OK = True
+except (NameError, ImportError, ValueError):
+    STYLES_OK = False
 
 
 def attendre(condition, delai=10.0):
@@ -356,7 +363,7 @@ class TestFenetre(unittest.TestCase):
         self.assertIn('Ultra 7', page.cpu_legende.get_label())
         self.assertIn('2 cœurs performants (P, 4 fils) et 10 économes (E)', page.cpu_legende.get_label())
         self.assertIn(page.cpu_statut.get_label(), ('Calme', 'Occupé', 'Saturé'))
-        self.assertNotIn('e66100', page.cpu_legende.get_label())      # pas chaud : pas d'orange
+        self.assertNotIn('foreground=', page.cpu_legende.get_label())      # pas chaud : pas de couleur
         self.assertTrue(page.coeurs.get_visible())
         self.assertEqual(len(page.coeurs.pourcents), len(f.source.cpu_coeurs))
         prog = f.pages['programmes']
@@ -389,7 +396,9 @@ class TestFenetre(unittest.TestCase):
         f = self.ouvrir()
         page = f.pages['apercu']
         self.assertTrue(attendre(lambda: f.source.processeur() is not None))
-        self.assertIn('e66100', page.cpu_legende.get_label())
+        from gagarine.interface.graphiques import couleur_hex
+        # 1.5.0 : la couleur de vigilance du thème (jeton gagarine_vigilance), plus un orange codé en dur
+        self.assertIn(f'foreground="{couleur_hex(page, "gagarine_vigilance")}"', page.cpu_legende.get_label())
         self.assertIn('97 °C (chaud)', page.cpu_legende.get_label())
 
     def test_cœur_1_3_ne_montre_que_la_mesure_locale(self):
@@ -401,6 +410,10 @@ class TestFenetre(unittest.TestCase):
         self.assertTrue(page.groupe_cpu.get_visible())
         self.assertIn('cœurs', page.cpu_detail.get_label())            # nombre de cœurs de la mesure locale
         self.assertEqual(page.cpu_legende.get_label(), '')              # ni modèle, ni température
+        self.assertEqual(page.coeurs.types, [])                          # barres égales, sans P ni E
+        self.assertEqual(page.titre_etat.get_label(), 'python3 est figé : il attend votre décision.')
+        self.assertTrue(attendre(lambda: page.groupe_gros_direct.get_visible()))
+        self.assertFalse(page.groupe_actifs_direct.get_visible())       # pas de plus actifs sans `processeur`
         self.assertFalse(f.pages['programmes'].groupe_actifs.get_visible())
         fichier = f.pages['file']
         self.assertTrue(attendre(lambda: len(fichier.lignes) == 5))
@@ -409,6 +422,180 @@ class TestFenetre(unittest.TestCase):
         self.assertTrue(attendre(lambda: '24h' in f.source.historiques))
         self.assertFalse(page.groupe_actifs.get_visible())
         self.assertNotIn('processeur au plus', page.resume.get_label())
+
+
+    # --- 1.5.0 : fenêtre, barre latérale, Aperçu ---
+    def test_barre_laterale_et_compteurs(self):
+        f = self.ouvrir()
+        from gagarine.interface.fenetre import PAGES
+        self.assertEqual(list(f.lignes_nav), PAGES)
+        self.assertEqual(list(f.pages), PAGES)
+        c = f.compteurs
+        self.assertTrue(attendre(lambda: f.source.etat and f.source.file and c['programmes'].get_visible()
+                                 and c['file'].get_visible()))
+        self.assertEqual(c['programmes'].get_label(), '1 figé')
+        self.assertTrue(c['programmes'].has_css_class('alerte'))
+        self.assertEqual(c['file'].get_label(), '2 en cours')
+        self.assertRegex(c['apercu'].get_label(), r'^\d+ %$')
+        self.assertFalse(c['journal'].get_visible() or c['reglages'].get_visible())
+        self.assertEqual(f.titre_service.get_label(), 'Service actif')
+        self.assertEqual(f.voyant_service.niveau, '')
+        self.assertFalse(f.bouton_demarrer.get_visible())
+
+    def test_service_arrete(self):
+        os.environ['FAUX_SERVICE'] = 'inactive'
+        self.addCleanup(os.environ.pop, 'FAUX_SERVICE', None)
+        f = self.ouvrir()
+        self.assertTrue(attendre(lambda: f.source.etat))
+        self.assertEqual(f.titre_service.get_label(), 'Service arrêté')
+        self.assertEqual(f.voyant_service.niveau, 'alerte')
+        self.assertTrue(f.bouton_demarrer.get_visible())
+        self.assertFalse(f.banniere.get_revealed())      # fenêtre large : la barre latérale le dit déjà
+        page = f.pages['apercu']
+        self.assertEqual(page.titre_etat.get_label(), 'Le service est arrêté : la RAM n’est pas protégée.')
+        self.assertEqual(page.voyant.niveau, 'alerte')
+        self.assertFalse(page.bouton_programmes.get_visible())
+
+    def test_aller_a_et_raccourcis(self):
+        f = self.ouvrir()
+        self.assertEqual(f.pile.get_visible_child_name(), 'apercu')
+        self.assertEqual(f.page_contenu.get_title(), 'Aperçu')
+        f.aller_a('journal')
+        self.assertEqual(f.pile.get_visible_child_name(), 'journal')
+        self.assertEqual(f.page_contenu.get_title(), f.pages['journal'].get_title())
+        self.assertIs(f.liste.get_selected_row(), f.lignes_nav['journal'])
+        f.activate_action('win.page-file', None)
+        self.assertEqual(f.pile.get_visible_child_name(), 'file')
+        f.liste.select_row(f.lignes_nav['reglages'])          # clic dans la barre latérale
+        self.assertEqual(f.pile.get_visible_child_name(), 'reglages')
+        f.aller_a('inconnue')
+        self.assertEqual(f.pile.get_visible_child_name(), 'reglages')
+
+    def test_phrase_d_etat_et_bouton_programmes(self):
+        f = self.ouvrir()
+        page = f.pages['apercu']
+        self.assertTrue(attendre(lambda: f.source.etat))
+        self.assertEqual(page.titre_etat.get_label(), 'python3 est figé : il attend votre décision.')
+        self.assertEqual(page.voyant.niveau, 'alerte')
+        self.assertTrue(page.bouton_programmes.get_visible())
+        page.bouton_programmes.emit('clicked')
+        self.assertEqual(f.pile.get_visible_child_name(), 'programmes')
+
+    def test_phrase_calme(self):
+        f = self.ouvrir('vide')
+        page, s = f.pages['apercu'], f.source
+        self.assertTrue(attendre(lambda: s.etat))
+        s.arreter()                                   # plus de mesure réelle : la phrase lit les valeurs posées ici
+        s.ram_pourcent, s.ram_dispo_mo, s.cpu_pourcent = 40.0, 8192, None
+        page.maj_phrase()
+        self.assertEqual(page.voyant.niveau, '')
+        self.assertEqual(page.titre_etat.get_label(), 'Le poste respire : 8,0 Go libres, processeur calme.')
+        self.assertFalse(page.bouton_programmes.get_visible())
+
+    def test_mode_etroit(self):
+        os.environ['GAGARINE_COMMANDE'] = FAUX
+        os.environ['FAUX_MODE'] = 'normal'
+        os.environ['FAUX_SERVICE'] = 'inactive'
+        self.addCleanup(os.environ.pop, 'FAUX_SERVICE', None)
+        from gagarine.interface.fenetre import Fenetre
+        f = Fenetre(self.app)
+        self.addCleanup(lambda: (f.source.arreter(), f.destroy()))
+        f.set_default_size(420, 700)
+        f.present()
+        self.assertTrue(attendre(lambda: f.split.get_collapsed()))
+        self.assertTrue(f.split.get_show_content())               # le contenu d'abord
+        f.split.set_show_content(False)                           # bouton retour : la liste des pages
+        f.aller_a('file')
+        self.assertTrue(f.split.get_show_content())
+        self.assertEqual(f.pile.get_visible_child_name(), 'file')
+        # barre latérale cachée : le bandeau dit que le service est arrêté
+        self.assertTrue(attendre(lambda: f.banniere.get_revealed()))
+        self.assertIn('arrêté', f.banniere.get_title())
+
+    def test_apercu_pleine_largeur(self):
+        f = self.ouvrir()
+        from gagarine.interface.outils import PageLarge
+        page = f.pages['apercu']
+        self.assertIsInstance(page, PageLarge)
+        self.assertIsInstance(page.defilement, Gtk.ScrolledWindow)
+        self.assertTrue(attendre(lambda: f.source.etat and len(page.lignes_actifs_direct) == 5))
+        self.assertTrue(page.groupe_gros_direct.get_visible())
+        self.assertEqual(len(page.lignes_gros_direct), 5)
+        self.assertEqual(page.lignes_actifs_direct[4242].get_title(), 'ffmpeg')
+        self.assertEqual(page.coeurs.coeurs_performants, 2)
+        page.boutons_periode['24h'].set_active(True)               # 24 h : ce que l'historique a retenu
+        self.assertFalse(page.groupe_gros_direct.get_visible() or page.groupe_actifs_direct.get_visible())
+        self.assertTrue(attendre(lambda: page.groupe_gros.get_visible()))
+
+    def test_colonnes_cote_a_cote_ou_empilees(self):
+        from gagarine.interface.outils import PageLarge
+        for largeur, attendu in ((1390, Gtk.Orientation.HORIZONTAL), (490, Gtk.Orientation.VERTICAL)):
+            w = Gtk.Window(default_width=largeur, default_height=500)
+            page = PageLarge('Essai', 'essai', 'computer-symbolic')
+            colonnes = page.colonnes(2)
+            for c in colonnes:
+                c.append(Gtk.Label(label='colonne'))
+            w.set_child(page)
+            w.present()
+            self.addCleanup(w.destroy)
+            barre = page.fixer_en_haut(Gtk.Label(label='barre fixe'))
+            self.assertIsInstance(page.vue, Adw.ToolbarView)
+            self.assertIs(page.defilement.get_ancestor(Adw.ToolbarView), page.vue)     # le défilement passe sous la barre
+            rangee = colonnes[0].get_parent()
+            self.assertTrue(attendre(lambda: page.get_width() > 0 and rangee.get_orientation() == attendu, 5), largeur)
+            etroite = attendu == Gtk.Orientation.VERTICAL
+            self.assertEqual(page.contenu.has_css_class('etroite'), etroite)     # classe pour les lignes créées ensuite
+            self.assertEqual(barre.get_margin_start(), 14 if etroite else 28)
+
+    def test_styles_sans_erreur_et_couleurs_du_theme(self):
+        from gagarine.interface.application import charger_styles
+
+        def lire(nom):
+            with open(os.path.join(STYLES, nom), encoding='utf-8') as fichier:
+                return fichier.read()
+        clairs, sombres = fichiers_styles()
+        erreurs = []
+        for fichiers in (clairs, sombres):
+            p = Gtk.CssProvider()
+            p.connect('parsing-error', lambda _p, _section, e: erreurs.append(e.message))
+            p.load_from_string('\n'.join(lire(n) for n in fichiers))
+        self.assertEqual(erreurs, [])
+        self.assertTrue(charger_styles())
+        f = self.ouvrir()
+        palette = f.pages['apercu'].palette
+        for nom in palette.sondes:
+            self.assertIsNotNone(palette.couleur(nom), nom)
+        # les sondes suivent le thème : bleu de la RAM plus clair en sombre (base-sombre.css)
+        gestion = Adw.StyleManager.get_default()
+        self.addCleanup(gestion.set_color_scheme, Adw.ColorScheme.DEFAULT)
+        couleurs = {}
+        for schema, sombre in ((Adw.ColorScheme.FORCE_LIGHT, False), (Adw.ColorScheme.FORCE_DARK, True)):
+            gestion.set_color_scheme(schema)
+            self.assertTrue(attendre(lambda: gestion.get_dark() == sombre, 3))
+            couleurs[sombre] = tuple(round(255 * v) for v in palette.couleur('gagarine_ram')[:3])
+        self.assertEqual(couleurs, {False: (0x35, 0x84, 0xe4), True: (0x62, 0xa0, 0xea)})
+
+
+@unittest.skipUnless(STYLES_OK, 'PyGObject, GTK 4 ou libadwaita absents')
+class TestFichiersStyles(unittest.TestCase):
+    def test_base_d_abord_puis_ordre_alphabetique(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as dossier:
+            for nom in ('programmes.css', 'base.css', 'apercu-sombre.css', 'apercu.css', 'base-sombre.css', 'lisezmoi.txt',
+                        'journal-sombre.css'):
+                open(os.path.join(dossier, nom), 'w').close()
+            clairs, sombres = fichiers_styles(dossier)
+        self.assertEqual(clairs, ['base.css', 'apercu.css', 'programmes.css'])
+        self.assertEqual(sombres, ['base-sombre.css', 'apercu-sombre.css'])     # « journal-sombre » sans journal.css : ignoré
+
+    def test_dossier_absent(self):
+        self.assertEqual(fichiers_styles('/n/existe/pas'), ([], []))
+
+    def test_styles_du_paquet(self):
+        clairs, sombres = fichiers_styles()
+        self.assertEqual(clairs[0], 'base.css')
+        self.assertIn('apercu.css', clairs)
+        self.assertIn('base-sombre.css', sombres)
 
 
 def donnees_args(page):

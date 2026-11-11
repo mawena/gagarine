@@ -10,6 +10,22 @@
 @define-color gagarine_vigilance @warning_color;
 @define-color gagarine_alerte @error_color;
 
+/* Variantes « fond » des niveaux, pour les aplats (remplissage de la jauge, barres des cœurs) : de l'ambre et du rouge
+   francs dans les deux thèmes, là où @warning_color, fait pour le texte, est jaune pâle en sombre et brun en clair. */
+@define-color gagarine_calme_fond @success_bg_color;
+@define-color gagarine_vigilance_fond @warning_bg_color;
+@define-color gagarine_alerte_fond @error_bg_color;
+
+/* Sondes des dessins Cairo (graphiques.Palette) : étiquettes cachées dont la couleur est le jeton. */
+.sonde-ram { color: @gagarine_ram; }
+.sonde-cpu { color: @gagarine_cpu; }
+.sonde-calme { color: @gagarine_calme; }
+.sonde-vigilance { color: @gagarine_vigilance; }
+.sonde-alerte { color: @gagarine_alerte; }
+.sonde-calme-fond { color: @gagarine_calme_fond; }
+.sonde-vigilance-fond { color: @gagarine_vigilance_fond; }
+.sonde-alerte-fond { color: @gagarine_alerte_fond; }
+
 /* Lectures d'instrument : grands chiffres tabulaires. */
 .lecture {
   font-size: 40px;
@@ -92,4 +108,25 @@
 /* Panneau d'instrument : carte de libadwaita avec un peu plus d'air. */
 .panneau {
   padding: 18px 20px;
+}
+
+/* Barre latérale : état du service en bas, sous la liste des pages. */
+.barre-service {
+  padding: 12px 16px 16px 16px;
+}
+
+/* Action destructive d'une ligne (Arrêter, Annuler, Décharger) : bouton plat au texte rouge. Seule la confirmation a le
+   bouton rouge plein (destructive-action) : une file de cinq travaux ne montre plus cinq boutons rouges. */
+button.texte-destructif {
+  background-color: transparent;
+  color: @destructive_color;
+}
+button.texte-destructif:hover {
+  background-color: alpha(@destructive_color, 0.1);
+}
+button.texte-destructif:active {
+  background-color: alpha(@destructive_color, 0.18);
+}
+button.texte-destructif:disabled {
+  color: alpha(@destructive_color, 0.5);
 }
