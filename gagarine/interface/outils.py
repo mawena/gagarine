@@ -103,7 +103,7 @@ class PageLarge(Adw.BreakpointBin):
     """
 
     def __init__(self, titre, nom, icone, large=LARGE_SP, etroite=ETROITE_SP):
-        super().__init__(width_request=360, height_request=300)
+        super().__init__(width_request=320, height_request=300)
         self.set_name(nom)
         self._titre = titre
         self._icone = icone

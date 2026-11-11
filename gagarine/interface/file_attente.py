@@ -98,10 +98,22 @@ def etat_travail(t):
 
 
 def motif_travail(t):
-    """« Attend : mémoire : 1,8 Go libres, il en faut 6 » pour un travail en attente dont le cœur dit le motif ; sinon None."""
+    """Motif d'un travail en attente, en une phrase sans double deux-points ; None pour un travail en cours ou sans motif.
+
+    « mémoire : 1,8 Go libres, il en faut 6 » -> « Attend de la mémoire : 1,8 Go libres, il en faut 6 » ;
+    « cœurs : … » -> « Attend des cœurs : … » ; « derrière « x » (normal) » -> « Attend derrière « x » (normal) » ;
+    autre motif -> « Attend : motif ».
+    """
     if t.get('etat') == 'en cours' or not t.get('motif'):
         return None
-    return 'Attend : ' + ' '.join(str(t['motif']).split())
+    motif = ' '.join(str(t['motif']).split())
+    for prefixe, debut in (('mémoire : ', 'Attend de la mémoire : '), ('cœurs : ', 'Attend des cœurs : '),
+                           ('coeurs : ', 'Attend des cœurs : ')):
+        if motif.startswith(prefixe):
+            return debut + motif[len(prefixe):]
+    if motif.startswith('derrière '):
+        return 'Attend ' + motif
+    return 'Attend : ' + motif
 
 
 def description_travail(t, maintenant=None):
