@@ -191,3 +191,25 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 - [x] Paquet, pages de manuel, README, CHANGELOG, site, metainfo
 - [x] Release 1.4.0, GitHub et dépôt APT
 - [x] Mise en place : mise à jour par `pkexec`, vérification du service (`/run/gagarine/processeur.json` toutes les 2 s, moins de 1 % d'un cœur de plus), de l'indicateur, de la ligne d'état et de l'historique
+
+## Phase 31 — Nouveau design : fondations (1.5.0)
+
+Conception : [docs/conception-1.5.0.md](docs/conception-1.5.0.md).
+
+- [ ] Conception, styles de base (clair et sombre), pages pleine largeur (`PageLarge`), sections et colonnes
+
+## Phase 32 — Fenêtre et Aperçu
+
+- [ ] Barre latérale avec compteurs vivants et état du service
+- [ ] Aperçu : phrase d'état et voyant, instruments RAM et processeur, courbe pleine largeur, colonnes
+
+## Phase 33 — Pages en pleine largeur
+
+- [ ] Programmes et File d'attente
+- [ ] Journal (frise par jour) et Réglages en deux colonnes
+
+## Phase 34 — Paquet, documentation et release 1.5.0
+
+- [ ] Captures (largeur normale, grande fenêtre, thème clair), README, site, CHANGELOG, metainfo
+- [ ] Release 1.5.0, GitHub et dépôt APT
+- [ ] Mise en place sur le poste
