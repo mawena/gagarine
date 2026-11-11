@@ -190,4 +190,4 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 
 - [x] Paquet, pages de manuel, README, CHANGELOG, site, metainfo
 - [x] Release 1.4.0, GitHub et dépôt APT
-- [ ] Mise en place : `apt upgrade` (par l'utilisateur), vérification du service, de l'interface et de la ligne d'état
+- [x] Mise en place : mise à jour par `pkexec`, vérification du service (`/run/gagarine/processeur.json` toutes les 2 s, moins de 1 % d'un cœur de plus), de l'indicateur, de la ligne d'état et de l'historique
