@@ -449,10 +449,11 @@ def dossier_ecriture(env=None, root=None):
 
 
 def dossiers_lecture(env=None):
-    """Où lire : $GAGARINE_DOSSIER_EXECUTION puis /run/gagarine."""
+    """Où lire : $GAGARINE_DOSSIER_EXECUTION seul s'il est défini (essais, développement), sinon /run/gagarine.
+    Comme la ligne d'état : un dossier choisi n'est jamais complété par celui du service installé."""
     env = os.environ if env is None else env
     d = env.get('GAGARINE_DOSSIER_EXECUTION')
-    return [d, DOSSIER_EXECUTION] if d else [DOSSIER_EXECUTION]
+    return [d] if d else [DOSSIER_EXECUTION]
 
 
 def ecrire_fichier(dossier, obj):
