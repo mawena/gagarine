@@ -1,0 +1,45 @@
+/* Gagarine 1.5.0 : page File d'attente (docs/conception-1.5.0.md, chantier B). */
+
+/* Rang du travail dans la file : un chiffre tabulaire, atténué. */
+#file row.travail .rang {
+  font-size: 15px;
+  font-weight: 700;
+  color: alpha(currentColor, 0.45);
+}
+
+/* Commande d'un travail : en chasse fixe, comme dans un terminal. */
+#file row .commande {
+  font-family: monospace;
+}
+
+/* Valeurs des colonnes (sous leur petit libellé). */
+#file row .valeur-colonne {
+  font-feature-settings: "tnum";
+}
+
+/* Pastille d'état : « En cours » en vert (niveau calme), « En attente » neutre et atténuée. */
+#file .pastille {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+#file .pastille.en-cours {
+  color: @gagarine_calme;
+  background-color: alpha(@gagarine_calme, 0.14);
+}
+#file .pastille.en-attente {
+  color: alpha(currentColor, 0.7);
+  background-color: alpha(currentColor, 0.08);
+}
+
+/* Priorité : « Urgent » en gras, « En fond » atténué ; pas de couleur (ce n'est pas un niveau). */
+#file .priorite {
+  font-size: 12px;
+}
+#file .priorite.urgente {
+  font-weight: 700;
+}
+#file .priorite.en-fond {
+  color: alpha(currentColor, 0.6);
+}

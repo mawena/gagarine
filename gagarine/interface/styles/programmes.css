@@ -1,0 +1,32 @@
+/* Gagarine 1.5.0 : page Programmes, et listes communes avec la File d'attente (docs/conception-1.5.0.md, chantier B).
+   Les règles sont limitées aux deux pages (#programmes, #file : nom des pages pleine largeur). */
+
+/* Action destructive d'une ligne : bouton plat au texte rouge. libadwaita 1.5 n'a pas ce style (un bouton
+   « flat destructive-action » garde son fond rouge plein) ; seule la confirmation a le bouton rouge plein. */
+#programmes button.flat.destructive-action,
+#file button.flat.destructive-action {
+  color: @destructive_color;
+  background-color: transparent;
+}
+#programmes button.flat.destructive-action:hover,
+#file button.flat.destructive-action:hover {
+  background-color: alpha(@destructive_color, 0.1);
+}
+#programmes button.flat.destructive-action:active,
+#file button.flat.destructive-action:active {
+  background-color: alpha(@destructive_color, 0.18);
+}
+#programmes button.flat.destructive-action:disabled,
+#file button.flat.destructive-action:disabled {
+  color: alpha(@destructive_color, 0.5);
+}
+
+/* Section vide : une phrase calme, un peu atténuée. */
+#programmes row.phrase-vide,
+#file row.phrase-vide {
+  color: alpha(currentColor, 0.75);
+}
+#programmes row.phrase-vide image,
+#file row.phrase-vide image {
+  opacity: 0.7;
+}
