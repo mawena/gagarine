@@ -1,5 +1,5 @@
 """Page « Programmes » : programmes figés (Reprendre, Arrêter), ménage des inactifs, plafond des applications du bureau
-et plus gros programmes."""
+plus actifs (processeur) et plus gros programmes."""
 import getpass
 
 import gi
@@ -17,7 +17,7 @@ class PageProgrammes(Adw.PreferencesPage):
         super().__init__(title='Programmes', name='programmes', icon_name='media-playback-pause-symbolic')
         self.fenetre = fenetre
         self.source = fenetre.source
-        self.lignes_figes, self.lignes_gros = {}, {}
+        self.lignes_figes, self.lignes_gros, self.lignes_actifs = {}, {}, {}
         self.figes = []
         self.utilisateur = getpass.getuser()
 
@@ -55,6 +55,16 @@ class PageProgrammes(Adw.PreferencesPage):
         self.lignes_applis, self.applis = {}, {}
         self.add(self.groupe_applis)
 
+        # plus actifs (1.4.0) : masqué avec un cœur qui ne mesure pas le processeur
+        self.groupe_actifs = Adw.PreferencesGroup(
+            title='Les plus actifs', visible=False,
+            description='Les dix programmes qui occupent le plus le processeur en ce moment (un cœur plein = 1 cœur).')
+        self.vide_actifs = ligne_vide('Le poste est calme', 'Aucun programme n’utilise le processeur de façon notable.',
+                                      'dialog-information-symbolic')
+        self.groupe_actifs.add(self.vide_actifs)
+        self.actifs = {}
+        self.add(self.groupe_actifs)
+
         self.groupe_gros = Adw.PreferencesGroup(
             title='Plus gros programmes', description='Les dix programmes qui prennent le plus de mémoire (RAM et swap).')
         self.vide_gros = ligne_vide('Liste indisponible', 'Elle s’affichera dès que Gagarine répondra.', 'dialog-information-symbolic')
@@ -78,6 +88,11 @@ class PageProgrammes(Adw.PreferencesPage):
         self.figes = {f.get('pid'): f for f in etat['figes']}
         self._basculer(self.groupe_figes, self.vide_figes, bool(self.figes))
         synchroniser(self.groupe_figes, self.lignes_figes, list(self.figes), self._creer_fige, self._maj_fige)
+        proc = etat.get('processeur')
+        self.groupe_actifs.set_visible(proc is not None)
+        self.actifs = {a['pid']: a for a in (proc or {}).get('plus_actifs', [])[:10]}
+        self.vide_actifs.set_visible(not self.actifs)
+        synchroniser(self.groupe_actifs, self.lignes_actifs, list(self.actifs), self._creer_actif, self._maj_actif)
         gros = {g.get('pid'): g for g in etat['plus_gros']}
         self._basculer(self.groupe_gros, self.vide_gros, bool(gros))
         synchroniser(self.groupe_gros, self.lignes_gros, list(gros), self._creer_gros,
@@ -267,6 +282,20 @@ class PageProgrammes(Adw.PreferencesPage):
         confirmer(self.fenetre, f'Arrêter « {nom} » ?',
                   f'Le programme (PID {pid}) sera arrêté définitivement. Ce qu’il n’a pas enregistré sera perdu.',
                   'Arrêter', lambda: self.fenetre.executer(self._base(pid) + ['arreter', str(pid)], f'« {nom} » arrêté'))
+
+    # --- plus actifs (processeur) ---
+    def _creer_actif(self, pid):
+        r = Adw.ActionRow(selectable=False)
+        r.add_prefix(Gtk.Image.new_from_icon_name('system-run-symbolic'))
+        r.valeur = etiquette('', ['numeric'])
+        r.add_suffix(r.valeur)
+        return r
+
+    def _maj_actif(self, pid, ligne):
+        titre, sous, valeur = donnees.titre_actif(self.actifs[pid])
+        ligne.set_title(echappe(titre))
+        ligne.set_subtitle(echappe(sous))
+        ligne.valeur.set_label(valeur)
 
     # --- plus gros programmes ---
     def _creer_gros(self, pid):

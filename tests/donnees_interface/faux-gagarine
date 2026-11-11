@@ -8,6 +8,10 @@ Variables : FAUX_MODE = normal (défaut) | vide (rien de figé, file vide, rien 
 Contrats de la 1.3.0 (docs/conception-1.3.0.md) : file parallèle et priorités (`paralleles`, `en_cours`, `priorite`, `besoin_go`,
 `motif`), `fuites` de `etat --json`, `tendance` de `file appris`, événements `fuite` et `fuite-travail`, `file priorite`.
             | v12 (cœur 1.2.x : aucun champ ni commande de la 1.3.0 ; `file priorite` inconnue, code 2)
+Contrats de la 1.4.0 (docs/conception-1.4.0.md) : `processeur` de `etat --json`, `cpu`, `cpu_max`, `charge`, `temperature` des
+points et `actifs` de `historique --json`, `coeurs_utilises` des travaux en cours et `coeurs_moyens` des travaux passés.
+            | v13 (cœur 1.3.x : aucun champ de la 1.4.0 ; v12 et ancien n'en ont pas non plus)
+            FAUX_CHAUD = 1 : le processeur est « chaud » (97 °C)
 Les actions (reprendre, arrêter, annuler, service, réglages, essai) ne font rien et le disent.
 """
 import json
@@ -17,6 +21,8 @@ import time
 from datetime import datetime, timedelta, timezone
 
 mode = os.environ.get('FAUX_MODE', 'normal')
+a140 = mode not in ('v12', 'v13', 'ancien')     # le cœur sait-il parler du processeur ?
+chaud = os.environ.get('FAUX_CHAUD') == '1'
 args = sys.argv[1:]
 maintenant = time.time()
 
@@ -35,6 +41,28 @@ def meminfo():
     if os.environ.get('FAUX_RAM'):
         dispo = total * (1 - float(os.environ['FAUX_RAM']) / 100)
     return total, dispo
+
+
+def processeur():
+    """Un Intel hybride de 14 cœurs logiques (4 P, 10 E), occupé par un rendu ffmpeg."""
+    par_coeur = [88.0, 91.5, 74.0, 79.5, 34.0, 41.5, 22.0, 63.0, 18.5, 27.0, 55.0, 12.0, 8.5, 46.0]
+    if mode == 'vide':
+        par_coeur = [3.0, 6.5, 2.0, 1.5, 0.5, 4.0, 0.0, 1.0, 2.5, 0.5, 0.0, 1.5, 0.0, 0.5]
+    pourcent = round(sum(par_coeur) / len(par_coeur), 1)
+    actifs = [] if mode == 'vide' else [
+        {"pid": 4242, "nom": "ffmpeg", "coeurs": 6.21, "pourcent": 44.4, "utilisateur": "charles-gamligo", "noyau": False},
+        {"pid": 3100, "nom": "chrome", "coeurs": 1.4, "pourcent": 10.0, "utilisateur": "charles-gamligo", "noyau": False},
+        {"pid": 2210, "nom": "gnome-shell", "coeurs": 0.62, "pourcent": 4.4, "utilisateur": "charles-gamligo", "noyau": False},
+        {"pid": 7301, "nom": "firefox", "coeurs": 0.48, "pourcent": 3.4, "utilisateur": "charles-gamligo", "noyau": False},
+        {"pid": 105, "nom": "kswapd0", "coeurs": 0.31, "pourcent": 2.2, "utilisateur": "root", "noyau": True},
+        {"pid": 5120, "nom": "code", "coeurs": 0.22, "pourcent": 1.6, "utilisateur": "charles-gamligo", "noyau": False},
+        {"pid": 880, "nom": "dockerd", "coeurs": 0.07, "pourcent": 0.5, "utilisateur": "root", "noyau": False},
+        {"pid": 1203, "nom": "postgres", "coeurs": 0.03, "pourcent": 0.2, "utilisateur": "postgres", "noyau": False}]
+    return {"t": maintenant, "date": iso(maintenant), "source": "service", "intervalle_s": 2.0, "pourcent": pourcent,
+            "nb_coeurs": 14, "par_coeur": par_coeur, "types": ["P"] * 4 + ["E"] * 10,
+            "modele": "Intel(R) Core(TM) Ultra 7 155U", "charge": [2.41, 1.98, 1.5], "pression": 0.03,
+            "temperature": 97.0 if chaud else 72.0, "temperature_critique": 110.0, "chaud": chaud,
+            "frequence_mhz": 1850, "frequence_max_mhz": 4800, "plus_actifs": actifs}
 
 
 def etat():
@@ -70,6 +98,7 @@ def etat():
         "fuites": [] if mode == 'vide' else [
             {"pid": 6001, "nom": "node", "pente_mo_min": 210, "depuis": iso(maintenant - 420)},
             {"pid": 7301, "nom": "firefox", "pente_mo_min": 130, "depuis": iso(maintenant - 180)}],
+        **({"processeur": processeur()} if a140 else {}),
     }
 
 
@@ -78,11 +107,11 @@ def fichier_etat():
     sortie = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sortie-exemple.log')
     travaux = [] if mode == 'vide' else [
         {"ticket": "1762785000000-1234.json", "position": 1, "nom": "rendu vidéo", "pid": 1234, "depuis": iso(maintenant - 754, True),
-         "etat": "en cours", "ram": 4, "besoin_go": 4, "coeurs": 4, "priorite": "urgent",
+         "etat": "en cours", "ram": 4, "besoin_go": 4, "coeurs": 4, "priorite": "urgent", "coeurs_utilises": 3.9,
          "commande": "ffmpeg -i montage.mkv -c:v libx264 -crf 18 sortie.mp4",
          "unite": "gagarine-travail-1762785000000-1234.scope", "sortie": sortie, "source": "gagarine"},
         {"ticket": "1762785050000-1280.json", "position": 2, "nom": "tests voix", "pid": 1280, "depuis": iso(maintenant - 312, True),
-         "etat": "en cours", "ram": 3, "besoin_go": 3, "coeurs": 2, "priorite": "fond",
+         "etat": "en cours", "ram": 3, "besoin_go": 3, "coeurs": 2, "priorite": "fond", "coeurs_utilises": 1.2,
          "commande": "python3 -m unittest discover -s tests",
          "unite": "gagarine-travail-1762785050000-1280.scope", "sortie": sortie, "source": "gagarine"},
         {"ticket": "1762785100000-1301.json", "position": 3, "nom": "tests de non-régression", "pid": 1301,
@@ -96,6 +125,9 @@ def fichier_etat():
         {"ticket": "1762785300000-1400.json", "position": 5, "nom": "ancien outil", "pid": 1400,
          "depuis": iso(maintenant - 20, True), "etat": "en attente", "ram": None, "coeurs": 2,
          "commande": "make test", "unite": None, "sortie": None, "source": "autre"}]
+    if not a140:
+        for t in travaux:
+            t.pop("coeurs_utilises", None)
     return {"ram_disponible_go": round(dispo / 1024, 1), "charge": 2.1, "coeurs": 14,
             "dossier": "/tmp/file-attente-travaux-lourds", "travaux": travaux,
             "paralleles": 3, "en_cours": sum(1 for t in travaux if t["etat"] == "en cours")}
@@ -152,8 +184,16 @@ def historique(depuis):
         ram = 52 + 18 * abs(((t / 3600) % 24) - 12) / 12 * -1 + 22 + 6 * ((i * 7) % 5) / 5
         if (int(t) // pas) % 211 < 4:
             ram = 94 + ((int(t) // pas) % 3)       # pics rares, proches du seuil
-        points.append({"date": iso(t), "ram": round(min(ram, 97.4), 1), "swap_mo": int(1500 + 4000 * jour),
-                       "zram_mo": int(900 + 800 * jour), "pression": round(max(0.0, ram - 85) / 3, 1)})
+        point = {"date": iso(t), "ram": round(min(ram, 97.4), 1), "swap_mo": int(1500 + 4000 * jour),
+                 "zram_mo": int(900 + 800 * jour), "pression": round(max(0.0, ram - 85) / 3, 1)}
+        if a140:
+            # le processeur : travail la journée, calme la nuit, quelques rendus qui le saturent
+            cpu = 12 + 30 * max(0.0, 1 - abs(((t / 3600) % 24) - 14) / 6) + 9 * ((i * 11) % 7) / 7
+            if (int(t) // pas) % 157 < 6:
+                cpu = 86 + ((int(t) // pas) % 5) * 2.5
+            point.update({"cpu": round(cpu, 1), "cpu_max": round(min(100.0, cpu + (0 if pas == 60 else 9)), 1),
+                          "charge": round(cpu / 100 * 14 * 0.9, 2), "temperature": round(46 + cpu * 0.45, 1)})
+        points.append(point)
     incidents = [
         {"date": iso(maintenant - duree * 0.18), "source": "gagarine", "action": "fige", "pid": 3900, "nom": "node", "ram": 95.9,
          "memoire": 4200 * 1048576, "declencheur": "anticipation"},
@@ -164,13 +204,21 @@ def historique(depuis):
         {"date": iso(maintenant - duree * 0.83), "source": "file", "action": "limite", "nom": "tests", "declare": 1, "limite": 3,
          "pic_go": 3.2},
     ] if duree >= 86400 else []
+    actifs = [] if (mode == 'vide' or not a140) else [
+        {"nom": "ffmpeg", "pic_coeurs": 12.8, "minutes": 214, "cpu_min": 1260.0},
+        {"nom": "chrome", "pic_coeurs": 3.1, "minutes": 840, "cpu_min": 910.5},
+        {"nom": "cc1", "pic_coeurs": 9.4, "minutes": 96, "cpu_min": 420.0},
+        {"nom": "node", "pic_coeurs": 2.2, "minutes": 410, "cpu_min": 318.0},
+        {"nom": "gnome-shell", "pic_coeurs": 0.9, "minutes": 1400, "cpu_min": 204.5}] if duree >= 86400 else []
     return {"depuis_s": duree, "pas_s": pas, "points": points, "incidents": incidents,
+            **({"actifs": actifs} if a140 else {}),
             "gros": [{"nom": "chrome", "pic_mo": 4100, "minutes": 840}, {"nom": "python3", "pic_mo": 9100, "minutes": 35},
                      {"nom": "code", "pic_mo": 2300, "minutes": 620}] if duree >= 86400 else [],
-            "travaux": [{"nom": "rendu vidéo", "date": iso(maintenant - 7200), "duree": 754.0, "code": 0, "pic_go": 3.8},
-                        {"nom": "tests de non-régression", "date": iso(maintenant - 30000), "duree": 1380.0, "code": 1, "pic_go": 6.3},
-                        {"nom": "export PDF", "date": iso(maintenant - 90000), "duree": 312.0, "code": 0, "pic_go": 1.4},
-                        {"nom": "gradle build", "date": iso(maintenant - 200000), "duree": 205.0, "code": 0, "pic_go": 5.1}]
+            "travaux": [dict(t, **({"cpu_s": round(t["duree"] * m, 1), "coeurs_moyens": m} if a140 else {})) for t, m in (
+                        ({"nom": "rendu vidéo", "date": iso(maintenant - 7200), "duree": 754.0, "code": 0, "pic_go": 3.8}, 5.4),
+                        ({"nom": "tests de non-régression", "date": iso(maintenant - 30000), "duree": 1380.0, "code": 1, "pic_go": 6.3}, 2.1),
+                        ({"nom": "export PDF", "date": iso(maintenant - 90000), "duree": 312.0, "code": 0, "pic_go": 1.4}, 0.9),
+                        ({"nom": "gradle build", "date": iso(maintenant - 200000), "duree": 205.0, "code": 0, "pic_go": 5.1}, 3.3))]
             if mode != 'vide' else []}
 
 

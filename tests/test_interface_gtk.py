@@ -346,6 +346,70 @@ class TestFenetre(unittest.TestCase):
             n, c = n + 1, c.get_next_sibling()
         self.assertEqual(n, 4)
 
+    def test_processeur_140(self):
+        f = self.ouvrir()
+        page = f.pages['apercu']
+        self.assertTrue(attendre(lambda: f.source.etat and f.source.processeur() and f.source.cpu_pourcent is not None))
+        self.assertTrue(page.groupe_cpu.get_visible())
+        self.assertIn('%', page.cpu_pourcent.get_label())
+        self.assertIn('14 cœurs', page.cpu_detail.get_label() + page.cpu_legende.get_label())      # service : 14 cœurs logiques
+        self.assertIn('Ultra 7', page.cpu_legende.get_label())
+        self.assertIn('4 cœurs performants (P) et 10 économes (E)', page.cpu_legende.get_label())
+        self.assertIn(page.cpu_statut.get_label(), ('Calme', 'Occupé', 'Saturé'))
+        self.assertNotIn('e66100', page.cpu_legende.get_label())      # pas chaud : pas d'orange
+        self.assertTrue(page.coeurs.get_visible())
+        self.assertEqual(len(page.coeurs.pourcents), len(f.source.cpu_coeurs))
+        prog = f.pages['programmes']
+        self.assertTrue(prog.groupe_actifs.get_visible())
+        self.assertEqual(len(prog.lignes_actifs), 8)
+        self.assertEqual(prog.lignes_actifs[4242].get_title(), 'ffmpeg')
+        self.assertEqual(prog.lignes_actifs[4242].valeur.get_label(), '6,2 cœurs · 44 %')
+        self.assertIn('noyau', prog.lignes_actifs[105].get_subtitle())
+        fichier = f.pages['file']
+        self.assertTrue(attendre(lambda: len(fichier.lignes) == 5))
+        self.assertIn('processeur : 3,9 cœurs', fichier.lignes['1762785000000-1234.json'].get_subtitle())
+        self.assertNotIn('processeur', fichier.lignes['1762785100000-1301.json'].get_subtitle())      # en attente
+        self.assertTrue(attendre(lambda: '7j' in f.source.historiques))
+        self.assertTrue(any('5,4 cœurs en moyenne' in (r.get_subtitle() or '') for r in fichier.lignes_passes))
+
+    def test_courbe_processeur_24h(self):
+        f = self.ouvrir()
+        page = f.pages['apercu']
+        page.boutons_periode['24h'].set_active(True)
+        self.assertTrue(attendre(lambda: '24h' in f.source.historiques and page.groupe_actifs.get_visible()))
+        self.assertIn('processeur au plus', page.resume.get_label())
+        self.assertEqual(len(page.lignes_actifs), 5)
+        self.assertIn('min de processeur', page.lignes_actifs[0].get_subtitle())
+        page.boutons_periode['5min'].set_active(True)
+        self.assertFalse(page.groupe_actifs.get_visible())
+
+    def test_processeur_chaud_en_orange(self):
+        os.environ['FAUX_CHAUD'] = '1'
+        self.addCleanup(os.environ.pop, 'FAUX_CHAUD', None)
+        f = self.ouvrir()
+        page = f.pages['apercu']
+        self.assertTrue(attendre(lambda: f.source.processeur() is not None))
+        self.assertIn('e66100', page.cpu_legende.get_label())
+        self.assertIn('97 °C (chaud)', page.cpu_legende.get_label())
+
+    def test_cœur_1_3_ne_montre_que_la_mesure_locale(self):
+        f = self.ouvrir('v13')
+        page = f.pages['apercu']
+        self.assertTrue(attendre(lambda: f.source.etat and f.source.cpu_pourcent is not None))
+        self.assertFalse(f.banniere.get_revealed())
+        self.assertIsNone(f.source.processeur())
+        self.assertTrue(page.groupe_cpu.get_visible())
+        self.assertIn('cœurs', page.cpu_detail.get_label())            # nombre de cœurs de la mesure locale
+        self.assertEqual(page.cpu_legende.get_label(), '')              # ni modèle, ni température
+        self.assertFalse(f.pages['programmes'].groupe_actifs.get_visible())
+        fichier = f.pages['file']
+        self.assertTrue(attendre(lambda: len(fichier.lignes) == 5))
+        self.assertNotIn('processeur', fichier.lignes['1762785000000-1234.json'].get_subtitle())
+        page.boutons_periode['24h'].set_active(True)
+        self.assertTrue(attendre(lambda: '24h' in f.source.historiques))
+        self.assertFalse(page.groupe_actifs.get_visible())
+        self.assertNotIn('processeur au plus', page.resume.get_label())
+
 
 def donnees_args(page):
     """Arguments de `reglages --ecrire` pour les modifications en cours de la page (sans le préfixe de commande)."""

@@ -1,4 +1,4 @@
-"""Page « Vue d'ensemble » : jauge, courbe, swap, service."""
+"""Page « Vue d'ensemble » : jauge de la RAM, processeur, courbe, swap, service."""
 import gi
 
 gi.require_version('Gtk', '4.0')
@@ -6,7 +6,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk
 
 from . import donnees
-from .graphiques import Courbe, Jauge
+from .graphiques import Coeurs, Courbe, Jauge
 from .outils import echappe, etiquette, page_preferences, synchroniser
 
 
@@ -41,6 +41,31 @@ class PageApercu(Adw.PreferencesPage):
         groupe.add(self._carte(boite))
         self.add(groupe)
 
+        # processeur (1.4.0) : mesure locale chaque seconde, détails de `etat --json` quand le cœur les donne
+        groupe = Adw.PreferencesGroup(title='Processeur')
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        en_tete = Gtk.Box(spacing=12)
+        self.cpu_pourcent = Gtk.Label(label='— %', xalign=0)
+        self.cpu_pourcent.add_css_class('title-1')
+        self.cpu_pourcent.add_css_class('numeric')
+        self.cpu_detail = Gtk.Label(label='', xalign=0, hexpand=True, valign=Gtk.Align.END, wrap=True)
+        self.cpu_detail.add_css_class('dim-label')
+        self.cpu_statut = Gtk.Label(label='', valign=Gtk.Align.CENTER)
+        self.cpu_statut.add_css_class('pill-etat')
+        en_tete.append(self.cpu_pourcent)
+        en_tete.append(self.cpu_detail)
+        en_tete.append(self.cpu_statut)
+        self.coeurs = Coeurs()
+        boite.append(en_tete)
+        boite.append(self.coeurs)
+        self.cpu_legende = Gtk.Label(label='', xalign=0, wrap=True, use_markup=True)
+        self.cpu_legende.add_css_class('dim-label')
+        self.cpu_legende.add_css_class('caption')
+        boite.append(self.cpu_legende)
+        groupe.add(self._carte(boite))
+        self.groupe_cpu = groupe
+        self.add(groupe)
+
         self.groupe_courbe = Adw.PreferencesGroup(title='Les cinq dernières minutes')
         self.periode = '5min'
         self.boutons_periode = {}
@@ -49,7 +74,7 @@ class PageApercu(Adw.PreferencesPage):
         premier = None
         for cle, libelle, _ in donnees.PERIODES:
             b = Gtk.ToggleButton(label=libelle, active=cle == self.periode)
-            b.set_tooltip_text(f'Afficher la RAM sur {libelle}')
+            b.set_tooltip_text(f'Afficher la RAM et le processeur sur {libelle}')
             if premier is None:
                 premier = b
             else:
@@ -78,6 +103,12 @@ class PageApercu(Adw.PreferencesPage):
             description='Les programmes qui ont le plus pris de mémoire (pic mesuré une fois par minute).')
         self.lignes_gros = []
         self.add(self.groupe_gros)
+        self.groupe_actifs = Adw.PreferencesGroup(
+            title='Les plus actifs de la période', visible=False,
+            description='Les programmes qui ont le plus occupé le processeur, en minutes de processeur (un cœur plein pendant '
+                        'une minute). Les programmes du même nom sont additionnés.')
+        self.lignes_actifs = []
+        self.add(self.groupe_actifs)
 
         # swap
         self.groupe_swap = Adw.PreferencesGroup(title='Swap', description='Espace de débordement quand la RAM est pleine.')
@@ -98,9 +129,11 @@ class PageApercu(Adw.PreferencesPage):
 
         self.source.connect('ram', lambda *_: self.maj_ram())
         self.source.connect('etat', lambda *_: self.maj_etat())
+        self.source.connect('etat', lambda *_: self.maj_cpu())
         self.source.connect('historique', lambda *_: self.maj_historique())
         self.maj_ram()
         self.maj_etat()
+        self.maj_cpu()
 
     # --- période de la courbe ---
     def _periode_choisie(self, bouton, cle):
@@ -116,7 +149,7 @@ class PageApercu(Adw.PreferencesPage):
 
     def maj_historique(self):
         long = self.periode != '5min'
-        for g in (self.groupe_incidents, self.groupe_gros):
+        for g in (self.groupe_incidents, self.groupe_gros, self.groupe_actifs):
             g.set_visible(False)
         self.resume.set_visible(long)
         if not long:
@@ -155,6 +188,16 @@ class PageApercu(Adw.PreferencesPage):
             self.groupe_gros.add(r)
             self.lignes_gros.append(r)
         self.groupe_gros.set_visible(bool(self.lignes_gros))
+        for ligne in self.lignes_actifs:
+            self.groupe_actifs.remove(ligne)
+        self.lignes_actifs = []
+        for a in hist['actifs'][:5]:       # vide avec un cœur plus ancien que la 1.4.0 : le groupe reste masqué
+            titre, detail = donnees.titre_actif_periode(a)
+            r = Adw.ActionRow(title=echappe(titre), subtitle=echappe(detail), selectable=False)
+            r.add_prefix(Gtk.Image.new_from_icon_name('system-run-symbolic'))
+            self.groupe_actifs.add(r)
+            self.lignes_actifs.append(r)
+        self.groupe_actifs.set_visible(bool(self.lignes_actifs))
 
     def _carte(self, enfant):
         """Enfant dans une carte arrondie (comme une liste encadrée)."""
@@ -187,6 +230,7 @@ class PageApercu(Adw.PreferencesPage):
         self.detail.set_label(f'{donnees.formater_taille_mo(utilise)} utilisés sur {donnees.formater_taille_mo(s.ram_total_mo)}'
                               f' · {donnees.formater_taille_mo(s.ram_dispo_mo)} disponibles')
         self.jauge.maj(s.ram_pourcent, s.reglages(), niveau)
+        self.maj_cpu()
         if self.periode == '5min':
             self.courbe.queue_draw()
         r = s.reglages()
@@ -201,6 +245,33 @@ class PageApercu(Adw.PreferencesPage):
             self.statut.remove_css_class(c)
         self.statut.add_css_class(classe)
         self.statut.set_label(texte)
+
+    def maj_cpu(self):
+        """Groupe « Processeur » : mesure locale (% et cœurs, chaque seconde) et détails du service (modèle, types,
+        température, fréquence, pression) quand `etat --json` les donne. Sans mesure du tout, le groupe est masqué."""
+        s = self.source
+        proc = s.processeur()
+        pct = s.cpu_pourcent if s.cpu_pourcent is not None else (proc or {}).get('pourcent')
+        coeurs = s.cpu_coeurs or (proc or {}).get('par_coeur') or []
+        self.groupe_cpu.set_visible(pct is not None)
+        if pct is None:
+            return
+        self.cpu_pourcent.set_label(donnees.formater_pourcent(pct))
+        self.cpu_detail.set_label(donnees.detail_processeur(proc, len(coeurs) or None))
+        types = (proc or {}).get('types') or []
+        self.coeurs.maj(coeurs, types if len(types) == len(coeurs) else [])
+        texte, classe = donnees.pastille_cpu(s.cpu_moyen() if s.cpu_pourcent is not None else pct)
+        for c in ('success', 'warning', 'error'):
+            self.cpu_statut.remove_css_class(c)
+        if classe:
+            self.cpu_statut.add_css_class(classe)
+        self.cpu_statut.set_label(texte)
+        morceaux = donnees.legende_processeur(proc, len(coeurs) or None)
+        self.cpu_legende.set_markup(' · '.join(
+            f'<span foreground="#e66100" weight="bold">{echappe(t)}</span>' if chaud else echappe(t) for t, chaud in morceaux))
+        self.cpu_legende.set_visible(bool(morceaux))
+        if self.periode == '5min':
+            self.courbe.queue_draw()
 
     def maj_etat(self):
         etat = self.source.etat
