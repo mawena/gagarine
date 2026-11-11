@@ -575,5 +575,166 @@ class Essai(unittest.TestCase):
         self.assertIn('zram', d.nom_swap({'zram': True}))
 
 
+class PhraseEtat150(unittest.TestCase):
+    """Phrase d'état en tête de l'Aperçu (1.5.0) : la première situation vraie l'emporte."""
+
+    @staticmethod
+    def etat(**kw):
+        e = {'service': {'etat': 'active', 'actif_au_demarrage': True}, 'figes': [], 'fuites': [],
+             'reglages': {'vigilance': 85, 'seuil': 95, 'urgence': 98}}
+        e.update(kw)
+        return e
+
+    FUITES = [{'pid': 7301, 'nom': 'firefox', 'pente_mo_min': 130}, {'pid': 6001, 'nom': 'node', 'pente_mo_min': 210}]
+
+    def test_service_arrete_l_emporte_sur_tout(self):
+        n, titre, detail = d.phrase_etat(self.etat(service={'etat': 'inactive'}, figes=[{'nom': 'python3'}],
+                                                   fuites=self.FUITES), 99, 100, 99)
+        self.assertEqual((n, titre), ('alerte', 'Le service est arrêté : la RAM n’est pas protégée.'))
+        self.assertIn('Démarrez le service', detail)
+        self.assertEqual(d.phrase_etat(self.etat(service={'etat': 'failed'}), 40, 8000, 10)[0], 'alerte')
+
+    def test_programme_fige(self):
+        n, titre, detail = d.phrase_etat(self.etat(figes=[{'nom': 'python3', 'depuis': 1000}], fuites=self.FUITES),
+                                         99, 100, 99, maintenant=1185)
+        self.assertEqual((n, titre), ('alerte', 'python3 est figé : il attend votre décision.'))
+        self.assertIn('depuis 3 min 5 s', detail)
+        n, titre, _ = d.phrase_etat(self.etat(figes=[{'nom': 'a'}, {'nom': 'b'}]), 50, 8000, 10)
+        self.assertEqual((n, titre), ('alerte', '2 programmes sont figés : ils attendent votre décision.'))
+
+    def test_ram_au_seuil_puis_vigilance(self):
+        n, titre, _ = d.phrase_etat(self.etat(fuites=self.FUITES), 96.0, 600, 99)
+        self.assertEqual((n, titre), ('alerte', 'La RAM a atteint le seuil : 96,0 % utilisés.'))
+        n, titre, detail = d.phrase_etat(self.etat(fuites=self.FUITES), 88.0, 2048, 99)
+        self.assertEqual((n, titre), ('vigilance', 'La RAM approche du seuil : Gagarine mesure quatre fois par seconde.'))
+        self.assertEqual(detail, 'Il reste 2,0 Go ; Gagarine interviendra à 95 %.')
+
+    def test_seuils_du_service(self):
+        e = self.etat(reglages={'vigilance': 70, 'seuil': 90})
+        self.assertEqual(d.phrase_etat(e, 75, 3000, 10)[0], 'vigilance')
+        self.assertIn('interviendra à 90 %', d.phrase_etat(e, 75, 3000, 10)[2])
+        self.assertEqual(d.phrase_etat(e, 91, 1000, 10)[0], 'alerte')
+
+    def test_fuite(self):
+        n, titre, detail = d.phrase_etat(self.etat(fuites=self.FUITES), 60, 6000, 99)
+        self.assertEqual((n, titre), ('vigilance', 'node grossit sans cesse (+210 Mo/min).'))
+        self.assertIn('comme 1 autre programme', detail)
+        n, titre, detail = d.phrase_etat(self.etat(fuites=[{'pid': 1, 'nom': 'node'}]), 60, 6000, 10)
+        self.assertEqual(titre, 'node grossit sans cesse.')
+        self.assertNotIn('autre', detail)
+
+    def test_processeur_sature(self):
+        n, titre, detail = d.phrase_etat(self.etat(), 60, 6000, 94.4)
+        self.assertEqual((n, titre), ('vigilance', 'Le processeur est saturé (94 %) : le poste peut ralentir.'))
+        self.assertIn('n’agit pas sur le processeur', detail)
+
+    def test_calme(self):
+        self.assertEqual(d.phrase_etat(self.etat(), 67.6, 4915, 30),
+                         ('calme', 'Le poste respire : 4,8 Go libres, processeur calme.', 'Gagarine mesure la RAM chaque seconde.'))
+        self.assertIn('processeur occupé', d.phrase_etat(self.etat(), 67.6, 4915, 60)[1])
+        self.assertEqual(d.phrase_etat(self.etat(), 67.6, 4915, None)[1], 'Le poste respire : 4,8 Go libres.')
+
+    def test_sans_donnees_ou_cœur_ancien(self):
+        self.assertEqual(d.phrase_etat(), ('inconnu', 'Lecture de l’état du poste…', ''))
+        self.assertEqual(d.phrase_etat(None, 50, 4096, None), ('calme', 'Le poste respire : 4,0 Go libres.', ''))
+        ancien = d.lire_etat(faux('etat', '--json', mode='v13'))      # cœur 1.3 : pas de processeur
+        self.assertEqual(d.phrase_etat(ancien, 50, 4096, None)[1], 'python3 est figé : il attend votre décision.')
+        ancien['figes'], ancien['fuites'] = [], []
+        self.assertEqual(d.phrase_etat(ancien, 50, 4096, None)[0], 'calme')
+
+    def test_phrases_courtes(self):
+        """Titres et détails tiennent en une ligne d'environ 90 caractères."""
+        cas = [self.etat(service={'etat': 'inactive'}), self.etat(figes=[{'nom': 'python3', 'depuis': 0}]),
+               self.etat(figes=[{}, {}]), self.etat(fuites=self.FUITES)]
+        phrases = [d.phrase_etat(e, 60, 6000, 10, maintenant=86000) for e in cas]
+        phrases += [d.phrase_etat(self.etat(), p, 1000, c) for p, c in ((96, 10), (88, 10), (60, 95), (60, 10))]
+        for _, titre, detail in phrases:
+            self.assertLessEqual(len(titre), 90, titre)
+            self.assertLessEqual(len(detail), 92, detail)
+
+
+class Compteurs150(unittest.TestCase):
+    """Compteurs vivants de la barre latérale et état du service (1.5.0)."""
+
+    def test_ram(self):
+        self.assertEqual(d.compteur_ram(67.6), ('67 %', None))
+        self.assertEqual(d.compteur_ram(84.9, {'vigilance': 85}), ('84 %', None))     # arrondi vers le bas : pas de « 85 % » calme
+        self.assertEqual(d.compteur_ram(85.0, {'vigilance': 85}), ('85 %', 'vigilance'))
+        self.assertEqual(d.compteur_ram(96.2, {}), ('96 %', 'alerte'))
+        self.assertEqual(d.compteur_ram(None), (None, None))
+
+    def test_programmes_et_file(self):
+        self.assertEqual(d.compteur_programmes({'figes': [{}]}), ('1 figé', 'alerte'))
+        self.assertEqual(d.compteur_programmes({'figes': [{}, {}]}), ('2 figés', 'alerte'))
+        self.assertEqual(d.compteur_programmes({'figes': []}), (None, None))
+        self.assertEqual(d.compteur_programmes(None), (None, None))
+        self.assertEqual(d.compteur_file({'en_cours': 2, 'travaux': []}), ('2 en cours', None))
+        self.assertEqual(d.compteur_file({'en_cours': None, 'travaux': [{'etat': 'en cours'}, {'etat': 'en attente'}]}),
+                         ('1 en cours', None))      # cœur 1.2 : compté dans les travaux
+        self.assertEqual(d.compteur_file({'en_cours': 0, 'travaux': [{'etat': 'en attente'}]}), (None, None))
+        self.assertEqual(d.compteur_file(None), (None, None))
+
+    def test_du_faux(self):
+        etat, file = d.lire_etat(faux('etat', '--json')), d.lire_file(faux('file', '--etat', '--json'))
+        c = d.compteurs_navigation(67.6, etat, file)
+        self.assertEqual(list(c), ['apercu', 'programmes', 'file', 'journal', 'reglages'])
+        self.assertEqual(c['programmes'], ('1 figé', 'alerte'))
+        self.assertEqual(c['file'], ('2 en cours', None))
+        self.assertEqual(c['journal'], (None, None))
+        self.assertEqual(d.compteur_file(d.lire_file(faux('file', '--etat', '--json', mode='v12'))), ('2 en cours', None))
+        vide = d.compteurs_navigation(None, d.lire_etat(faux('etat', '--json', mode='vide')),
+                                      d.lire_file(faux('file', '--etat', '--json', mode='vide')))
+        self.assertEqual(set(vide.values()), {(None, None)})
+
+    def test_etat_du_service(self):
+        self.assertEqual(d.etat_service(None), ('eteint', 'État du service inconnu', '', False))
+        actif = {'service': {'etat': 'active', 'actif_au_demarrage': True}}
+        self.assertEqual(d.etat_service(actif), ('', 'Service actif', 'Lancé au démarrage du poste', False))
+        actif['service']['actif_au_demarrage'] = None
+        self.assertEqual(d.etat_service(actif)[2], '')
+        self.assertEqual(d.etat_service({'service': {'etat': 'inactive'}}),
+                         ('alerte', 'Service arrêté', 'La RAM n’est pas protégée.', True))
+
+
+class Instruments150(unittest.TestCase):
+    """Géométrie des instruments (1.5.0) : cœurs P et E, étiquettes de l'échelle."""
+
+    def test_cœurs_hybrides(self):
+        plan = d.disposition_coeurs(14, 500, ['P'] * 4 + ['E'] * 10, 2)
+        barres = {i: (x, w) for i, x, w in plan['barres']}
+        self.assertEqual([i for i, _, _ in plan['barres']], list(range(14)))      # les P d'abord
+        self.assertEqual([g[0] for g in plan['groupes']], ['P', 'E'])
+        self.assertEqual(len(plan['paires']), 2)                                   # 2 cœurs P à deux fils
+        largeur_e = barres[4][1]
+        for x0, x1 in plan['paires']:
+            self.assertGreater(x1 - x0, 1.9 * largeur_e)                           # un cœur P est deux fois plus large
+        self.assertAlmostEqual(barres[1][0] - sum(barres[0]), 2)                   # deux fils d'un cœur : collés
+        self.assertGreater(barres[2][0] - sum(barres[1]), 2)                       # deux cœurs : séparés
+        self.assertGreater(barres[4][0] - sum(barres[3]), barres[5][0] - sum(barres[4]))   # P et E : plus loin
+        self.assertLessEqual(max(x + w for _, x, w in plan['barres']), 500 + 1e-6)
+
+    def test_cœurs_p_sans_second_fil(self):
+        plan = d.disposition_coeurs(6, 400, ['P', 'P', 'E', 'E', 'E', 'E'], None)
+        barres = {i: w for i, _, w in plan['barres']}
+        self.assertAlmostEqual(barres[0], 1.5 * barres[2])
+        self.assertEqual(plan['paires'], [])
+
+    def test_cœurs_egaux_sans_types(self):
+        for types in (None, [], ['P', 'E']):      # absents, ou incohérents avec le nombre de cœurs
+            plan = d.disposition_coeurs(8, 400, types, 2)
+            self.assertEqual(len({round(w, 6) for _, _, w in plan['barres']}), 1)
+            self.assertEqual(plan['groupes'], [])
+        self.assertEqual(d.disposition_coeurs(4, 2000)['barres'][0][2], 36.0)     # pas de barres démesurées
+        self.assertEqual(d.disposition_coeurs(0, 400), {'barres': [], 'groupes': [], 'paires': []})
+
+    def test_etiquettes_sans_chevauchement(self):
+        self.assertEqual(d.placer_etiquettes([(100, 20), (300, 20)], 500), [90, 290])     # centrées
+        g = d.placer_etiquettes([(425, 14), (475, 14), (490, 14)], 500, 4)               # 85, 95, 98 sur 500 px
+        self.assertEqual(g[0], 418)
+        self.assertGreaterEqual(g[2], g[1] + 14 + 4)
+        self.assertLessEqual(g[2] + 14, 500)
+        self.assertEqual(d.placer_etiquettes([(0, 10)], 100), [0])
+
+
 if __name__ == '__main__':
     unittest.main()
