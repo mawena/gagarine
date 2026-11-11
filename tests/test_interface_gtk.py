@@ -354,7 +354,7 @@ class TestFenetre(unittest.TestCase):
         self.assertIn('%', page.cpu_pourcent.get_label())
         self.assertIn('14 cœurs', page.cpu_detail.get_label() + page.cpu_legende.get_label())      # service : 14 cœurs logiques
         self.assertIn('Ultra 7', page.cpu_legende.get_label())
-        self.assertIn('4 cœurs performants (P) et 10 économes (E)', page.cpu_legende.get_label())
+        self.assertIn('2 cœurs performants (P, 4 fils) et 10 économes (E)', page.cpu_legende.get_label())
         self.assertIn(page.cpu_statut.get_label(), ('Calme', 'Occupé', 'Saturé'))
         self.assertNotIn('e66100', page.cpu_legende.get_label())      # pas chaud : pas d'orange
         self.assertTrue(page.coeurs.get_visible())

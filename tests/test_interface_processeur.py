@@ -144,7 +144,7 @@ class MiseEnForme(unittest.TestCase):
     def test_legende_et_chaud(self):
         p = d.lire_processeur(json.loads(faux('etat'))['processeur'])
         textes = [t for t, _ in d.legende_processeur(p)]
-        self.assertEqual(textes, ['Intel(R) Core(TM) Ultra 7 155U', '4 cœurs performants (P) et 10 économes (E)', '72 °C',
+        self.assertEqual(textes, ['Intel(R) Core(TM) Ultra 7 155U', '2 cœurs performants (P, 4 fils) et 10 économes (E)', '72 °C',
                                   '1,9 GHz sur 4,8 GHz', 'pression 0,0 %'])
         self.assertFalse(any(chaud for _, chaud in d.legende_processeur(p)))
         chaud = d.lire_processeur(json.loads(faux('etat', FAUX_CHAUD='1'))['processeur'])
