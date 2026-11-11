@@ -1,0 +1,95 @@
+/* Gagarine 1.5.0 : jetons et classes communes de l'interface (docs/conception-1.5.0.md).
+   Chargé avant les styles des pages (styles/<page>.css) ; base-sombre.css le complète en thème sombre. */
+
+/* Séries : bleu pour la RAM, violet pour le processeur. */
+@define-color gagarine_ram #3584e4;
+@define-color gagarine_cpu #9141ac;
+
+/* Niveaux : seulement pour dire l'état (calme, vigilance, alerte). */
+@define-color gagarine_calme @success_color;
+@define-color gagarine_vigilance @warning_color;
+@define-color gagarine_alerte @error_color;
+
+/* Lectures d'instrument : grands chiffres tabulaires. */
+.lecture {
+  font-size: 40px;
+  font-weight: 300;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+}
+.lecture-unite {
+  font-size: 16px;
+  font-weight: 400;
+  color: alpha(@window_fg_color, 0.62);
+}
+
+/* Phrase d'état en tête de l'Aperçu. */
+.titre-etat {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* Sections des pages pleine largeur. */
+.titre-section {
+  font-size: 15px;
+  font-weight: 700;
+}
+.description-section {
+  color: alpha(@window_fg_color, 0.62);
+}
+
+/* Petit libellé de valeur, en casse normale. */
+.etiquette {
+  font-size: 12px;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.6);
+}
+
+/* Couleur du texte selon le niveau. */
+.niveau-calme { color: @gagarine_calme; }
+.niveau-vigilance { color: @gagarine_vigilance; }
+.niveau-alerte { color: @gagarine_alerte; }
+
+/* Voyant : témoin de tableau de bord, disque coloré avec un halo léger. */
+.voyant {
+  min-width: 14px;
+  min-height: 14px;
+  border-radius: 999px;
+  background-color: @gagarine_calme;
+  box-shadow: 0 0 0 4px alpha(@gagarine_calme, 0.18);
+}
+.voyant.vigilance {
+  background-color: @gagarine_vigilance;
+  box-shadow: 0 0 0 4px alpha(@gagarine_vigilance, 0.2);
+}
+.voyant.alerte {
+  background-color: @gagarine_alerte;
+  box-shadow: 0 0 0 4px alpha(@gagarine_alerte, 0.22);
+}
+.voyant.eteint {
+  background-color: alpha(@window_fg_color, 0.3);
+  box-shadow: none;
+}
+
+/* Compteur vivant à droite d'une ligne (barre latérale). */
+.compteur {
+  font-size: 12px;
+  font-weight: 600;
+  font-feature-settings: "tnum";
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: alpha(@window_fg_color, 0.08);
+}
+.compteur.vigilance {
+  color: @gagarine_vigilance;
+  background-color: alpha(@gagarine_vigilance, 0.14);
+}
+.compteur.alerte {
+  color: @gagarine_alerte;
+  background-color: alpha(@gagarine_alerte, 0.14);
+}
+
+/* Panneau d'instrument : carte de libadwaita avec un peu plus d'air. */
+.panneau {
+  padding: 18px 20px;
+}
