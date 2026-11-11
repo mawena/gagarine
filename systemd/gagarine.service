@@ -29,6 +29,11 @@ MemorySwapMax=0
 # Autorise mlockall() : le démon se verrouille en RAM pour répondre même quand le poste est saturé.
 LimitMEMLOCK=infinity
 
+# Dossier d'exécution /run/gagarine, en mémoire : le démon y publie processeur.json (mesure du processeur, toutes les 2 s),
+# lisible par tous. Systemd le crée au démarrage et le vide à l'arrêt.
+RuntimeDirectory=gagarine
+RuntimeDirectoryMode=0755
+
 # Dossier d'état /var/lib/gagarine (journal des événements, programmes figés), lisible par tous.
 StateDirectory=gagarine
 StateDirectoryMode=0755
