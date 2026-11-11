@@ -123,6 +123,7 @@ la RAM est pleine : tout ce qu'elle demande au système se fait en arrière-plan
 |---|---|
 | ![Programmes figés](docs/captures/programmes.png) | ![File d'attente](docs/captures/file.png) |
 | ![Journal](docs/captures/journal.png) | ![Réglages](docs/captures/reglages.png) |
+| ![Processeur dans l'aperçu](docs/captures/apercu-processeur.png) | ![Programmes les plus actifs](docs/captures/programmes-actifs.png) |
 
 *Captures faites avec des données d'exemple.*
 
@@ -140,6 +141,8 @@ session ; `gagarine-indicateur --masquer` ou `--afficher` (ou l'interrupteur des
 Le service mesure le processeur toutes les 2 secondes : utilisation totale et de chaque cœur, programmes les plus actifs
 (en cœurs utilisés, tous utilisateurs, threads du noyau compris), température, fréquence, charge et pression du noyau. Sur
 un processeur hybride d'Intel, les cœurs performants (P) et économes (E) sont distingués.
+
+![Le processeur dans l'aperçu : utilisation de chaque cœur, température, fréquence et courbe](docs/captures/apercu-processeur.png)
 
 ```
 $ gagarine processeur
