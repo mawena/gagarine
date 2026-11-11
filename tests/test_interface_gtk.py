@@ -284,7 +284,7 @@ class TestFenetre(unittest.TestCase):
         self.assertEqual(l['1762785050000-1280.json'].priorite.get_label(), 'En fond')
         self.assertFalse(l['1762785000000-1234.json'].changer.get_visible())          # en cours : pas de changement
         self.assertTrue(l['1762785100000-1301.json'].changer.get_visible())           # en attente
-        self.assertIn('Attend : mémoire : 1,8 Go libres, il en faut 6', l['1762785100000-1301.json'].get_subtitle())
+        self.assertIn('Attend de la mémoire : 1,8 Go libres, il en faut 6', l['1762785100000-1301.json'].get_subtitle())
         self.assertFalse(l['1762785300000-1400.json'].priorite.get_visible())         # ancien outil : pas de priorité
         self.assertFalse(l['1762785300000-1400.json'].changer.get_visible())
         self.assertEqual(len(page.lignes_appris), 4)

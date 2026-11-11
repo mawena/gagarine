@@ -26,20 +26,20 @@
   </provides>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/apercu.png</image>
-      <caption>Aperçu : jauge de la RAM, courbe des cinq dernières minutes, swap et service</caption>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/apercu-large.png</image>
+      <caption>Aperçu : phrase d’état, échelle graduée de la RAM, cœurs du processeur et courbe</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/programmes.png</image>
-      <caption>Programmes figés, à reprendre ou à arrêter, et plus gros programmes</caption>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/programmes-large.png</image>
+      <caption>Programmes figés, fuites, plus gros et plus actifs, ménage</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/file.png</image>
-      <caption>File d’attente des travaux lourds</caption>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/file-large.png</image>
+      <caption>File d’attente des travaux lourds, mémoire apprise et travaux passés</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/journal.png</image>
-      <caption>Journal des événements, avec filtre et recherche</caption>
+      <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/journal-large.png</image>
+      <caption>Journal des événements groupés par jour, avec filtre et recherche</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/mawena/gagarine/main/docs/captures/reglages.png</image>

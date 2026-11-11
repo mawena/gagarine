@@ -98,10 +98,10 @@ def etat_travail(t):
 
 
 def motif_travail(t):
-    """« Attend : mémoire : 1,8 Go libres, il en faut 6 » pour un travail en attente dont le cœur dit le motif ; sinon None."""
+    """Motif d'un travail en attente (`donnees.phrase_motif`) ; None pour un travail en cours ou sans motif."""
     if t.get('etat') == 'en cours' or not t.get('motif'):
         return None
-    return 'Attend : ' + ' '.join(str(t['motif']).split())
+    return donnees.phrase_motif(t['motif'])
 
 
 def description_travail(t, maintenant=None):

@@ -123,7 +123,11 @@ class FonctionsFile(unittest.TestCase):
     def test_etat_et_motif(self):
         self.assertEqual(F.etat_travail(self.EN_COURS), ('en-cours', 'En cours'))
         self.assertEqual(F.etat_travail(self.ATTENTE), ('en-attente', 'En attente'))
-        self.assertEqual(F.motif_travail(self.ATTENTE), 'Attend : mémoire : 1,8 Go libres, il en faut 6')
+        self.assertEqual(F.motif_travail(self.ATTENTE), 'Attend de la mémoire : 1,8 Go libres, il en faut 6')
+        self.assertEqual(F.motif_travail({'etat': 'en attente', 'motif': 'derrière « tests » (normal)'}),
+                         'Attend derrière « tests » (normal)')
+        self.assertEqual(F.motif_travail({'etat': 'en attente', 'motif': '2 travaux en cours'}), 'Attend : 2 travaux en cours')
+        self.assertIsNone(F.motif_travail({'etat': 'en cours', 'motif': 'x'}))
         self.assertIsNone(F.motif_travail(self.EN_COURS))
         self.assertIsNone(F.motif_travail({'etat': 'en attente'}))
 
@@ -131,7 +135,7 @@ class FonctionsFile(unittest.TestCase):
         d = F.description_travail(self.EN_COURS, maintenant=1754)
         self.assertIn('processeur : 3,9 cœurs', d)
         self.assertTrue(d.endswith('\nffmpeg -i montage.mkv sortie.mp4'))
-        self.assertIn('Attend : mémoire : 1,8 Go libres, il en faut 6', F.description_travail(self.ATTENTE, 1095))
+        self.assertIn('Attend de la mémoire : 1,8 Go libres, il en faut 6', F.description_travail(self.ATTENTE, 1095))
 
     def test_ligne_appris(self):
         titre, sous, valeurs, niveau = F.ligne_appris({'nom': 'tests voix', 'executions': 2, 'pic_go': 9.0,
@@ -272,7 +276,7 @@ class TestPagesDesign(unittest.TestCase):
         self.assertEqual(en_cours.colonnes['processeur'][2].get_label(), '3,9 cœurs')
         self.assertEqual(attente.colonnes['processeur'][2].get_label(), '—')
         self.assertEqual(attente.colonnes['duree'][1].get_label(), 'Attente')
-        self.assertEqual(attente.motif.get_label(), 'Attend : mémoire : 1,8 Go libres, il en faut 6')
+        self.assertEqual(attente.motif.get_label(), 'Attend de la mémoire : 1,8 Go libres, il en faut 6')
         self.assertTrue(en_cours.pastille.has_css_class('en-cours') and attente.pastille.has_css_class('en-attente'))
         # colonnes alignées d'une ligne à l'autre, à droite du nom
         xs = {round(self.boite(r.colonnes['ram'][0], page)[0]) for r in page.lignes.values()}
