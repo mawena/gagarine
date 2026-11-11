@@ -23,7 +23,7 @@ UNITES = {'min': 60, 'h': 3600, 'j': 86400}
 MOTIF_FICHIER = re.compile(r'^historique-(\d{4})-(\d\d)-(\d\d)\.jsonl$')
 
 AIDE_COMMANDES = ('  historique [--depuis 5min|1h|24h|7j] [--json]   mesures des derniers jours : RAM, incidents, plus gros '
-                  'programmes, travaux\n')
+                  'programmes, processeur, travaux\n')
 
 
 def date_iso(t):
@@ -43,8 +43,9 @@ class Enregistreur:
         self.prochaine = 0.0
         self.dernier_fichier = None
 
-    def noter(self, ram, mesure, pression, procs, force=False):
+    def noter(self, ram, mesure, pression, procs, force=False, cpu=None, charge=None, temperature=None, actifs=None):
         """Écrit la mesure si une minute s'est écoulée. procs : [(nom, octets)] déjà triés ou non (3 plus gros gardés).
+        Processeur (1.4.0, facultatif) : cpu (% moyen de la minute), charge (1 min), temperature (°C), actifs [[nom, cœurs]].
         Rend True si une ligne a été écrite. Ne lève jamais."""
         try:
             t = self.heure()
@@ -54,7 +55,8 @@ class Enregistreur:
             gros = sorted(procs, key=lambda x: -x[1])[:3]
             ligne = {'date': date_iso(t), 'ram': round(ram, 1), 'disponible_mo': mesure.get('disponible_mo'),
                      'swap_mo': mesure.get('swap_mo'), 'zram_mo': mesure.get('zram_mo'), 'pression': round(pression, 2),
-                     'gros': [[n, int(o // 2 ** 20)] for n, o in gros]}
+                     'gros': [[n, int(o // 2 ** 20)] for n, o in gros],
+                     'cpu': cpu, 'charge': charge, 'temperature': temperature, 'actifs': actifs}
             fichier = self.dossier / nom_fichier(t)
             self.dossier.mkdir(parents=True, exist_ok=True, mode=0o755)
             fd = os.open(fichier, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
@@ -111,11 +113,28 @@ def _moyenne(valeurs):
     return sum(v) / len(v) if v else 0
 
 
+def _nombres(valeurs):
+    return [x for x in valeurs if isinstance(x, (int, float)) and not isinstance(x, bool)]
+
+
+def _moyenne_ou_none(valeurs, decimales):
+    v = _nombres(valeurs)
+    return round(sum(v) / len(v), decimales) if v else None
+
+
+def _maximum_ou_none(valeurs):
+    v = _nombres(valeurs)
+    return max(v) if v else None
+
+
 def points(mesures, pas_long):
-    """Points du contrat : un par mesure, ou moyennés par 10 min (maximum de `ram` gardé) si pas_long."""
+    """Points du contrat : un par mesure, ou moyennés par 10 min (maximum de `ram` gardé) si pas_long. Processeur (1.4.0) :
+    `cpu`, `cpu_max`, `charge`, `temperature` ; les anciennes lignes, sans ces champs, donnent null et sont ignorées des
+    moyennes. Pas long : cpu et charge moyennes, cpu_max et temperature les plus hautes."""
     def point(t, e):
         return {'date': date_iso(t), 'ram': e.get('ram'), 'swap_mo': e.get('swap_mo'), 'zram_mo': e.get('zram_mo'),
-                'pression': e.get('pression')}
+                'pression': e.get('pression'), 'cpu': e.get('cpu'), 'cpu_max': e.get('cpu'), 'charge': e.get('charge'),
+                'temperature': e.get('temperature')}
     if not pas_long:
         return [point(t, e) for t, e in mesures]
     groupes = {}
@@ -128,8 +147,32 @@ def points(mesures, pas_long):
                     'ram': round(max(_moyenne([e.get('ram')]) for e in g), 1),
                     'swap_mo': round(_moyenne([e.get('swap_mo') for e in g])),
                     'zram_mo': round(_moyenne([e.get('zram_mo') for e in g])),
-                    'pression': round(_moyenne([e.get('pression') for e in g]), 2)})
+                    'pression': round(_moyenne([e.get('pression') for e in g]), 2),
+                    'cpu': _moyenne_ou_none([e.get('cpu') for e in g], 1),
+                    'cpu_max': _maximum_ou_none([e.get('cpu') for e in g]),
+                    'charge': _moyenne_ou_none([e.get('charge') for e in g], 2),
+                    'temperature': _maximum_ou_none([e.get('temperature') for e in g])})
     return res
+
+
+def actifs(mesures):
+    """[{nom, pic_coeurs, minutes, cpu_min}] : plus haut nombre de cœurs vu de chaque programme, nombre de minutes où il était
+    dans les 3 plus actifs, et somme des cœurs sur ces minutes (« minutes de processeur »). Trié par cpu_min décroissant."""
+    vus = {}
+    for _, e in mesures:
+        liste = e.get('actifs')
+        for item in liste if isinstance(liste, list) else []:
+            try:
+                nom, coeurs = item[0], float(item[1])
+            except (TypeError, IndexError, ValueError):
+                continue
+            v = vus.setdefault(nom, {'nom': nom, 'pic_coeurs': 0.0, 'minutes': 0, 'cpu_min': 0.0})
+            v['pic_coeurs'] = max(v['pic_coeurs'], coeurs)
+            v['minutes'] += 1
+            v['cpu_min'] += coeurs
+    for v in vus.values():
+        v['pic_coeurs'], v['cpu_min'] = round(v['pic_coeurs'], 2), round(v['cpu_min'], 2)
+    return sorted(vus.values(), key=lambda v: (-v['cpu_min'], v['nom']))[:10]
 
 
 def gros(mesures):
@@ -166,7 +209,7 @@ def donnees_historique(dossier, depuis_s, maintenant, evenements):
     long = depuis_s > SEUIL_LONG_S
     incidents, travaux = evenements_periode(evenements, maintenant - depuis_s)
     return {'depuis_s': depuis_s, 'pas_s': PAS_LONG_S if long else PAS_S, 'points': points(mesures, long),
-            'incidents': incidents, 'gros': gros(mesures), 'travaux': travaux}
+            'incidents': incidents, 'gros': gros(mesures), 'actifs': actifs(mesures), 'travaux': travaux}
 
 
 def analyser_depuis(texte):
@@ -186,6 +229,23 @@ def duree_lisible(s):
     return f'{s} s'
 
 
+def _ligne_processeur(pts):
+    """« Processeur : 18 % en moyenne, au plus 96 % (14:32) ; 72 °C au plus » ; None sans mesure du processeur."""
+    avec = [p for p in pts if isinstance(p.get('cpu'), (int, float))]
+    temps = _nombres([p.get('temperature') for p in pts])
+    if not avec:
+        return None
+    moyenne = sum(p['cpu'] for p in avec) / len(avec)
+    pic = max(avec, key=lambda p: p.get('cpu_max') if isinstance(p.get('cpu_max'), (int, float)) else p['cpu'])
+    haut = pic['cpu_max'] if isinstance(pic.get('cpu_max'), (int, float)) else pic['cpu']
+    t = horodatage(pic.get('date'))
+    heure = f' ({time.strftime("%H:%M", time.localtime(t))})' if t is not None else ''
+    texte = f'Processeur : {moyenne:.0f} % en moyenne, au plus {haut:.0f} %{heure}'
+    if temps:
+        texte += f' ; {max(temps):.0f} °C au plus'
+    return texte
+
+
 def texte_historique(d, ligne_evenement):
     """Résumé lisible de donnees_historique."""
     pts = d['points']
@@ -203,6 +263,12 @@ def texte_historique(d, ligne_evenement):
         press = [p['pression'] for p in pts if p.get('pression') is not None]
         if press:
             sortie.append(f'Pression mémoire (full avg10) au plus haut : {max(press):.1f} %')
+        ligne_cpu = _ligne_processeur(pts)
+        if ligne_cpu:
+            sortie.append(ligne_cpu)
+    if d.get('actifs'):
+        sortie.append('Les plus actifs : ' + ', '.join(f'{a["nom"]} ({a["cpu_min"]:.0f} min de processeur)'
+                                                       for a in d['actifs'][:5]))
     sortie.append(f'Incidents : {len(d["incidents"])}' if d['incidents'] else 'Incidents : aucun')
     for e in d['incidents'][-10:]:
         sortie.append('  ' + ligne_evenement(e))
