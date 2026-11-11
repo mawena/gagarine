@@ -30,6 +30,34 @@ def ram_depuis_meminfo(texte):
         return None
 
 
+def lire_cpu_stat(texte):
+    """Relevé (occupé, total) en ticks de la ligne « cpu » de /proc/stat, ou None si le texte est inutilisable.
+
+    total = user + nice + system + idle + iowait + irq + softirq + steal (guest et guest_nice sont déjà dans user et nice) ;
+    occupé = total − idle − iowait."""
+    m = re.search(r'^cpu\s+(.*)$', texte or '', re.M)
+    if not m:
+        return None
+    try:
+        v = [int(x) for x in m.group(1).split()]
+    except ValueError:
+        return None
+    v = (v + [0] * 8)[:8]
+    somme = sum(v)
+    return (somme - v[3] - v[4], somme)
+
+
+def cpu_glissant(releves):
+    """% du processeur occupé entre le plus ancien et le plus récent des relevés (occupé, total) : une moyenne glissante.
+    None s'il y a moins de deux relevés ou si aucun tick ne s'est écoulé."""
+    if len(releves) < 2:
+        return None
+    (occupe0, total0), (occupe1, total1) = releves[0], releves[-1]
+    if total1 <= total0:
+        return None
+    return max(0.0, min(100.0, 100.0 * (occupe1 - occupe0) / (total1 - total0)))
+
+
 def lire_json(octets):
     """Objet JSON (dictionnaire) lu dans la sortie d'une commande ; None si vide, invalide ou pas un objet."""
     try:
@@ -144,6 +172,79 @@ def etiquette(pourcent):
     return '%d %%' % round(pourcent)
 
 
+def etiquette_barre(pourcent_ram, cpu=None):
+    """Étiquette de la barre du haut : « RAM 77 % · CPU 23 % » ; sans mesure du processeur, « RAM 77 % »."""
+    texte = 'RAM ' + etiquette(pourcent_ram)
+    if cpu is not None:
+        texte += ' · CPU ' + etiquette(cpu)
+    return texte
+
+
+# plus longue étiquette possible : GTK réserve cette largeur pour que la barre ne bouge pas quand les chiffres changent
+ETIQUETTE_LARGEUR = etiquette_barre(100, 100)
+
+SEUIL_ACTIF_COEURS = 0.5     # un programme n'est cité dans le menu qu'à partir de ce nombre de cœurs
+
+
+def processeur(etat):
+    """Objet `processeur` de `etat --json` (1.4.0), ou {} si le cœur n'en parle pas."""
+    p = (etat or {}).get('processeur')
+    return p if isinstance(p, dict) else {}
+
+
+def _decimal(x, chiffres=1):
+    return ('%.*f' % (chiffres, x)).replace('.', ',')
+
+
+def coeurs(x):
+    """« 6,2 cœurs » ; « 0,8 cœur » au-dessous de 2."""
+    return '%s cœur%s' % (_decimal(x), '' if x < 2 else 's')
+
+
+def pourcent_cpu(cpu, etat=None):
+    """% du processeur à montrer : la mesure locale (moyenne sur 3 s), sinon celle du service ; None si aucune."""
+    if cpu is not None:
+        return cpu
+    p = _nombre(processeur(etat).get('pourcent'), None)
+    return p
+
+
+def ligne_processeur(cpu, etat=None):
+    """« Processeur : 23 % · charge 2,4 · 72 °C » ; None sans aucune mesure."""
+    pct = pourcent_cpu(cpu, etat)
+    if pct is None:
+        return None
+    texte = 'Processeur : %s' % etiquette(pct)
+    p = processeur(etat)
+    charge = p.get('charge')
+    if isinstance(charge, list) and charge and _nombre(charge[0], None) is not None:
+        texte += ' · charge %s' % _decimal(float(charge[0]))
+    temperature = _nombre(p.get('temperature'), None)
+    if temperature is not None:
+        texte += ' · %d\u202f°C' % round(temperature)
+    return texte
+
+
+def plus_actif(etat):
+    """Programme le plus actif de `plus_actifs` (1.4.0) s'il utilise au moins 0,5 cœur, sinon None."""
+    liste = processeur(etat).get('plus_actifs')
+    if not isinstance(liste, list):
+        return None
+    valides = [a for a in liste if isinstance(a, dict) and _nombre(a.get('coeurs'), None) is not None]
+    if not valides:
+        return None
+    premier = max(valides, key=lambda a: _nombre(a.get('coeurs'), 0))
+    return premier if _nombre(premier.get('coeurs'), 0) >= SEUIL_ACTIF_COEURS else None
+
+
+def ligne_plus_actif(etat):
+    """« Plus actif : ffmpeg (6,2 cœurs) » ; None si aucun programme n'utilise au moins 0,5 cœur."""
+    a = plus_actif(etat)
+    if a is None:
+        return None
+    return 'Plus actif : %s (%s)' % (a.get('nom') or '?', coeurs(_nombre(a.get('coeurs'), 0)))
+
+
 def taille_mo(mo):
     """« 3,6 Go » ou « 512 Mo »."""
     mo = _nombre(mo, 0)
@@ -239,11 +340,16 @@ def commande_menage(identifiant, base=None):
     return list(base or ['gagarine']) + ['menage', 'arreter', identifiant]
 
 
-def tooltip(niv, nb_figes):
+def tooltip(niv, nb_figes, cpu=None):
+    """Infobulle : état de la RAM, puis le processeur (« · processeur 23 % ») quand il est mesuré."""
     if nb_figes:
-        return 'Gagarine : %d programme%s figé%s' % (nb_figes, 's' if nb_figes > 1 else '', 's' if nb_figes > 1 else '')
-    return {NORMAL: 'Gagarine : RAM normale', VIGILANCE: 'Gagarine : RAM en vigilance',
-            ALERTE: 'Gagarine : RAM au seuil'}[niv]
+        texte = 'Gagarine : %d programme%s figé%s' % (nb_figes, 's' if nb_figes > 1 else '', 's' if nb_figes > 1 else '')
+    else:
+        texte = {NORMAL: 'Gagarine : RAM normale', VIGILANCE: 'Gagarine : RAM en vigilance',
+                 ALERTE: 'Gagarine : RAM au seuil'}[niv]
+    if cpu is not None:
+        texte += ' · processeur %s' % etiquette(cpu)
+    return texte
 
 
 # --- Contenu du menu ---------------------------------------------------------------------------------------------------
@@ -254,11 +360,14 @@ def tooltip(niv, nb_figes):
 #   ('action', identifiant, texte)        ligne cliquable
 #   ('menage', titre, ((id, titre, action), …))  sous-menu du ménage (une action par candidat, avec confirmation)
 
-def contenu_menu(pourcent, etat, file_etat, utilisateur=None, menage=None):
+def contenu_menu(pourcent, etat, file_etat, utilisateur=None, menage=None, cpu=None):
     elements = [('info', ligne_ram(pourcent, etat))]
     swap = ligne_swap(etat)
     if swap:
         elements.append(('info', swap))
+    for ligne in (ligne_processeur(cpu, etat), ligne_plus_actif(etat)):     # 1.4.0 : absentes sans mesure
+        if ligne:
+            elements.append(('info', ligne))
     elements.append(('sep',))
     liste = figes(etat)
     if liste:

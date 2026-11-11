@@ -27,6 +27,9 @@ PAUSE = 5.0
 ETAT_ATTENTE = 'en attente'
 ETAT_COURS = 'en cours'
 INTERVALLE_PIC = 0.5         # s entre deux relevés du pic mémoire (la conception dit « toutes les 2 s » au plus)
+CPU_MESURE_S = 0.3           # s : mesure des cœurs utilisés quand il n'y a pas de relevé précédent assez récent
+CPU_RELEVE_MIN_S = 0.5       # le relevé précédent (cpu-travaux.json) sert s'il a entre ces deux âges
+CPU_RELEVE_MAX_S = 30
 PREMIER_RELEVE = 0.2         # s : premier relevé, pour ne pas manquer un travail très court
 PICS_GARDES = 5
 PLAFOND_ANNONCE = 0.6        # part de la RAM totale qu'une annonce corrigée ne dépasse jamais
@@ -149,6 +152,16 @@ class Poste:
         except (OSError, ValueError):
             pass
         return octets / 2 ** 30
+
+    def cpu_cgroup(self, chemin):
+        """Temps de processeur total pris par le cgroup (`usage_usec` de cpu.stat), en µs ; None s'il est illisible."""
+        try:
+            for ligne in (Path(chemin) / 'cpu.stat').read_text().splitlines():
+                if ligne.startswith('usage_usec '):
+                    return int(ligne.split()[1])
+        except (OSError, ValueError, IndexError):
+            pass
+        return None
 
     def notifier(self, titre, texte):
         """Notification de bureau sur la session de l'utilisateur, sans attendre ni échouer."""
@@ -323,14 +336,18 @@ def compter_travaux(env, poste=None):
         return 0
 
 
-def donnees_travaux(dossier, poste, paralleles=1, evaluation=None):
+def donnees_travaux(dossier, poste, paralleles=1, evaluation=None, env=None):
     """Les travaux de `--etat --json`. Un ticket d'un ancien outil : champs absents à null, source « autre »."""
     ev = evaluation or evaluer(dossier, poste, paralleles, nettoyer=False)
     travaux = []
-    for k, info in enumerate(ev['infos']):
+    tickets_lus = []
+    for info in ev['infos']:
         t = lire_ticket(dossier, info['nom'])
-        if t is None:
-            continue
+        if t is not None:
+            tickets_lus.append((info, t))
+    cours = {info['nom']: t['unite'] for info, t in tickets_lus if t.get('etat') == ETAT_COURS and t.get('unite')}
+    coeurs_pris = coeurs_utilises(cours, poste, env)
+    for k, (info, t) in enumerate(tickets_lus):
         gagarine = t.get('source') == 'gagarine'
         travaux.append({
             'ticket': info['nom'], 'position': len(travaux) + 1, 'nom': t.get('nom'), 'pid': t.get('pid'),
@@ -339,8 +356,75 @@ def donnees_travaux(dossier, poste, paralleles=1, evaluation=None):
             'source': 'gagarine' if gagarine else 'autre',
             'priorite': priorite_de(t) if gagarine else None,
             'besoin_go': nombre_ticket(t, 'ram') if gagarine else None,
-            'motif': motif_de(info, k, ev, poste, paralleles)})
+            'motif': motif_de(info, k, ev, poste, paralleles),
+            'coeurs_utilises': coeurs_pris.get(info['nom'])})
     return travaux
+
+
+def fichier_cpu_travaux(env):
+    """Relevé précédent des cœurs utilisés : $XDG_RUNTIME_DIR/gagarine/cpu-travaux.json (None sans XDG_RUNTIME_DIR)."""
+    racine = (env or {}).get('XDG_RUNTIME_DIR')
+    return Path(racine) / 'gagarine' / 'cpu-travaux.json' if racine else None
+
+
+def lire_cpu_travaux(env):
+    """(t, {ticket: usage_usec}) du relevé précédent, ou (None, {}) s'il est absent ou abîmé."""
+    fichier = fichier_cpu_travaux(env)
+    try:
+        brut = json.loads(fichier.read_text(encoding='utf-8'))
+        t = float(brut['t'])
+        releves = {k: int(v) for k, v in brut['travaux'].items()}
+    except (AttributeError, OSError, ValueError, TypeError, KeyError):
+        return None, {}
+    return t, releves
+
+
+def noter_cpu_travaux(env, instant, releves):
+    """Garde le relevé pour la prochaine commande ; ne lève jamais."""
+    fichier = fichier_cpu_travaux(env)
+    if fichier is None:
+        return
+    try:
+        fichier.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        provisoire = fichier.with_name(f'{fichier.name}.{os.getpid()}')
+        provisoire.write_text(json.dumps({'t': instant, 'travaux': releves}), encoding='utf-8')
+        provisoire.replace(fichier)
+    except OSError:
+        pass
+
+
+def coeurs_utilises(unites, poste, env=None):
+    """{ticket: cœurs utilisés} des travaux en cours (`unites` : ticket -> scope), d'après le Δ de `usage_usec` du cgroup :
+    depuis le relevé précédent s'il a entre 0,5 et 30 s, sinon sur une mesure de 0,3 s. Un travail illisible est absent."""
+    resultat = {}
+    if not unites:
+        return resultat
+    try:
+        chemins = {}
+        for ticket, unite in unites.items():
+            chemin = poste.cgroup_scope(unite)
+            if chemin is not None:
+                chemins[ticket] = chemin
+        if not chemins:
+            return resultat
+        maintenant = poste.maintenant()
+        avant_t, avant = lire_cpu_travaux(env)
+        ancien = avant_t is not None and CPU_RELEVE_MIN_S <= maintenant - avant_t <= CPU_RELEVE_MAX_S
+        if not ancien:
+            avant_t = maintenant
+            avant = {k: v for k, v in ((k, poste.cpu_cgroup(c)) for k, c in chemins.items()) if v is not None}
+            poste.dormir(CPU_MESURE_S)
+            maintenant = poste.maintenant()
+        releves = {k: v for k, v in ((k, poste.cpu_cgroup(c)) for k, c in chemins.items()) if v is not None}
+        duree = maintenant - avant_t
+        if duree > 0:
+            for ticket, usec in releves.items():
+                if ticket in avant and usec >= avant[ticket]:
+                    resultat[ticket] = round((usec - avant[ticket]) / 1e6 / duree, 2)
+        noter_cpu_travaux(env, maintenant, releves)
+    except Exception:
+        pass
+    return resultat
 
 
 # ======================================================================================================================
@@ -350,7 +434,7 @@ class Releveur:
     """Relève le pic mémoire (RAM + swap) du scope d'un travail ; ne lève jamais."""
 
     def __init__(self, poste, unite):
-        self.poste, self.scope, self.chemin, self.pic = poste, unite + '.scope', None, None
+        self.poste, self.scope, self.chemin, self.pic, self.cpu_usec = poste, unite + '.scope', None, None, None
 
     def relever(self):
         try:
@@ -361,8 +445,18 @@ class Releveur:
             v = self.poste.pic_cgroup(self.chemin)
             if v is not None and (self.pic is None or v > self.pic):
                 self.pic = v
+            cpu = self.poste.cpu_cgroup(self.chemin)
+            if cpu is not None and (self.cpu_usec is None or cpu > self.cpu_usec):
+                self.cpu_usec = cpu
         except Exception:
             pass
+
+    def cpu(self, duree):
+        """(secondes de processeur, cœurs en moyenne) d'après le dernier relevé, ou (None, None)."""
+        if self.cpu_usec is None:
+            return None, None
+        secondes = self.cpu_usec / 1e6
+        return round(secondes, 2), round(secondes / duree, 2) if duree and duree > 0 else None
 
 
 def fichier_travaux(env):
@@ -430,6 +524,11 @@ def noter_pic(env, nom, pic, annonce, instant, limite_depassee=False):
 def fr(x):
     """Un nombre de Go en français : 6,3 ; 0,5 ; 8."""
     return ('%g' % round(x, 1)).replace('.', ',')
+
+
+def fr_coeurs(x):
+    """Des cœurs en français : 6,2 cœurs ; 1,4 cœur ; 0,8 cœur ; 8 cœurs."""
+    return ('%g' % round(x, 1)).replace('.', ',') + (' cœurs' if round(x, 1) >= 2 else ' cœur')
 
 
 def corriger_annonce(nom, ram, env, reglages, poste, sortie):
@@ -796,6 +895,7 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
         if releveur:
             releveur.relever()   # le cgroup a le plus souvent disparu avec le travail : le dernier relevé tient alors
         pic = releveur.pic if releveur else None
+        cpu_s, coeurs_moyens = releveur.cpu(duree) if releveur else (None, None)
         limite_depassee = False
         if unite:
             resultat = poste.executer(['systemctl', '--user', 'show', f'{unite}.scope', '-p', 'Result', '--value'])[1].strip()
@@ -813,7 +913,7 @@ def lancer_travail(nom, ram, coeurs, apres, commande, env, poste=None, sortie=No
                 code = 137
         if not herite:
             note('travail-fin', nom=nom, pid=poste.pid(), ticket=ticket, code=code, duree=duree,
-                 pic_go=round(pic, 2) if pic is not None else None)
+                 pic_go=round(pic, 2) if pic is not None else None, cpu_s=cpu_s, coeurs_moyens=coeurs_moyens)
             if pic is not None:
                 noter_pic(env, nom, pic, initiale, poste.maintenant(), limite_depassee)
             notifier_fin(nom, code, duree, limite_depassee, reglages, poste)
@@ -856,7 +956,7 @@ def donnees_etat_file(env, poste=None, reglages=None):
     ev = evaluer(dossier, poste, paralleles, nettoyer=False)
     return {'ram_disponible_go': round(poste.ram_disponible_go(), 1), 'charge': round(poste.charge(), 1),
             'coeurs': poste.coeurs(), 'dossier': str(dossier), 'paralleles': paralleles, 'en_cours': ev['cours'],
-            'travaux': donnees_travaux(dossier, poste, paralleles, ev)}
+            'travaux': donnees_travaux(dossier, poste, paralleles, ev, env)}
 
 
 def afficher_etat(env, en_json, poste=None, sortie=None, reglages=None):
@@ -888,7 +988,8 @@ def afficher_etat(env, en_json, poste=None, sortie=None, reglages=None):
         else:
             etiquette = 'en attente' if k else 'en tête   '
         motif = f' — {t["motif"]}' if t['motif'] else ''
-        print(f'{etiquette} : {t["nom"]} (processus {t["pid"]}, depuis {heure}{annonce}){motif}', file=sortie)
+        coeurs = f' · {fr_coeurs(t["coeurs_utilises"])}' if t.get('coeurs_utilises') is not None else ''
+        print(f'{etiquette} : {t["nom"]} (processus {t["pid"]}, depuis {heure}{annonce}){coeurs}{motif}', file=sortie)
     return 0
 
 

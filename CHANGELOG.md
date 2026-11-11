@@ -7,6 +7,33 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.4.0] - 2026-11-11
+
+Gagarine montre aussi le processeur : utilisation de chaque cœur, programmes les plus actifs, température et fréquence,
+partout où il montrait déjà la RAM. Il n'agit jamais sur un programme à cause du processeur : ses actions restent
+réservées à la mémoire.
+
+### Ajouté
+
+- **Mesure du processeur** par le service, toutes les 2 secondes (`/run/gagarine/processeur.json`) : utilisation totale
+  et de chaque cœur, cœurs performants et économes des processeurs hybrides d'Intel, programmes les plus actifs (en
+  cœurs utilisés, tous utilisateurs), température, fréquence, charge et pression du noyau.
+- **`gagarine processeur [--json]`** : le détail, avec une barre par cœur ; `gagarine etat` et `etat --json` ajoutent le
+  processeur (`processeur`).
+- **Historique** : processeur moyen et maximal, charge, température et programmes les plus actifs de chaque minute
+  (`cpu`, `cpu_max`, `charge`, `temperature`, `actifs`).
+- **File d'attente** : cœurs utilisés par chaque travail en cours (`coeurs_utilises`), temps de processeur et cœurs en
+  moyenne à la fin d'un travail (`cpu_s`, `coeurs_moyens` dans `travail-fin`).
+- **Ligne d'état des sessions Claude Code** : `CPU 23 %` après la RAM, et la température quand le processeur chauffe.
+- **Interface** : groupe « Processeur » dans l'aperçu (barres des cœurs, température, fréquence), courbe de la RAM et du
+  processeur, programmes les plus actifs (en ce moment et sur la période), cœurs des travaux de la file.
+- **Indicateur** : « RAM 77 % · CPU 23 % » dans la barre du haut, processeur et programme le plus actif dans le menu.
+
+### Modifié
+
+- Le service a un dossier d'exécution, `/run/gagarine` (`RuntimeDirectory`).
+- Captures d'écran refaites, avec un nom d'utilisateur d'exemple.
+
 ## [1.3.0] - 2026-11-10
 
 La file d'attente fait passer plusieurs travaux à la fois quand ils tiennent, les fuites de mémoire se voient avant de

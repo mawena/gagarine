@@ -15,7 +15,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from gagarine import ntfy
+from gagarine import ntfy, processeur
 from gagarine.historique import Enregistreur
 from gagarine.journal import Journal
 from gagarine.reglages import charger_reglages, dossier_etat
@@ -52,7 +52,7 @@ def lancer_fil(f, *args):
 
 class Garde:
     def __init__(self, r, systeme, journal, fichier_figes, lancer=lancer_fil, charger_reglages=None, alerter=ntfy.envoyer_en_fond,
-                 fichier_fuites=None):
+                 fichier_fuites=None, mesureur=None, dossier_cpu=None):
         self.r = r
         self.s = systeme
         self.journal = journal
@@ -74,6 +74,10 @@ class Garde:
         self.fuites = {}          # pid -> fuite repérée en cours
         self.fuites_signalees = {}   # pid -> (début du processus, instant du dernier signalement)
         self.fuites_ecrites = None
+        self.mesureur = mesureur           # Echantillonneur du processeur ; None : pas de mesure (tests)
+        self.dossier_cpu = dossier_cpu     # où écrire processeur.json ; None : on mesure sans écrire
+        self.prochaine_mesure_cpu = 0.0
+        self.erreur_cpu_signalee = False
         if self.fichier_fuites.exists():
             self.sauver_fuites()   # un fichier laissé par une exécution précédente ne doit plus rien affirmer
 
@@ -305,8 +309,32 @@ class Garde:
         self.alerte(f'« {nom} » arrêté', f'{nom} a été arrêté : {raison}.', etiquettes=('skull',))
         self.repos_jusqua = self.s.mono() + 1.5   # laisser le noyau rendre la mémoire avant de réévaluer
 
+    # --- processeur : une mesure publiée toutes les 2 s, sans jamais gêner la protection de la RAM ---
+    def suivre_processeur(self):
+        """Mesure le processeur et écrit processeur.json (toutes les 2 s). Toute erreur est avalée, écrite une seule fois."""
+        if self.mesureur is None:
+            return
+        maintenant = self.s.mono()
+        if maintenant < self.prochaine_mesure_cpu:
+            return
+        self.prochaine_mesure_cpu = maintenant + processeur.PAS_S
+        try:
+            obj = self.mesureur.mesurer()
+            if self.dossier_cpu:
+                processeur.ecrire_fichier(self.dossier_cpu, obj)
+        except Exception as e:
+            if not self.erreur_cpu_signalee:
+                self.erreur_cpu_signalee = True
+                print(f'erreur (processeur) : {e!r}', file=sys.stderr, flush=True)
+
     # --- un tour de surveillance ---
     def tour(self):
+        try:
+            return self.tour_ram()
+        finally:   # après le travail pour la RAM, qui garde ses sorties anticipées
+            self.suivre_processeur()
+
+    def tour_ram(self):
         r = self.r
         maintenant = self.s.mono()
         pct = self.s.ram()
@@ -381,7 +409,13 @@ class Garde:
             return
         try:
             pression = getattr(self.s, 'pression', lambda: 0.0)()
-            self.enregistreur.noter(pct, mesure(), pression, [(i.nom, i.rss + i.swap) for i in procs.values()])
+            minute = {}
+            if self.mesureur is not None:
+                try:
+                    minute = self.mesureur.prendre_minute()
+                except Exception:
+                    pass
+            self.enregistreur.noter(pct, mesure(), pression, [(i.nom, i.rss + i.swap) for i in procs.values()], **minute)
         except Exception:
             pass
 
@@ -439,7 +473,8 @@ def surveiller(arg_config=None):
     dossier = dossier_etat()
     systeme = Systeme(r)
     garde = Garde(r, systeme, Journal(dossier), dossier / 'figes.json',
-                  charger_reglages=lambda: charger_reglages(arg_config))
+                  charger_reglages=lambda: charger_reglages(arg_config),
+                  mesureur=processeur.Echantillonneur(), dossier_cpu=processeur.dossier_ecriture(root=systeme.root))
     signal.signal(signal.SIGHUP, garde.demander_rechargement)   # systemctl reload gagarine
     verrouiller_en_ram()
     threading.stack_size(256 * 1024)

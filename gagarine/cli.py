@@ -21,7 +21,8 @@ Usage : gagarine COMMANDE [options]
 
 Commandes :
   surveiller [--config FICHIER]  surveille la RAM, au premier plan (lancé par le service gagarine.service)
-  etat [--json]                  RAM, swap, état du service, programmes figés, plus gros programmes, derniers événements
+  etat [--json]                  RAM, processeur, swap, état du service, programmes figés, plus gros programmes, derniers
+                                 événements
   reprendre PID                  relance un programme figé (il reste bridé à sa taille)
   arreter PID                    arrête un programme figé
   file "NOM" GO COEURS [--priorite urgent|normal|fond] [--apres PID] -- COMMANDE…
@@ -176,7 +177,7 @@ def lire_texte(chemin):
 
 
 def donnees_etat(r, fichier_reglages, dossier, lancer=None, root=False, meminfo=None, swaps=None, procs=None,
-                 figes=None, bride=est_bride, maintenant=time.time, travaux=0, fuites=None):
+                 figes=None, bride=est_bride, maintenant=time.time, travaux=0, fuites=None, processeur=None):
     """L'objet de `gagarine etat --json` (contrat : docs/conception-1.1.0.md, section 2). Tout ce qui vient du poste
     peut être donné en argument (tests) ; sinon il est lu."""
     from gagarine.reglages import reglages_en_dict
@@ -208,6 +209,7 @@ def donnees_etat(r, fichier_reglages, dossier, lancer=None, root=False, meminfo=
         'fuites': [{'pid': f['pid'], 'nom': f['nom'], 'pente_mo_min': f['pente_mo_min'], 'depuis': f['depuis'],
                     'memoire_mo': int(f['memoire'] // Mo), 'prevision_s': f.get('prevision_s')} for f in fuites],
         'file': {'travaux': travaux},
+        'processeur': processeur,
         'plus_gros': [{'pid': p, 'nom': i.nom, 'rss_mo': i.rss // Mo, 'swap_mo': i.swap // Mo,
                        'utilisateur': nom_utilisateur(i.uid), 'protege': bool(proteges.match(i.nom))}
                       for p, i in gros],
@@ -219,14 +221,19 @@ def commande_etat(args, ctx):
         return usage()
     from gagarine import file as fa
     from gagarine.reglages import charger_reglages, dossier_etat_lecture
+    from gagarine import processeur as pr
     from gagarine.systeme import go, ram_utilisee
     r, _ = charger_reglages(ctx.config, ctx.env)
     dossier = dossier_etat_lecture(ctx.env)
+    cpu = pr.obtenir(ctx.env)   # la mesure du service si elle est fraîche, sinon une mesure directe sur 0,5 s
     if args:
         print(json.dumps(donnees_etat(r, ctx.fichier_reglages(), dossier, ctx.lancer, ctx.root,
-                                      travaux=fa.compter_travaux(ctx.env, ctx.poste)), ensure_ascii=False))
+                                      travaux=fa.compter_travaux(ctx.env, ctx.poste), processeur=cpu), ensure_ascii=False))
         return 0
     print(f'RAM utilisée : {ram_utilisee():.0f} % (seuil {r.seuil:.0f} %, urgence {r.urgence:.0f} %)')
+    for ligne in (pr.ligne_resume(cpu), pr.ligne_actifs(cpu)):
+        if ligne:
+            print(ligne)
     for nom, actif in etat_service(ctx.lancer, ctx.root):
         print(f'Service {nom} : {actif}')
     print(f'Dossier d\'état : {dossier}')
@@ -467,13 +474,13 @@ def commande_service(args, ctx):
 #   COMMANDES = {'nom': fonction(args, ctx) -> code de sortie}
 #   AIDE_COMMANDES = '  nom ARGUMENTS…                description\n…'   (lignes ajoutées à l'aide)
 # Un module absent est ignoré ; un module présent mais cassé fait échouer la commande avec son erreur.
-EXTENSIONS = ('claude', 'menage', 'historique', 'applications', 'ntfy', 'ligne')
+EXTENSIONS = ('claude', 'menage', 'historique', 'applications', 'ntfy', 'ligne', 'processeur')
 
 
 # Quelle extension porte quelle commande, pour n'importer que celle-là (tests/test_cli.py vérifie l'accord avec les
 # COMMANDES de chaque module). Une commande absente d'ici est quand même cherchée dans toutes les extensions.
 COMMANDES_EXTENSIONS = {'hook-claude': 'claude', 'menage': 'menage', 'historique': 'historique',
-                        'applications': 'applications', 'ntfy': 'ntfy', 'ligne-etat': 'ligne'}
+                        'applications': 'applications', 'ntfy': 'ntfy', 'ligne-etat': 'ligne', 'processeur': 'processeur'}
 
 
 def charger_extensions(noms=EXTENSIONS, importer=None):

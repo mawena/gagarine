@@ -1,4 +1,4 @@
-"""Sources de données de l'interface : sous-processus asynchrones, lecture de /proc/meminfo, signaux vers les pages."""
+"""Sources de données de l'interface : sous-processus asynchrones, lecture de /proc/meminfo et /proc/stat, signaux vers les pages."""
 import shutil
 import time
 from collections import deque
@@ -107,6 +107,11 @@ class Source(GObject.Object):
         self.ram_total_mo = None
         self.ram_dispo_mo = None
         self.historique = deque()   # (instant monotone, pourcent)
+        self.chemin_stat = '/proc/stat'
+        self.cpu_pourcent = None    # % de tous les cœurs sur la dernière seconde (1.4.0), None avant la deuxième lecture
+        self.cpu_coeurs = []        # % de chaque cœur logique
+        self.cpu_historique = deque()   # (instant monotone, pourcent), pour la courbe des 5 minutes
+        self._cpu_releve = None
         self.etat = None
         self.file = None
         self.journal = None
@@ -158,7 +163,31 @@ class Source(GObject.Object):
         return GLib.SOURCE_CONTINUE
 
     # --- RAM, lue dans le processus ---
+    def lire_cpu(self):
+        """/proc/stat : % total et par cœur depuis la lecture précédente, et file de valeurs pour la courbe (1.4.0).
+        Une erreur de lecture laisse les dernières valeurs : la RAM ne s'en trouve jamais gênée."""
+        try:
+            with open(self.chemin_stat, encoding='utf-8') as f:
+                releve = donnees.lire_proc_stat(f.read())
+        except (OSError, donnees.ErreurDonnees):
+            return
+        precedent, self._cpu_releve = self._cpu_releve, releve
+        pct = donnees.pourcent_entre(precedent['total'], releve['total']) if precedent else None
+        if pct is None:
+            return
+        self.cpu_pourcent = pct
+        self.cpu_coeurs = donnees.pourcents_coeurs(precedent, releve)
+        maintenant = time.monotonic()
+        self.cpu_historique.append((maintenant, pct))
+        while self.cpu_historique and maintenant - self.cpu_historique[0][0] > DUREE_COURBE + 5:
+            self.cpu_historique.popleft()
+
+    def cpu_moyen(self, fenetre=donnees.FENETRE_PASTILLE):
+        """Moyenne du processeur sur les `fenetre` dernières secondes (10 s pour la pastille), ou None."""
+        return donnees.moyenne_recente(self.cpu_historique, time.monotonic(), fenetre)
+
     def lire_ram(self):
+        self.lire_cpu()
         try:
             with open('/proc/meminfo', encoding='utf-8') as f:
                 total, dispo, pct = donnees.lire_meminfo(f.read())
@@ -241,6 +270,10 @@ class Source(GObject.Object):
     # --- aides pour les pages ---
     def reglages(self):
         return (self.etat or {}).get('reglages') or {}
+
+    def processeur(self):
+        """Objet `processeur` de `etat --json` (modèle, types, température…), ou None avec un cœur 1.3 ou sans mesure."""
+        return (self.etat or {}).get('processeur')
 
     def niveau(self):
         """Niveau de la RAM seule (couleur de la jauge et de la courbe)."""

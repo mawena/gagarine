@@ -3,7 +3,8 @@
 Gagarine est un garde-RAM pour Linux : il empêche la mémoire vive d'un poste de se remplir au point de le figer. Il
 réunit tout ce qui protège la mémoire du poste : le **garde** qui fige le programme qui s'emballe, une **file d'attente**
 pour les travaux lourds, le **ménage** des programmes inactifs, un **swap compressé en RAM**, une **interface graphique**
-et un **indicateur** dans la barre du haut. Il se met à jour par `apt upgrade`.
+et un **indicateur** dans la barre du haut. Il montre aussi le **processeur** : utilisation de chaque cœur, programmes les
+plus actifs, température et fréquence. Il se met à jour par `apt upgrade`.
 
 **Site et installation : [mawena.github.io/gagarine](https://mawena.github.io/gagarine/)** — dépôt APT signé, mises à
 jour par `sudo apt upgrade`.
@@ -108,9 +109,9 @@ Cinq pages :
 
 | Page | Contenu |
 |---|---|
-| **Aperçu** | jauge de la RAM avec les repères (vigilance, seuil, urgence), courbe sur 5 minutes, 24 heures ou 7 jours avec les incidents marqués, swap (zram et disque), état du service |
-| **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; **Fuites en cours** ; **Ménage** des programmes inactifs ; **Applications du bureau** et leur plafond mémoire ; les dix plus gros programmes |
-| **File d'attente** | travaux en cours (plusieurs à la fois) et en attente avec leur priorité et le motif de l'attente, **Annuler**, **Priorité…**, **Voir la sortie**, **Nouveau travail…** ; **Mémoire apprise** de chaque travail, avec sa tendance ; **Travaux passés** avec leur pic |
+| **Aperçu** | jauge de la RAM avec les repères (vigilance, seuil, urgence) ; **processeur** : utilisation totale et de chaque cœur (performants et économes), température, fréquence, charge ; courbe de la RAM et du processeur sur 5 minutes, 24 heures ou 7 jours avec les incidents marqués, et les programmes les plus gros et les plus actifs de la période ; swap (zram et disque) ; état du service |
+| **Programmes** | programmes figés, avec **Reprendre** et **Arrêter** ; **Fuites en cours** ; **Ménage** des programmes inactifs ; **Applications du bureau** et leur plafond mémoire ; les dix plus gros programmes et les dix plus actifs (processeur) |
+| **File d'attente** | travaux en cours (plusieurs à la fois, avec les cœurs qu'ils utilisent) et en attente avec leur priorité et le motif de l'attente, **Annuler**, **Priorité…**, **Voir la sortie**, **Nouveau travail…** ; **Mémoire apprise** de chaque travail, avec sa tendance ; **Travaux passés** avec leur pic et leurs cœurs en moyenne |
 | **Journal** | tous les événements (garde, file, ménage, service), filtre par type et recherche |
 | **Réglages** | seuils, anticipation et pression, délais, bridage, notifications (fin de travail, téléphone), file (travaux en parallèle), fuites, ménage, sessions Claude, programmes protégés ; service ; essai ; affichage de l'indicateur |
 
@@ -122,16 +123,49 @@ la RAM est pleine : tout ce qu'elle demande au système se fait en arrière-plan
 |---|---|
 | ![Programmes figés](docs/captures/programmes.png) | ![File d'attente](docs/captures/file.png) |
 | ![Journal](docs/captures/journal.png) | ![Réglages](docs/captures/reglages.png) |
+| ![Processeur dans l'aperçu](docs/captures/apercu-processeur.png) | ![Programmes les plus actifs](docs/captures/programmes-actifs.png) |
 
 *Captures faites avec des données d'exemple.*
 
 ## Indicateur de la barre du haut
 
-`gagarine-indicateur` affiche la RAM en pourcentage dans la barre du haut, avec une icône qui change selon le niveau
-(normal, vigilance, alerte). Son menu montre la RAM, le swap et les travaux en file, et permet de **reprendre** ou
+`gagarine-indicateur` affiche la RAM et le processeur en pourcentage dans la barre du haut (« RAM 77 % · CPU 23 % »),
+avec une icône qui change selon le niveau de la RAM (normal, vigilance, alerte). Son menu montre la RAM, le swap, le
+processeur (charge, température, programme le plus actif) et les travaux en file, et permet de **reprendre** ou
 d'**arrêter** chaque programme figé, de faire le **ménage** des programmes inactifs, d'**ouvrir Gagarine** ou de
 **masquer l'indicateur**. Il se lance à l'ouverture de
 session ; `gagarine-indicateur --masquer` ou `--afficher` (ou l'interrupteur des réglages) le désactive ou le réactive.
+
+## Processeur
+
+Le service mesure le processeur toutes les 2 secondes : utilisation totale et de chaque cœur, programmes les plus actifs
+(en cœurs utilisés, tous utilisateurs, threads du noyau compris), température, fréquence, charge et pression du noyau. Sur
+un processeur hybride d'Intel, les cœurs performants (P) et économes (E) sont distingués.
+
+![Le processeur dans l'aperçu : utilisation de chaque cœur, température, fréquence et courbe](docs/captures/apercu-processeur.png)
+
+```
+$ gagarine processeur
+Intel(R) Core(TM) Ultra 7 155U · 2 cœurs performants (4 fils) et 10 économes
+Utilisation : 23 %
+  cpu0  P  ███████░░░  70 %
+  cpu1  P  ░░░░░░░░░░  4 %
+  …
+  cpu13 E  ░░░░░░░░░░  2 %
+Température : 52 °C (critique 110 °C)
+Fréquence : 1,3 GHz / maximum 4,8 GHz
+Charge : 1,93 2,07 2,76 (1, 5 et 15 min)
+Pression : 0,6 % (some avg10)
+Les plus actifs :
+  python3 (processus 1085486, alice) : 0,9 cœur · 6 %
+  firefox (processus 7956, alice) : 0,2 cœur · 1 %
+  …
+```
+
+`gagarine etat` résume le processeur en deux lignes, sous la RAM ; `--json` donne la même mesure que
+`gagarine etat --json` (`processeur`). Le processeur apparaît aussi dans l'interface, l'indicateur, la ligne
+d'état des sessions Claude Code, l'historique et la file d'attente (cœurs utilisés par chaque travail). Gagarine
+**n'agit jamais** sur un programme à cause du processeur : ses actions restent réservées à la RAM.
 
 ## File d'attente des travaux lourds
 
@@ -191,8 +225,8 @@ toutes les fenêtres de l'application, ouvertes maintenant ou plus tard.
 ## Historique
 
 Le service garde une mesure par minute pendant 8 jours. `gagarine historique --depuis 24h` (ou `5min`, `1h`, `7j`)
-résume la RAM, les incidents, les programmes les plus gourmands et les travaux de la file ; la page **Aperçu** en trace la
-courbe.
+résume la RAM, le processeur (moyenne, pic, température), les incidents, les programmes les plus gros et les plus actifs, et
+les travaux de la file ; la page **Aperçu** en trace la courbe.
 
 ## Alertes sur le téléphone
 
@@ -210,7 +244,8 @@ de hook est installé dans `/usr/share/gagarine/claude/ressources-poste.sh` ; `g
 montre le verdict. Réglage `claude_bloquer`.
 
 `gagarine ligne-etat` met l'état du poste dans la **ligne d'état** de chaque session (`statusLine` de
-`~/.claude/settings.json`) : `RAM 72 % · file 3 (2 en cours) · 1 figé · fuite : python3`, en couleur selon le niveau.
+`~/.claude/settings.json`) : `RAM 72 % · CPU 23 % · file 3 (2 en cours) · 1 figé · fuite : python3`, en couleur selon le
+niveau (la température s'ajoute quand le processeur chauffe).
 `--avec "COMMANDE"` garde une ligne d'état existante et y ajoute celle de Gagarine :
 
 ```json
@@ -221,14 +256,15 @@ montre le verdict. Réglage `claude_bloquer`.
 
 | Commande | Effet |
 |---|---|
-| `gagarine etat [--json]` | RAM, swap, service, programmes figés, plus gros programmes, file, derniers événements |
+| `gagarine etat [--json]` | RAM, processeur, swap, service, programmes figés, plus gros et plus actifs, file, derniers événements |
+| `gagarine processeur [--json]` | processeur : modèle, cœurs, utilisation de chaque cœur, température, fréquence, charge, pression, programmes les plus actifs |
 | `gagarine reprendre PID` | relance un programme figé par Gagarine (il reste bridé) |
 | `gagarine arreter PID` | arrête un programme figé par Gagarine |
 | `gagarine file [--priorite NIVEAU] …` | file d'attente des travaux lourds (voir plus haut) ; `gagarine file appris` : mémoire apprise ; `gagarine file priorite PID\|TICKET NIVEAU` |
 | `gagarine ligne-etat [--avec "CMD"]` | ligne d'état des sessions Claude Code |
 | `gagarine menage [--json]`, `menage arreter ID…` | programmes inactifs, et leur arrêt |
 | `gagarine applications [--json]`, `applications plafond ID GO\|aucun` | applications du bureau et leur plafond |
-| `gagarine historique [--depuis 5min\|1h\|24h\|7j] [--json]` | RAM, incidents, plus gros programmes et travaux des derniers jours |
+| `gagarine historique [--depuis 5min\|1h\|24h\|7j] [--json]` | RAM, processeur, incidents, plus gros et plus actifs, travaux des derniers jours |
 | `gagarine hook-claude [--tester "CMD"]` | hook des sessions Claude Code |
 | `gagarine ntfy essai SUJET` | message d'essai sur le téléphone |
 | `gagarine journal [-n N] [--json]` | les derniers événements, tous journaux fusionnés |
@@ -329,6 +365,7 @@ gagarine/                 le programme (paquet Python)
   menage.py               ménage des démons et modèles inactifs
   applications.py         plafond mémoire des applications du bureau
   historique.py           historique de 7 jours
+  processeur.py           mesure du processeur (cœurs, programmes actifs, température, fréquence)
   claude.py               hook des sessions Claude Code
   ligne.py                ligne d'état des sessions Claude Code
   ntfy.py                 alertes sur le téléphone
@@ -346,7 +383,7 @@ man/                      pages de manuel
 debian/                   paquet Debian
 scripts/build-deb.sh      construction du .deb dans dist/
 scripts/publier-apt.sh    publication du dépôt APT signé et du site (branche gh-pages)
-docs/                     conception des versions 1.1.0, 1.2.0 et 1.3.0, captures
+docs/                     conception des versions 1.1.0 à 1.4.0, captures
 tests/                    tests unitaires
 Makefile                  cibles test, deb, apt, clean
 ```

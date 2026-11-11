@@ -162,5 +162,32 @@ Conception : [docs/conception-1.3.0.md](docs/conception-1.3.0.md).
 ## Phase 26 — Interface, paquet et release 1.3.0
 
 - [x] Interface et indicateur (priorités, travaux en parallèle, fuites, nouveaux réglages)
-- [ ] Paquet, pages de manuel, README, CHANGELOG, site ; release 1.3.0, GitHub et dépôt APT
-- [ ] Mise en place : ligne d'état de Claude Code branchée sur `gagarine ligne-etat`
+- [x] Paquet, pages de manuel, README, CHANGELOG, site ; release 1.3.0, GitHub et dépôt APT
+- [x] Mise en place : ligne d'état de Claude Code branchée sur `gagarine ligne-etat` (avec repli tant que la 1.3 n'est pas installée)
+
+## Phase 27 — Mesure du processeur (1.4.0)
+
+Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
+
+- [x] Module `processeur` : utilisation totale et par cœur, programmes les plus actifs, température, fréquence, cœurs P/E, charge, pression
+- [x] Le service publie la mesure toutes les 2 s (`/run/gagarine/processeur.json`)
+- [x] Historique : processeur, charge, température et plus actifs de chaque minute
+- [x] `gagarine etat` et `etat --json` (`processeur`), nouvelle commande `gagarine processeur [--json]`
+
+## Phase 28 — Processeur dans la file et la ligne d'état
+
+- [x] File : cœurs utilisés par chaque travail en cours, cœurs moyens en fin de travail (journal)
+- [x] Ligne d'état des sessions Claude : `CPU 23 %` (et la température si le processeur chauffe)
+
+## Phase 29 — Processeur dans l'interface et l'indicateur
+
+- [x] Aperçu : groupe « Processeur » (jauge, barres des cœurs, température, fréquence), courbe RAM + processeur, plus actifs de la période
+- [x] Programmes : « Les plus actifs » ; file : cœurs utilisés
+- [x] Indicateur : « RAM 77 % · CPU 23 % », ligne du processeur dans le menu
+- [x] Captures d'écran
+
+## Phase 30 — Paquet, documentation et release 1.4.0
+
+- [x] Paquet, pages de manuel, README, CHANGELOG, site, metainfo
+- [ ] Release 1.4.0, GitHub et dépôt APT
+- [ ] Mise en place : `apt upgrade` (par l'utilisateur), vérification du service, de l'interface et de la ligne d'état

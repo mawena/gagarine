@@ -1,7 +1,7 @@
 """Indicateur de la barre du haut : GTK 3 + AyatanaAppIndicator3, dans son propre processus.
 
 Il ne parle au cœur de Gagarine qu'à travers la ligne de commande (`gagarine etat --json`, `gagarine file --etat --json`,
-`gagarine menage --json`, `gagarine menage arreter ID`, `gagarine reprendre|arreter PID`). La RAM est lue directement dans /proc/meminfo. Il ne bloque et ne plante jamais :
+`gagarine menage --json`, `gagarine menage arreter ID`, `gagarine reprendre|arreter PID`). La RAM est lue directement dans /proc/meminfo, le processeur dans /proc/stat (chaque seconde, moyenne sur 3 s). Il ne bloque et ne plante jamais :
 quoi qu'il arrive à la commande, l'étiquette montre la RAM.
 """
 import fcntl
@@ -10,10 +10,14 @@ import os
 import signal
 import subprocess
 import sys
+import time
+from collections import deque
 
 from gagarine.indicateur import logique
 
 INTERVALLE_S = 2
+FENETRE_CPU_S = 3   # le CPU de l'étiquette est une moyenne sur 3 s (relevés chaque seconde)
+INTERVALLE_TOOLTIP_S = 10   # l'infobulle (qui cite le CPU) n'est refaite qu'à ce rythme
 DELAI_MAX_S = 6  # une commande plus lente est arrêtée
 AIDE = """Usage : gagarine-indicateur [--afficher | --masquer | --aide]
 
@@ -77,6 +81,9 @@ class Indicateur:
         self.file = None
         self.menage = None
         self.pourcent = None
+        self.cpu = None
+        self.releves_cpu = deque(maxlen=FENETRE_CPU_S + 1)
+        self.tooltip_instant = 0.0
         self.en_cours = False
         self.menu_actuel = None
         self.icone_actuelle = None
@@ -87,9 +94,11 @@ class Indicateur:
             self.indic.set_icon_theme_path(os.path.join(racine, 'data', 'icons'))
         self.indic.set_title('Gagarine')
         self.indic.set_status(self.AI.IndicatorStatus.ACTIVE)
+        self.lire_cpu()
         self.rafraichir_affichage()
         self.tic()
         self.GLib.timeout_add_seconds(INTERVALLE_S, self.tic)
+        self.GLib.timeout_add_seconds(1, self.tic_cpu)
 
     # --- Mise à jour -----------------------------------------------------------------------------------------------
     def tic(self):
@@ -102,6 +111,22 @@ class Indicateur:
         if not self.en_cours:  # jamais deux appels en même temps
             self.en_cours = True
             self.lancer(['etat', '--json'], self.apres_etat)
+        return True
+
+    def lire_cpu(self):
+        """Un relevé de /proc/stat ; le CPU affiché est la moyenne glissante des relevés des 3 dernières secondes."""
+        try:
+            with open('/proc/stat') as f:
+                releve = logique.lire_cpu_stat(f.read())
+        except OSError:
+            releve = None
+        if releve is not None:
+            self.releves_cpu.append(releve)
+        self.cpu = logique.cpu_glissant(list(self.releves_cpu)) if releve is not None else None
+
+    def tic_cpu(self):
+        self.lire_cpu()
+        self.rafraichir_affichage()
         return True
 
     def lancer(self, arguments, suite):
@@ -149,12 +174,15 @@ class Indicateur:
     def rafraichir_affichage(self):
         try:
             niv = logique.niveau(self.pourcent, self.etat)
-            texte = logique.etiquette(self.pourcent)
-            if niv != self.icone_actuelle:
-                self.icone_actuelle = niv
-                self.indic.set_icon_full(logique.nom_icone(niv), logique.tooltip(niv, len(logique.figes(self.etat))))
-            self.indic.set_label(texte, '100 %')
-            contenu = logique.contenu_menu(self.pourcent, self.etat, self.file, self.utilisateur, self.menage)
+            texte = logique.etiquette_barre(self.pourcent, self.cpu)
+            # l'icône garde le niveau de la RAM ; l'infobulle (RAM + CPU) change de temps en temps, pas à chaque seconde
+            cle = (niv, len(logique.figes(self.etat)))
+            maintenant = time.monotonic()
+            if cle != self.icone_actuelle or maintenant - self.tooltip_instant >= INTERVALLE_TOOLTIP_S:
+                self.icone_actuelle, self.tooltip_instant = cle, maintenant
+                self.indic.set_icon_full(logique.nom_icone(niv), logique.tooltip(niv, cle[1], self.cpu))
+            self.indic.set_label(texte, logique.ETIQUETTE_LARGEUR)
+            contenu = logique.contenu_menu(self.pourcent, self.etat, self.file, self.utilisateur, self.menage, self.cpu)
             if contenu != self.menu_actuel:
                 self.menu_actuel = contenu
                 self.indic.set_menu(self.construire_menu(contenu))

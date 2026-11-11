@@ -1,4 +1,4 @@
-.TH GAGARINE\-INTERFACE 1 "10 novembre 2026" "gagarine 1.3.0" "Commandes de l'utilisateur"
+.TH GAGARINE\-INTERFACE 1 "11 novembre 2026" "gagarine 1.4.0" "Commandes de l'utilisateur"
 .SH NOM
 gagarine\-interface \- interface graphique de Gagarine (GTK 4 et libadwaita)
 .SH SYNOPSIS
@@ -10,15 +10,17 @@ gagarine\-interface \- interface graphique de Gagarine (GTK 4 et libadwaita)
 .RB ( \-h " | " \-\-help " | " \-\-aide )
 .SH DESCRIPTION
 .B gagarine\-interface
-ouvre la fenêtre de Gagarine, le garde\-RAM du poste. Elle montre en direct la mémoire vive et le swap, les programmes
+ouvre la fenêtre de Gagarine, le garde\-RAM du poste. Elle montre en direct la mémoire vive, le processeur et le swap, les programmes
 figés par le garde, la file d'attente des travaux lourds, le journal des événements et les réglages, et permet de tout
 piloter à la souris : reprendre ou arrêter un programme figé, annuler ou lancer un travail de la file, modifier les
 réglages, démarrer ou arrêter le service, lancer l'essai de la protection, afficher ou masquer l'indicateur de la barre
 du haut.
 .PP
-La page Aperçu montre la courbe de RAM sur 5 minutes, 24 heures ou 7 jours, avec les incidents marqués. La page Programmes
-propose le ménage (démons et modèles inactifs, à arrêter ou décharger) et le plafond de mémoire des applications du
-bureau. La page File d'attente montre la mémoire apprise de chaque travail et les travaux passés. La page Réglages
+La page Aperçu montre le processeur (utilisation de chaque cœur, température, fréquence) et la courbe de la RAM et du
+processeur sur 5 minutes, 24 heures ou 7 jours, avec les incidents marqués et les programmes les plus gros et les plus
+actifs de la période. La page Programmes montre aussi les programmes les plus actifs en ce moment et propose le ménage (démons et modèles inactifs, à arrêter ou décharger) et le plafond de mémoire des applications du
+bureau. La page File d'attente montre les cœurs utilisés par chaque travail en cours, la mémoire apprise de chaque travail et
+les travaux passés. La page Réglages
 couvre aussi l'anticipation, la pression, les notifications de fin, ntfy (avec un essai), la correction des annonces, le
 ménage automatique et le blocage des sessions Claude Code.
 .PP

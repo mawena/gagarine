@@ -1,2 +1,2 @@
 """Version de Gagarine (une seule source : debian/changelog doit la suivre, voir scripts/build-deb.sh)."""
-VERSION = "1.3.0"
+VERSION = "1.4.0"
