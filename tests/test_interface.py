@@ -618,10 +618,12 @@ class PhraseEtat150(unittest.TestCase):
     def test_fuite(self):
         n, titre, detail = d.phrase_etat(self.etat(fuites=self.FUITES), 60, 6000, 99)
         self.assertEqual((n, titre), ('vigilance', 'node grossit sans cesse (+210 Mo/min).'))
-        self.assertIn('comme 1 autre programme', detail)
+        self.assertEqual(detail, '1 autre programme grossit aussi ; Gagarine interviendra près du seuil.')
         n, titre, detail = d.phrase_etat(self.etat(fuites=[{'pid': 1, 'nom': 'node'}]), 60, 6000, 10)
         self.assertEqual(titre, 'node grossit sans cesse.')
-        self.assertNotIn('autre', detail)
+        self.assertEqual(detail, 'Fuite de mémoire probable : Gagarine interviendra si la RAM approche du seuil.')
+        detail = d.phrase_etat(self.etat(fuites=self.FUITES + [{'pid': 2, 'nom': 'x'}]), 60, 6000, 10)[2]
+        self.assertTrue(detail.startswith('2 autres programmes grossissent aussi'))
 
     def test_processeur_sature(self):
         n, titre, detail = d.phrase_etat(self.etat(), 60, 6000, 94.4)
@@ -726,6 +728,15 @@ class Instruments150(unittest.TestCase):
             self.assertEqual(plan['groupes'], [])
         self.assertEqual(d.disposition_coeurs(4, 2000)['barres'][0][2], 36.0)     # pas de barres démesurées
         self.assertEqual(d.disposition_coeurs(0, 400), {'barres': [], 'groupes': [], 'paires': []})
+
+    def test_enveloppe_haute(self):
+        points = [(x * 0.5, 100 - (x % 3) * 10) for x in range(40)]      # 40 mesures sur 20 px, en dents de scie
+        env = d.enveloppe_haute(points, 3)
+        self.assertLessEqual(len(env), 9)
+        self.assertEqual(env[0], points[0])
+        self.assertEqual(env[-1], points[-1])
+        self.assertIn(80, [y for _, y in env])                             # le plus haut de chaque tranche est gardé
+        self.assertEqual(d.enveloppe_haute([(0, 1), (1, 2)]), [(0, 1), (1, 2)])
 
     def test_etiquettes_sans_chevauchement(self):
         self.assertEqual(d.placer_etiquettes([(100, 20), (300, 20)], 500), [90, 290])     # centrées

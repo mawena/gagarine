@@ -16,6 +16,16 @@
 @define-color gagarine_vigilance_fond @warning_bg_color;
 @define-color gagarine_alerte_fond @error_bg_color;
 
+/* Sondes des dessins Cairo (graphiques.Palette) : étiquettes cachées dont la couleur est le jeton. */
+.sonde-ram { color: @gagarine_ram; }
+.sonde-cpu { color: @gagarine_cpu; }
+.sonde-calme { color: @gagarine_calme; }
+.sonde-vigilance { color: @gagarine_vigilance; }
+.sonde-alerte { color: @gagarine_alerte; }
+.sonde-calme-fond { color: @gagarine_calme_fond; }
+.sonde-vigilance-fond { color: @gagarine_vigilance_fond; }
+.sonde-alerte-fond { color: @gagarine_alerte_fond; }
+
 /* Lectures d'instrument : grands chiffres tabulaires. */
 .lecture {
   font-size: 40px;

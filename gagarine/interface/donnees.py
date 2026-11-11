@@ -1155,9 +1155,10 @@ def phrase_etat(etat=None, ram_pourcent=None, ram_dispo_mo=None, cpu_pourcent=No
         f = max(fuites, key=lambda x: x.get('pente_mo_min') or 0)
         pente = f' (+{formater_pente(f["pente_mo_min"])})' if f.get('pente_mo_min') is not None else ''
         autres = len(fuites) - 1
-        return ('vigilance', f'{f.get("nom") or "Un programme"} grossit sans cesse{pente}.',
-                ('Fuite de mémoire probable' + (f', comme {pluriel(autres, "autre programme")}' if autres else '') +
-                 ' : Gagarine surveille et interviendra si la RAM approche du seuil.'))
+        detail = ('Fuite de mémoire probable : Gagarine interviendra si la RAM approche du seuil.' if not autres else
+                  f'{pluriel(autres, "autre programme", "autres programmes")} grossi{"t" if autres == 1 else "ssent"} aussi ; '
+                  'Gagarine interviendra près du seuil.')
+        return 'vigilance', f'{f.get("nom") or "Un programme"} grossit sans cesse{pente}.', detail
     if cpu_pourcent is not None and cpu_pourcent >= SEUIL_SATURE:
         return ('vigilance', f'Le processeur est saturé ({round(cpu_pourcent)} %) : le poste peut ralentir.',
                 'Gagarine n’agit pas sur le processeur : il ne protège que la RAM.')
@@ -1275,3 +1276,23 @@ def placer_etiquettes(etiquettes, largeur, ecart=4.0):
         limite = largeur - etiquettes[k][1] if k == len(gauches) - 1 else gauches[k + 1] - ecart - etiquettes[k][1]
         gauches[k] = min(gauches[k], limite)
     return gauches
+
+
+def enveloppe_haute(points, pas=3.0):
+    """Points (x, y) d'une courbe, triés par x, réduits à un par tranche de `pas` px : celui de plus forte valeur (le plus
+    petit y, l'axe des y descendant). Sur 24 h et 7 jours, des centaines de mesures tiennent dans quelques pixels :
+    le trait reste net et garde les pics. Le premier et le dernier point sont gardés."""
+    if len(points) < 3:
+        return list(points)
+    sortie = [(points[0][0], points[0][1], None)]
+    for x, y in points[1:]:
+        tranche = int(x // pas)
+        if sortie and sortie[-1][2] == tranche:
+            if y < sortie[-1][1]:
+                sortie[-1] = (sortie[-1][0], y, tranche)
+        else:
+            sortie.append((x, y, tranche))
+    resultat = [(x, y) for x, y, _ in sortie]
+    if resultat[-1] != tuple(points[-1]):
+        resultat.append(tuple(points[-1]))
+    return resultat

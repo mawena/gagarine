@@ -7,7 +7,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk
 
 from . import donnees
-from .graphiques import Coeurs, Courbe, Jauge, couleur_hex
+from .graphiques import Coeurs, Courbe, Jauge, Palette, couleur_hex
 from .outils import ListeEncadree, PageLarge, Section, Voyant, changer_classe, echappe, etiquette, synchroniser
 
 BASELINE = getattr(Gtk.Align, 'BASELINE_FILL', Gtk.Align.BASELINE)
@@ -53,6 +53,8 @@ class PageApercu(PageLarge):
         self.lignes_swap, self.lignes_gros_direct, self.lignes_actifs_direct = {}, {}, {}
         self.lignes_incidents, self.lignes_gros, self.lignes_actifs = [], [], []
         self.periode = '5min'
+        self.palette = Palette()       # couleurs du thème pour les dessins (cachée)
+        self.add(self.palette)
 
         self._phrase_etat()
         self._instruments()
@@ -126,7 +128,7 @@ class PageApercu(PageLarge):
         gauche.get_parent().set_vexpand(False)       # mais la rangée ne s'étire pas dans une grande fenêtre
 
         carte, self.statut, self.pourcent, self.detail = self._instrument('Mémoire vive')
-        self.jauge = Jauge()
+        self.jauge = Jauge(self.palette)
         carte.append(self.jauge)
         self.legende = Gtk.Label(xalign=0, wrap=True)
         self.legende.add_css_class('legende-instrument')
@@ -136,7 +138,7 @@ class PageApercu(PageLarge):
 
         # processeur (1.4.0) : mesure locale chaque seconde, détails de `etat --json` quand le cœur les donne
         carte, self.cpu_statut, self.cpu_pourcent, self.cpu_detail = self._instrument('Processeur')
-        self.coeurs = Coeurs()
+        self.coeurs = Coeurs(self.palette)
         carte.append(self.coeurs)
         self.cpu_legende = Gtk.Label(xalign=0, wrap=True, use_markup=True)
         self.cpu_legende.add_css_class('legende-instrument')
@@ -163,7 +165,7 @@ class PageApercu(PageLarge):
         carte = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         carte.add_css_class('card')
         carte.add_css_class('carte-courbe')
-        self.courbe = Courbe(self.source)
+        self.courbe = Courbe(self.source, self.palette)
         carte.append(self.courbe)
         self.groupe_courbe.ajouter(carte)
         self.resume = Gtk.Label(xalign=0, wrap=True, max_width_chars=90, visible=False)
@@ -372,6 +374,7 @@ class PageApercu(PageLarge):
         boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER)
         r.valeur = etiquette('', ['numeric', 'caption'])
         r.barre = Gtk.LevelBar(min_value=0, max_value=1, width_request=96)
+        r.barre.add_css_class('jauge-swap')
         boite.append(r.valeur)
         boite.append(r.barre)
         r.add_suffix(boite)

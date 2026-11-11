@@ -538,23 +538,42 @@ class TestFenetre(unittest.TestCase):
             w.set_child(page)
             w.present()
             self.addCleanup(w.destroy)
+            barre = page.fixer_en_haut(Gtk.Label(label='barre fixe'))
+            self.assertIsInstance(page.vue, Adw.ToolbarView)
+            self.assertIs(page.defilement.get_ancestor(Adw.ToolbarView), page.vue)     # le défilement passe sous la barre
             rangee = colonnes[0].get_parent()
             self.assertTrue(attendre(lambda: page.get_width() > 0 and rangee.get_orientation() == attendu, 5), largeur)
+            etroite = attendu == Gtk.Orientation.VERTICAL
+            self.assertEqual(page.contenu.has_css_class('etroite'), etroite)     # classe pour les lignes créées ensuite
+            self.assertEqual(barre.get_margin_start(), 14 if etroite else 28)
 
     def test_styles_sans_erreur_et_couleurs_du_theme(self):
         from gagarine.interface.application import charger_styles
+
+        def lire(nom):
+            with open(os.path.join(STYLES, nom), encoding='utf-8') as fichier:
+                return fichier.read()
         clairs, sombres = fichiers_styles()
         erreurs = []
         for fichiers in (clairs, sombres):
             p = Gtk.CssProvider()
             p.connect('parsing-error', lambda _p, _section, e: erreurs.append(e.message))
-            p.load_from_string('\n'.join(open(os.path.join(STYLES, n), encoding='utf-8').read() for n in fichiers))
+            p.load_from_string('\n'.join(lire(n) for n in fichiers))
         self.assertEqual(erreurs, [])
         self.assertTrue(charger_styles())
         f = self.ouvrir()
-        for nom in ('gagarine_ram', 'gagarine_cpu', 'gagarine_calme', 'gagarine_vigilance', 'gagarine_alerte',
-                    'gagarine_vigilance_fond', 'gagarine_alerte_fond'):
-            self.assertTrue(f.pages['apercu'].jauge.get_style_context().lookup_color(nom)[0], nom)
+        palette = f.pages['apercu'].palette
+        for nom in palette.sondes:
+            self.assertIsNotNone(palette.couleur(nom), nom)
+        # les sondes suivent le thème : bleu de la RAM plus clair en sombre (base-sombre.css)
+        gestion = Adw.StyleManager.get_default()
+        self.addCleanup(gestion.set_color_scheme, Adw.ColorScheme.DEFAULT)
+        couleurs = {}
+        for schema, sombre in ((Adw.ColorScheme.FORCE_LIGHT, False), (Adw.ColorScheme.FORCE_DARK, True)):
+            gestion.set_color_scheme(schema)
+            self.assertTrue(attendre(lambda: gestion.get_dark() == sombre, 3))
+            couleurs[sombre] = tuple(round(255 * v) for v in palette.couleur('gagarine_ram')[:3])
+        self.assertEqual(couleurs, {False: (0x35, 0x84, 0xe4), True: (0x62, 0xa0, 0xea)})
 
 
 @unittest.skipUnless(STYLES_OK, 'PyGObject, GTK 4 ou libadwaita absents')

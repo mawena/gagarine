@@ -1,7 +1,8 @@
 """Instruments de l'Aperçu, dessinés avec Cairo : échelle graduée de la RAM, courbe RAM et processeur, cœurs du processeur.
 
-Couleurs : toujours celles du thème (jetons `gagarine_*` de styles/base.css), lues par `couleur()` ; les valeurs de secours
-ne servent que si le thème ne les définit pas. Textes : police du système (Pango), chiffres tabulaires.
+Couleurs : toujours celles du thème (jetons `gagarine_*` de styles/base.css), lues par `couleur()` dans une `Palette` de
+sondes CSS ; les valeurs de secours ne servent que si le thème ne les définit pas. Textes : police du système (Pango),
+chiffres tabulaires.
 """
 import math
 import time
@@ -25,21 +26,43 @@ SECOURS = {
     'gagarine_calme_fond': (0.15, 0.64, 0.41), 'gagarine_vigilance_fond': (0.90, 0.65, 0.04),
     'gagarine_alerte_fond': (0.88, 0.11, 0.14),
 }
+JETONS = tuple(SECOURS)
 DEFAUTS_REGLAGES = {'vigilance': 85, 'seuil': 95, 'urgence': 98}
 
 
-def couleur(widget, nom):
-    """(r, g, b, a) du jeton de couleur `nom` dans le thème courant du widget, ou sa valeur de secours.
+class Palette(Gtk.Box):
+    """Sondes des couleurs du thème : une étiquette cachée par jeton, de classe `sonde-<jeton>` (styles/base.css, où sa
+    couleur de texte vaut le jeton). `couleur(nom)` lit la couleur calculée de la sonde (Gtk.Widget.get_color) : elle
+    suit le thème clair ou sombre, sans GtkStyleContext (déprécié depuis GTK 4.10). Cachée, la palette se place
+    n'importe où dans la page ; les dessins la reçoivent à leur création."""
 
-    GtkStyleContext.lookup_color est marqué déprécié depuis GTK 4.10 mais reste dans tout GTK 4 ; c'est le seul endroit
-    qui l'appelle. Il suit le thème clair ou sombre à chaque dessin."""
-    try:
-        trouve, c = widget.get_style_context().lookup_color(nom)
-    except (AttributeError, TypeError):
-        trouve = False
-    if trouve:
+    def __init__(self):
+        super().__init__(visible=False)
+        self.sondes = {}
+        for nom in JETONS:
+            sonde = Gtk.Label()
+            sonde.add_css_class('sonde-' + nom.removeprefix('gagarine_').replace('_', '-'))
+            self.append(sonde)
+            self.sondes[nom] = sonde
+
+    def couleur(self, nom):
+        """(r, g, b, a) du jeton, ou None s'il est inconnu ou si le thème ne le définit pas (la sonde garde alors la
+        couleur du texte, qu'elle hérite de la palette)."""
+        sonde = self.sondes.get(nom)
+        if sonde is None:
+            return None
+        c, texte = sonde.get_color(), self.get_color()
+        if (c.red, c.green, c.blue, c.alpha) == (texte.red, texte.green, texte.blue, texte.alpha):
+            return None
         return c.red, c.green, c.blue, c.alpha
-    return (*SECOURS.get(nom, (0.5, 0.5, 0.5)), 1.0)
+
+
+def couleur(widget, nom):
+    """(r, g, b, a) du jeton de couleur `nom` dans le thème courant, lu dans la palette du widget (`widget.palette`), ou
+    sa valeur de secours (dessin sans palette, ou thème sans styles/base.css)."""
+    palette = getattr(widget, 'palette', None)
+    c = palette.couleur(nom) if palette is not None else None
+    return c if c is not None else (*SECOURS.get(nom, (0.5, 0.5, 0.5)), 1.0)
 
 
 def couleur_hex(widget, nom):
@@ -113,8 +136,9 @@ class Jauge(Gtk.DrawingArea):
     BANDE = 20              # hauteur de la bande
     HAUTEUR = 80            # hauteur du dessin ; s'il reçoit plus (carte voisine plus haute), il se centre
 
-    def __init__(self):
+    def __init__(self, palette=None):
         super().__init__()
+        self.palette = palette
         self.pourcent = 0.0
         self.reglages = {}
         self.niveau = 'normal'
@@ -211,9 +235,10 @@ class Courbe(Gtk.DrawingArea):
     (lues en direct dans /proc/meminfo et /proc/stat) ou les dernières 24 h et 7 jours (historique du service), incidents
     marqués en rouge."""
 
-    def __init__(self, source):
+    def __init__(self, source, palette=None):
         super().__init__()
         self.source = source
+        self.palette = palette
         self.periode = '5min'
         self.set_content_height(260)
         self.set_hexpand(True)
@@ -310,6 +335,8 @@ class Courbe(Gtk.DrawingArea):
         cr.set_dash([])
 
         points, points_cpu, incidents = self._points(x_de_f, y_de)
+        if self.periode != '5min':       # une mesure par minute : un point par tranche de 3 px, pics gardés
+            points, points_cpu = donnees.enveloppe_haute(points), donnees.enveloppe_haute(points_cpu)
         if self.periode != '5min' and len(points) < 2:
             layout = mise_en_page(self, 'Pas encore assez de mesures pour cette période', 1.0)
             tw, th = _taille(layout)
@@ -377,8 +404,9 @@ class Coeurs(Gtk.DrawingArea):
 
     HAUT_BARRES = 70
 
-    def __init__(self):
+    def __init__(self, palette=None):
         super().__init__()
+        self.palette = palette
         self.pourcents = []
         self.types = []
         self.coeurs_performants = None

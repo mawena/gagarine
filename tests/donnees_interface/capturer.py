@@ -179,7 +179,7 @@ def main():
                                                   defiler_vers(f.pages['apercu'], f.pages['apercu'].groupe_courbe)), 2500),
         ('programmes-large', 'programmes', lambda f: grande(f, 'programmes'), 2000),
         ('file-large', 'file', lambda f: grande(f, 'file'), 2000),
-        ('journal-large', 'journal', lambda f: grande(f, 'journal'), 2000),
+        ('journal-large', 'journal', lambda f: (f.pages['journal'].recherche.set_text(''), grande(f, 'journal')), 2000),
         ('reglages-large', 'reglages', lambda f: grande(f, 'reglages'), 2000),
         ('apercu-clair', 'apercu', lambda f: (periode(f, '5min'), grande(f, 'apercu')), 2500),
     ]
