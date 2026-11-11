@@ -212,4 +212,4 @@ Conception : [docs/conception-1.5.0.md](docs/conception-1.5.0.md).
 
 - [x] Captures (largeur normale, grande fenêtre, thème clair), README, site, CHANGELOG, metainfo
 - [x] Release 1.5.0, GitHub et dépôt APT
-- [ ] Mise en place sur le poste
+- [x] Mise en place sur le poste (mise à jour par `pkexec`, application installée vérifiée avec les vraies données)
