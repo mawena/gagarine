@@ -275,3 +275,24 @@ tests remplacent. Il n'importe aucun autre module de Gagarine, pour rester lége
   - Le fichier est ignoré si ce n'est pas un objet, ou si `t` ou `pourcent` n'est pas un nombre (un booléen est refusé).
   - La température n'apparaît que si `chaud` vaut exactement `true` ; elle est arrondie à l'entier.
   - Couleurs selon le pourcentage affiché, arrondi.
+- **Interface** :
+  - Pastille Calme / Occupé / Saturé : moyenne des mesures locales des 10 dernières secondes (sous 50 %, 50 à 89 %,
+    90 % et plus). Les barres des cœurs ont les mêmes seuils (normal, orange, rouge).
+  - Le grand pourcentage et les barres viennent de `/proc/stat`, lu par l'interface ; le `pourcent` du service ne sert
+    que tant que la mesure locale n'existe pas. Les cœurs P passent avant les E si `types` a une entrée par cœur.
+  - La température est suivie de « (chaud) », en orange, d'après le booléen `chaud` du service, sans recalcul. La
+    répartition s'appuie sur `coeurs_performants` : « 2 cœurs performants (P, 4 fils) et 10 économes (E) ».
+  - Courbe : le processeur est un trait violet sans remplissage, sur le même axe 0–100 % que la RAM ; légende
+    « RAM — Processeur » dans le dessin ; les points sans `cpu` sont ignorés. Le résumé ajoute « processeur au plus X %
+    (heure) » ; les plus actifs de la période : 5 lignes.
+  - Programmes, « Les plus actifs » : 10 lignes au plus ; « Le poste est calme » s'il n'y a aucun programme ; groupe
+    masqué si le service n'a pas d'objet `processeur` (cœur 1.3). Avec un cœur 1.3, l'Aperçu garde le groupe
+    Processeur avec la seule mesure locale, sans bandeau d'erreur.
+  - Nombre de cœurs : une décimale, deux sous 0,1 (« 0,04 cœur »), comme `gagarine processeur`.
+  - File : « processeur : 6,2 cœurs » pour un travail en cours, « 5,4 cœurs en moyenne » pour un travail passé.
+- **Indicateur** :
+  - `/proc/stat` lu chaque seconde ; le CPU affiché couvre les 3 dernières secondes (4 relevés). Jusqu'au deuxième
+    relevé, l'étiquette est « RAM 77 % » seule. Largeur réservée : « RAM 100 % · CPU 100 % ».
+  - Menu : « Processeur : 23 % · charge 2,4 · 72 °C » après la RAM et le swap ; « Plus actif » seulement à 0,5 cœur ou
+    plus. Infobulle : « Gagarine : RAM normale · processeur 23 % », redessinée quand l'icône change ou toutes les 10 s.
+    L'icône suit la RAM seule.

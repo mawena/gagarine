@@ -181,9 +181,9 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 
 ## Phase 29 — Processeur dans l'interface et l'indicateur
 
-- [ ] Aperçu : groupe « Processeur » (jauge, barres des cœurs, température, fréquence), courbe RAM + processeur, plus actifs de la période
-- [ ] Programmes : « Les plus actifs » ; file : cœurs utilisés
-- [ ] Indicateur : « RAM 77 % · CPU 23 % », ligne du processeur dans le menu
+- [x] Aperçu : groupe « Processeur » (jauge, barres des cœurs, température, fréquence), courbe RAM + processeur, plus actifs de la période
+- [x] Programmes : « Les plus actifs » ; file : cœurs utilisés
+- [x] Indicateur : « RAM 77 % · CPU 23 % », ligne du processeur dans le menu
 - [ ] Captures d'écran
 
 ## Phase 30 — Paquet, documentation et release 1.4.0
