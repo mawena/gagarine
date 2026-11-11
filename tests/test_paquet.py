@@ -88,8 +88,16 @@ class Paquet(unittest.TestCase):
     def test_description_a_jour(self):
         with open(os.path.join(RACINE, 'debian/control'), encoding='utf-8') as f:
             texte = f.read()
-        for mot in ('hook-claude', 'historique', 'menage', 'APT', 'ligne-etat', 'leak'):
+        for mot in ('hook-claude', 'historique', 'menage', 'APT', 'ligne-etat', 'leak', 'processeur', 'processor'):
             self.assertTrue(mot in texte, f'{mot} absent de la description')
+
+    def test_dossier_execution_du_service(self):
+        """1.4.0 : le service publie processeur.json dans /run/gagarine, lisible par tous (ligne d'état, interface)."""
+        with open(os.path.join(RACINE, 'systemd/gagarine.service'), encoding='utf-8') as f:
+            unite = f.read().splitlines()
+        self.assertIn('RuntimeDirectory=gagarine', unite)
+        self.assertIn('RuntimeDirectoryMode=0755', unite)
+        self.assertTrue(os.path.exists(os.path.join(RACINE, 'gagarine', 'processeur.py')))
 
     def test_pages_de_manuel(self):
         pages = [p for p, *_ in lignes('gagarine.manpages')]
