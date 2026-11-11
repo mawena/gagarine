@@ -210,6 +210,6 @@ Conception : [docs/conception-1.5.0.md](docs/conception-1.5.0.md).
 
 ## Phase 34 — Paquet, documentation et release 1.5.0
 
-- [ ] Captures (largeur normale, grande fenêtre, thème clair), README, site, CHANGELOG, metainfo
+- [x] Captures (largeur normale, grande fenêtre, thème clair), README, site, CHANGELOG, metainfo
 - [ ] Release 1.5.0, GitHub et dépôt APT
 - [ ] Mise en place sur le poste
