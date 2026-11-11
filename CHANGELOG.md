@@ -7,6 +7,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.5.0] - 2026-11-11
+
 Nouveau design de l'interface : elle prend toute la largeur de la fenêtre au lieu d'une colonne étroite et centrée, et
 dit d'un coup d'œil si le poste va bien.
 

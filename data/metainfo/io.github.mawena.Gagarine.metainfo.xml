@@ -62,6 +62,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="1.5.0" date="2026-11-11">
+      <description>
+        <p>Nouveau design : barre latérale avec l’état de chaque page, pages en pleine largeur sur plusieurs colonnes, phrase d’état et instruments de la RAM et du processeur, journal groupé par jour.</p>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-11-11">
       <description>
         <p>Le processeur, partout où Gagarine montrait la RAM : utilisation de chaque cœur, programmes les plus actifs, température, fréquence, historique, file d’attente, ligne d’état, interface et indicateur.</p>
