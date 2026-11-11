@@ -67,6 +67,19 @@ class TestLigneLisible(unittest.TestCase):
         l = self.ligne(action='travail-fin', source='file', nom='rendu', pid=7, code=0, duree=40.1)
         self.assertIn('rendu 7 (code 0, 40 s)', l)
 
+    def test_travail_fin_montre_les_coeurs_en_moyenne(self):
+        l = self.ligne(action='travail-fin', source='file', nom='rendu', pid=7, code=0, duree=40.1, pic_go=2.5,
+                       cpu_s=216.2, coeurs_moyens=5.39)
+        self.assertIn('rendu 7 (code 0, 40 s, pic 2.5 Go, 5,4 cœurs en moyenne)', l)
+
+    def test_coeurs_moyens_pluriel_et_entiers(self):
+        for valeur, texte in ((0.8, '0,8 cœur'), (1.0, '1 cœur'), (1.4, '1,4 cœur'), (2.0, '2 cœurs'), (13.04, '13 cœurs')):
+            self.assertIn(f'{texte} en moyenne', self.ligne(action='travail-fin', nom='x', coeurs_moyens=valeur))
+
+    def test_travail_fin_sans_coeurs_ou_invalides(self):
+        for e in ({}, {'coeurs_moyens': None}, {'coeurs_moyens': 'beaucoup'}, {'coeurs_moyens': True}):
+            self.assertNotIn('en moyenne', self.ligne(action='travail-fin', nom='x', code=0, **e))
+
     def test_travail_annule_dit_s_il_attendait(self):
         self.assertIn('(annulé en attente)', self.ligne(action='travail-annule', source='file', nom='a', pid=1,
                                                         signal=15, en_cours=False))

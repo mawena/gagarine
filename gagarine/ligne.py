@@ -1,7 +1,7 @@
 """État du poste dans la ligne d'état de Claude Code : `gagarine ligne-etat [--avec "COMMANDE"] [--sans-couleur]`.
 
 Claude Code envoie son JSON sur l'entrée standard ; la commande répond par une ligne courte
-(`RAM 72 % · file 3 (2 en cours) · 1 figé · fuite : python3`) où seules les parties non nulles apparaissent.
+(`RAM 72 % · CPU 23 % · file 3 (2 en cours) · 1 figé · fuite : python3`) où seules les parties non nulles apparaissent.
 Avec `--avec`, la ligne d'état existante est lancée d'abord (même entrée, 1 s au plus) et la partie de Gagarine
 est ajoutée à la fin de sa dernière ligne. Ce module ne plante jamais : au pire, la RAM seule, code de sortie 0.
 """
@@ -12,10 +12,12 @@ import time
 from pathlib import Path
 
 DELAI_AVEC = 1.0          # s laissées à la commande de --avec
+FRAICHEUR_CPU = 6.0       # s : la mesure du processeur du service (processeur.json) n'est plus utilisée au-delà
+DOSSIER_EXECUTION = '/run/gagarine'
 FENETRE_FUITES = 1800     # s : les événements « fuite » plus anciens ne comptent plus
 SEPARATEUR = ' │ '
 NOMS_MAX = 2              # noms de programmes en fuite montrés avant « +N »
-COULEURS = {'normal': '32', 'vigilance': '33', 'seuil': '31', 'file': '36', 'fige': '33', 'fuite': '31'}
+COULEURS = {'normal': '32', 'vigilance': '33', 'seuil': '31', 'file': '36', 'cpu_calme': '32', 'cpu_occupe': '33', 'cpu_sature': '31', 'chaud': '31', 'fige': '33', 'fuite': '31'}
 
 
 def couleur(texte, code, avec):
@@ -37,6 +39,30 @@ def lire_ram():
         return 100 * (1 - dispo / total)
     except (OSError, ValueError, IndexError, TypeError, ZeroDivisionError):
         return None
+
+
+def lire_processeur(env, maintenant=None):
+    """La mesure du processeur du service (processeur.json), si elle est fraîche ; sinon None. Aucune mesure directe."""
+    maintenant = time.time() if maintenant is None else maintenant
+    dossier = env.get('GAGARINE_DOSSIER_EXECUTION') or DOSSIER_EXECUTION   # comme le service : l'un, sinon l'autre
+    d = lire_json(Path(dossier) / 'processeur.json')
+    if isinstance(d, dict):
+        t, pct = d.get('t'), d.get('pourcent')
+        if all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (t, pct)) \
+                and -1 <= maintenant - t <= FRAICHEUR_CPU:
+            return d
+    return None
+
+
+def partie_cpu(d, avec_couleur=True):
+    """`CPU 23 %`, suivi de la température en rouge si le processeur est chaud."""
+    pct = d['pourcent']
+    niveau = 'cpu_sature' if pct >= 90 else 'cpu_occupe' if pct >= 70 else 'cpu_calme'
+    texte = couleur(f'CPU {round(pct)} %', COULEURS[niveau], avec_couleur)
+    temperature = d.get('temperature')
+    if d.get('chaud') is True and isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+        texte += ' ' + couleur(f'{round(temperature)} °C', COULEURS['chaud'], avec_couleur)
+    return texte
 
 
 def niveau_ram(pct, vigilance, seuil):
@@ -179,6 +205,12 @@ def partie_gagarine(env, avec_couleur=True, config=None):
     else:
         parties.append(couleur(f'RAM {round(pct)} %', COULEURS[niveau_ram(pct, vigilance, seuil)], avec_couleur))
     try:
+        mesure = lire_processeur(env)
+        if mesure is not None:
+            parties.append(partie_cpu(mesure, avec_couleur))
+    except Exception:
+        pass
+    try:
         total, cours = compter_file(env)
         if total:
             parties.append(couleur(f'file {total} ({cours} en cours)', COULEURS['file'], avec_couleur))
@@ -304,5 +336,5 @@ def commande_ligne_etat(args, ctx):
 
 COMMANDES = {'ligne-etat': commande_ligne_etat}
 AIDE_COMMANDES = (
-    '  ligne-etat [--avec "CMD"]      une ligne d\'état du poste pour Claude Code (RAM, file, figés, fuites)\n'
+    '  ligne-etat [--avec "CMD"]      une ligne d\'état du poste pour Claude Code (RAM, CPU, file, figés, fuites)\n'
     '                                 [--sans-couleur] ; --avec : ajoute à la fin de la ligne d\'état de CMD\n')
