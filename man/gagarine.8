@@ -9,6 +9,9 @@ gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de fig
 .B gagarine etat
 .RB [ \-\-json ]
 .br
+.B gagarine processeur
+.RB [ \-\-json ]
+.br
 .B gagarine reprendre
 .I PID
 .br
@@ -123,14 +126,28 @@ est saturé.
 Lance le démon de surveillance (c'est ce que fait le service). Sans \fB\-\-config\fR, lit \fI/etc/gagarine.conf\fR.
 .TP
 .BR etat " [" \-\-json ]
-Affiche la RAM utilisée, l'état du service, les programmes figés et les derniers événements. Avec \fB\-\-json\fR, écrit
+Affiche la RAM utilisée, le processeur, l'état du service, les programmes figés et les derniers événements. Avec \fB\-\-json\fR, écrit
 un seul objet JSON (UTF\-8) : version, date, RAM, zones de swap (dont zram), réglages en vigueur, fichier de réglages,
 état du service (\fBsystemctl is\-active\fR) et son activation au démarrage, dossier d'état, programmes figés, fuites
 repérées et les dix programmes qui prennent le plus de mémoire (RAM + swap). \fBfuites\fR est la liste des programmes dont
 la mémoire monte régulièrement en ce moment (fichier \fIfuites.json\fR du service) : \fBpid\fR, \fBnom\fR,
 \fBpente_mo_min\fR, \fBdepuis\fR (secondes depuis 1970), \fBmemoire_mo\fR et \fBprevision_s\fR (secondes avant que la RAM
-atteigne le seuil à cette pente, absent ou \fBnull\fR si elle ne l'atteindrait pas). Les clés ne disparaissent jamais
-d'une version à l'autre.
+atteigne le seuil à cette pente, absent ou \fBnull\fR si elle ne l'atteindrait pas). Depuis la 1.4.0, \fBprocesseur\fR
+est l'objet décrit à la commande \fBprocesseur\fR (ou \fBnull\fR). Les clés ne disparaissent jamais d'une version à
+l'autre.
+.TP
+.BR processeur " [" \-\-json ]
+Affiche le processeur : modèle et cœurs (performants et économes sur un processeur hybride d'Intel), utilisation totale
+et de chaque cœur, température, fréquence, charge, pression du noyau et les dix programmes les plus actifs. La mesure est
+celle que le service écrit toutes les 2 secondes dans \fI/run/gagarine/processeur.json\fR ; si elle date de plus de
+6 secondes (service arrêté), la commande mesure elle\-même pendant une demi\-seconde. Avec \fB\-\-json\fR, un seul objet :
+\fBt\fR (secondes depuis 1970), \fBdate\fR, \fBsource\fR (\fBservice\fR ou \fBdirecte\fR), \fBintervalle_s\fR,
+\fBpourcent\fR, \fBnb_coeurs\fR, \fBpar_coeur\fR (un pourcentage par cœur logique), \fBtypes\fR (\fBP\fR ou \fBE\fR
+par cœur, \fBnull\fR si le processeur n'est pas hybride), \fBmodele\fR, \fBcharge\fR (1, 5 et 15 minutes),
+\fBpression\fR (\fIsome avg10\fR de \fI/proc/pressure/cpu\fR), \fBtemperature\fR et \fBtemperature_critique\fR (°C),
+\fBchaud\fR, \fBfrequence_mhz\fR, \fBfrequence_max_mhz\fR et \fBplus_actifs\fR (pid, nom, coeurs : cœurs utilisés,
+pourcent : part du processeur, utilisateur, noyau). Une valeur illisible vaut \fBnull\fR. Gagarine n'agit jamais sur un
+programme à cause du processeur.
 .TP
 .BI reprendre " PID"
 Relance un programme figé. Il reste bridé.
@@ -149,7 +166,8 @@ Affiche la mémoire disponible, la charge et les travaux en file. Avec \fB\-\-js
 \fBen_cours\fR (nombre de travaux en cours) et \fBtravaux\fR (ticket, position, nom, pid, depuis, etat, ram, coeurs,
 commande, unite, sortie, source, plus, depuis la 1.3.0, \fBpriorite\fR, \fBbesoin_go\fR et, pour un travail en attente,
 \fBmotif\fR : la raison courte de l'attente, par exemple « 2 travaux en cours » ou « derrière « rendu » (urgent) »,
-\fBnull\fR s'il peut démarrer). Pour un ticket d'un ancien outil, les champs absents valent \fBnull\fR et \fBsource\fR vaut
+\fBnull\fR s'il peut démarrer) et, depuis la 1.4.0, pour un travail en cours, \fBcoeurs_utilises\fR (cœurs qu'il
+utilise en ce moment, d'après le \fIcpu.stat\fR de son scope, ou \fBnull\fR). Pour un ticket d'un ancien outil, les champs absents valent \fBnull\fR et \fBsource\fR vaut
 \fB"autre"\fR. Cette lecture ne supprime aucun ticket.
 .TP
 .BI file " priorite PID|TICKET " "\fR(\fBurgent\fR | \fBnormal\fR | \fBfond\fR)"
@@ -170,11 +188,12 @@ limite) ou \fBstable\fR. Voir \fBFILE D'ATTENTE\fR.
 .TP
 .BR historique " [" \-\-depuis " \fIPERIODE\fR] [" \-\-json ]
 Résume les derniers jours (24 h par défaut ; \fB5min\fR, \fB1h\fR, \fB24h\fR ou \fB7j\fR) d'après l'historique écrit par
-le service (une mesure par minute, huit jours gardés dans \fIhistorique\-AAAA\-MM\-JJ.jsonl\fR) : pic de RAM, incidents
-(figé, arrêté, limite), programmes les plus gros et travaux de la file. Avec \fB\-\-json\fR : \fBdepuis_s\fR,
-\fBpas_s\fR, \fBpoints\fR (date, ram, swap_mo, zram_mo, pression ; moyennés par 10 minutes au\-delà de 24 h, le maximum de
-la RAM étant gardé), \fBincidents\fR, \fBgros\fR (nom, pic_mo, minutes) et \fBtravaux\fR (nom, date, duree, code,
-pic_go).
+le service (une mesure par minute, huit jours gardés dans \fIhistorique\-AAAA\-MM\-JJ.jsonl\fR) : pic de RAM, processeur
+(moyenne, pic, température), incidents (figé, arrêté, limite), programmes les plus gros et les plus actifs, et travaux de
+la file. Avec \fB\-\-json\fR : \fBdepuis_s\fR, \fBpas_s\fR, \fBpoints\fR (date, ram, swap_mo, zram_mo, pression, cpu,
+cpu_max, charge, temperature ; moyennés par 10 minutes au\-delà de 24 h, les maximums de la RAM, du processeur et de la
+température étant gardés), \fBincidents\fR, \fBgros\fR (nom, pic_mo, minutes), \fBactifs\fR (nom, pic_coeurs, minutes,
+cpu_min : minutes de processeur) et \fBtravaux\fR (nom, date, duree, code, pic_go).
 .TP
 .BR menage " [" \-\-json ]
 Liste les programmes gourmands (au moins 300 Mo) qui ne font plus rien : démons Gradle et Kotlin, modèles chargés dans
@@ -211,8 +230,9 @@ commande sans rien lire. Le paquet fournit \fI/usr/share/gagarine/claude/ressour
 .TP
 .BR ligne\-etat " [" \-\-avec " \fICOMMANDE\fR] [" \-\-sans\-couleur ]
 Ligne d'état de Claude Code : lit sur l'entrée standard le JSON que Claude Code envoie à sa ligne d'état et affiche une
-ligne courte, par exemple \fBRAM 72 % · file 3 (2 en cours) · 1 figé · fuite : python3\fR ; seules les parties non nulles
-apparaissent, colorées selon le niveau de la RAM (\fB\-\-sans\-couleur\fR les supprime). \fB\-\-avec\fR lance d'abord la ligne
+ligne courte, par exemple \fBRAM 72 % · CPU 23 % · file 3 (2 en cours) · 1 figé · fuite : python3\fR ; seules les parties
+non nulles apparaissent, colorées selon le niveau (\fB\-\-sans\-couleur\fR les supprime). La partie \fBCPU\fR vient de la
+mesure du service (absente si elle date de plus de 6 secondes) ; la température s'y ajoute quand le processeur chauffe. \fB\-\-avec\fR lance d'abord la ligne
 d'état existante (même entrée, 1 seconde au plus) et ajoute la partie de Gagarine à la fin de sa dernière ligne, après
 \fB │ \fR ; si elle échoue ou tarde trop, seule la partie de Gagarine s'affiche. La commande ne plante jamais (au pire,
 la RAM seule) et répond en moins de 70 ms. À déclarer dans \fIstatusLine\fR des réglages de Claude Code :
@@ -285,7 +305,8 @@ Mémoire apprise : pendant un travail, la file relève toutes les 2 secondes le 
 \fI~/.local/state/gagarine/travaux.json\fR (cinq derniers pics par nom de travail). Au lancement suivant, si le pic dépasse
 l'annonce de plus de 10 %, elle le dit et, avec \fIfile_ajuster\fR, corrige l'annonce : 1,2 × le pic arrondi au demi\-Go
 supérieur, au plus 60 % de la RAM du poste (au\-delà, ce travail a sans doute une fuite de mémoire). Les événements
-\fBtravail\-fin\fR et \fBlimite\fR portent \fBpic_go\fR ; \fBtravail\-debut\fR porte \fBannonce_initiale\fR et \fBajuste\fR.
+\fBtravail\-fin\fR et \fBlimite\fR portent \fBpic_go\fR ; \fBtravail\-fin\fR porte aussi \fBcpu_s\fR (temps de processeur
+du scope) et \fBcoeurs_moyens\fR ; \fBtravail\-debut\fR porte \fBannonce_initiale\fR et \fBajuste\fR.
 Un travail d'au moins \fInotification_fin_min\fR secondes envoie une notification de fin sur le bureau (et par ntfy).
 .PP
 Fuites d'un lancement à l'autre : \fBtravaux.json\fR garde aussi une \fBtendance\fR par travail. Elle vaut \fBhausse\fR si les
@@ -395,7 +416,12 @@ Fuites repérées en ce moment par le service (liste d'objets : pid, nom, pente_
 debut, utilisateur), lisible par tous ; réécrit quand la liste change, vidé au démarrage du service.
 .TP
 .I /var/lib/gagarine/historique\-AAAA\-MM\-JJ.jsonl
-Historique : une mesure par minute (RAM, swap, pression, trois plus gros programmes), huit jours gardés.
+Historique : une mesure par minute (RAM, swap, pression, trois plus gros programmes ; depuis la 1.4.0, processeur, charge,
+température et trois programmes les plus actifs), huit jours gardés.
+.TP
+.I /run/gagarine/processeur.json
+Dernière mesure du processeur, écrite par le service toutes les 2 secondes (objet de \fBgagarine processeur \-\-json\fR),
+lisible par tous ; disparaît quand le service s'arrête. \fBGAGARINE_DOSSIER_EXECUTION\fR désigne un autre dossier.
 .TP
 .I ~/.local/state/gagarine/travaux.json
 Mémoire apprise des travaux de la file (pics de mémoire et tendance).
