@@ -176,8 +176,8 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 
 ## Phase 28 — Processeur dans la file et la ligne d'état
 
-- [ ] File : cœurs utilisés par chaque travail en cours, cœurs moyens en fin de travail (journal)
-- [ ] Ligne d'état des sessions Claude : `CPU 23 %` (et la température si le processeur chauffe)
+- [x] File : cœurs utilisés par chaque travail en cours, cœurs moyens en fin de travail (journal)
+- [x] Ligne d'état des sessions Claude : `CPU 23 %` (et la température si le processeur chauffe)
 
 ## Phase 29 — Processeur dans l'interface et l'indicateur
 
