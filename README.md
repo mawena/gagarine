@@ -143,12 +143,24 @@ un processeur hybride d'Intel, les cœurs performants (P) et économes (E) sont 
 
 ```
 $ gagarine processeur
-Intel(R) Core(TM) Ultra 7 155U : 2 cœurs performants (4 fils) et 10 économes
-Processeur : 23 % · 72 °C · 1,9 GHz (4,8 GHz au plus) · charge 2,41 · pression 0 %
+Intel(R) Core(TM) Ultra 7 155U · 2 cœurs performants (4 fils) et 10 économes
+Utilisation : 23 %
+  cpu0  P  ███████░░░  70 %
+  cpu1  P  ░░░░░░░░░░  4 %
+  …
+  cpu13 E  ░░░░░░░░░░  2 %
+Température : 52 °C (critique 110 °C)
+Fréquence : 1,3 GHz / maximum 4,8 GHz
+Charge : 1,93 2,07 2,76 (1, 5 et 15 min)
+Pression : 0,6 % (some avg10)
+Les plus actifs :
+  python3 (processus 1085486, alice) : 0,9 cœur · 6 %
+  firefox (processus 7956, alice) : 0,2 cœur · 1 %
+  …
 ```
 
-`gagarine processeur` montre aussi une barre par cœur et les dix programmes les plus actifs ; `--json` donne la même
-mesure que `gagarine etat --json` (`processeur`). Le processeur apparaît aussi dans l'interface, l'indicateur, la ligne
+`gagarine etat` résume le processeur en deux lignes, sous la RAM ; `--json` donne la même mesure que
+`gagarine etat --json` (`processeur`). Le processeur apparaît aussi dans l'interface, l'indicateur, la ligne
 d'état des sessions Claude Code, l'historique et la file d'attente (cœurs utilisés par chaque travail). Gagarine
 **n'agit jamais** sur un programme à cause du processeur : ses actions restent réservées à la RAM.
 
