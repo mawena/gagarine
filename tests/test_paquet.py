@@ -91,6 +91,12 @@ class Paquet(unittest.TestCase):
         for mot in ('hook-claude', 'historique', 'menage', 'APT', 'ligne-etat', 'leak', 'processeur', 'processor'):
             self.assertTrue(mot in texte, f'{mot} absent de la description')
 
+    def test_styles_de_l_interface(self):
+        """1.5.0 : les feuilles de style de l'interface sont installées avec elle."""
+        sources = [s for s, *_ in lignes('gagarine.install')]
+        self.assertIn('gagarine/interface/styles/*.css', sources)
+        self.assertTrue(os.path.exists(os.path.join(RACINE, 'gagarine', 'interface', 'styles', 'base.css')))
+
     def test_dossier_execution_du_service(self):
         """1.4.0 : le service publie processeur.json dans /run/gagarine, lisible par tous (ligne d'état, interface)."""
         with open(os.path.join(RACINE, 'systemd/gagarine.service'), encoding='utf-8') as f:
