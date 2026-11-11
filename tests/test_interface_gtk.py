@@ -361,7 +361,7 @@ class TestFenetre(unittest.TestCase):
         self.assertEqual(len(page.coeurs.pourcents), len(f.source.cpu_coeurs))
         prog = f.pages['programmes']
         self.assertTrue(prog.groupe_actifs.get_visible())
-        self.assertEqual(len(prog.lignes_actifs), 8)
+        self.assertEqual(len(prog.lignes_actifs), 10)
         self.assertEqual(prog.lignes_actifs[4242].get_title(), 'ffmpeg')
         self.assertEqual(prog.lignes_actifs[4242].valeur.get_label(), '6,2 cœurs · 44 %')
         self.assertIn('noyau', prog.lignes_actifs[105].get_subtitle())

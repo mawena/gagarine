@@ -51,8 +51,8 @@ def historique_exemple(source):
     for i in range(0, 296):
         t = 296 - i
         c = 24 + 6 * math.sin(i / 9) + (3 if (i // 13) % 2 else -2)
-        if 120 < i < 215:
-            c = 70 + 22 * min(1.0, (i - 120) / 25) - 0.2 * (i - 120) + 6 * math.sin(i / 3)
+        if i > 120:        # le rendu commence : le processeur monte et reste occupé
+            c = 60 + 14 * min(1.0, (i - 120) / 25) - 0.06 * (i - 120) + 5 * math.sin(i / 3)
         source.cpu_historique.append((maintenant - t, max(2.0, min(c, 99.0))))
     # mesure locale de la seconde : un rendu ffmpeg occupe les 4 cœurs P et une partie des E (cf. faux-gagarine)
     source.cpu_coeurs = [88.0, 91.5, 74.0, 79.5, 34.0, 41.5, 22.0, 63.0, 18.5, 27.0, 55.0, 12.0, 8.5, 46.0]
@@ -68,6 +68,20 @@ def historique_exemple(source):
 
 
 def photographier(fenetre, nom):
+    """Enregistre la fenêtre en PNG. Si elle n'a pas (encore) de moteur de rendu, la remontre et réessaie quelques fois."""
+    for _ in range(20):
+        natif = fenetre.get_native()
+        if natif is not None and natif.get_renderer() is not None:
+            break
+        print('fenêtre sans moteur de rendu : nouvelle tentative', flush=True)
+        fenetre.present()
+        contexte = GLib.MainContext.default()
+        fin = time.monotonic() + 0.5
+        while time.monotonic() < fin:
+            contexte.iteration(False)
+    else:
+        print('capture abandonnée :', nom, flush=True)
+        return
     w, h = fenetre.get_width(), fenetre.get_height()
     paintable = Gtk.WidgetPaintable.new(fenetre)
     snap = Gtk.Snapshot()
@@ -131,6 +145,13 @@ def main():
         ('etroit', 'apercu', lambda f: (periode(f, '24h'), defiler(f.pages['apercu'], 0), f.set_default_size(420, 720)), 2500),
     ]
 
+    # CAPTURES_DEPUIS=nom : reprend à cette capture (les précédentes sont gardées) ; CAPTURES_SEULEMENT=a,b : seulement celles-là
+    depuis, seulement = os.environ.get('CAPTURES_DEPUIS'), os.environ.get('CAPTURES_SEULEMENT')
+    if depuis:
+        etapes[:] = etapes[[e[0] for e in etapes].index(depuis):]
+    if seulement:
+        etapes[:] = [e for e in etapes if e[0] in seulement.split(',')]
+
     def demarre(_app):
         f = app.fenetre
         f.set_default_size(920, 800)
@@ -142,6 +163,7 @@ def main():
             except StopIteration:
                 app.quit()
                 return GLib.SOURCE_REMOVE
+            print('étape', nom, flush=True)
             if f.get_visible_dialog():
                 f.get_visible_dialog().force_close()
             f.aller_a(page)

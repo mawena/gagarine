@@ -57,7 +57,9 @@ def processeur():
         {"pid": 105, "nom": "kswapd0", "coeurs": 0.31, "pourcent": 2.2, "utilisateur": "root", "noyau": True},
         {"pid": 5120, "nom": "code", "coeurs": 0.22, "pourcent": 1.6, "utilisateur": "charles-gamligo", "noyau": False},
         {"pid": 880, "nom": "dockerd", "coeurs": 0.07, "pourcent": 0.5, "utilisateur": "root", "noyau": False},
-        {"pid": 1203, "nom": "postgres", "coeurs": 0.03, "pourcent": 0.2, "utilisateur": "postgres", "noyau": False}]
+        {"pid": 1203, "nom": "postgres", "coeurs": 0.05, "pourcent": 0.4, "utilisateur": "postgres", "noyau": False},
+        {"pid": 7410, "nom": "slack", "coeurs": 0.04, "pourcent": 0.3, "utilisateur": "charles-gamligo", "noyau": False},
+        {"pid": 1, "nom": "systemd", "coeurs": 0.02, "pourcent": 0.1, "utilisateur": "root", "noyau": False}]
     return {"t": maintenant, "date": iso(maintenant), "source": "service", "intervalle_s": 2.0, "pourcent": pourcent,
             "nb_coeurs": 14, "par_coeur": par_coeur, "types": ["P"] * 4 + ["E"] * 10,
             "modele": "Intel(R) Core(TM) Ultra 7 155U", "charge": [2.41, 1.98, 1.5], "pression": 0.03,
@@ -188,9 +190,9 @@ def historique(depuis):
                  "zram_mo": int(900 + 800 * jour), "pression": round(max(0.0, ram - 85) / 3, 1)}
         if a140:
             # le processeur : travail la journée, calme la nuit, quelques rendus qui le saturent
-            cpu = 12 + 30 * max(0.0, 1 - abs(((t / 3600) % 24) - 14) / 6) + 9 * ((i * 11) % 7) / 7
-            if (int(t) // pas) % 157 < 6:
-                cpu = 86 + ((int(t) // pas) % 5) * 2.5
+            cpu = 12 + 30 * max(0.0, 1 - abs(((t / 3600) % 24) - 14) / 6) + 3 * ((i * 11) % 7) / 7
+            if (int(t) // pas) % 389 < 5:      # un rendu de temps en temps
+                cpu = 80 + ((int(t) // pas) % 5) * 3
             point.update({"cpu": round(cpu, 1), "cpu_max": round(min(100.0, cpu + (0 if pas == 60 else 9)), 1),
                           "charge": round(cpu / 100 * 14 * 0.9, 2), "temperature": round(46 + cpu * 0.45, 1)})
         points.append(point)
