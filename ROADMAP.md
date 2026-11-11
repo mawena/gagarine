@@ -205,7 +205,7 @@ Conception : [docs/conception-1.5.0.md](docs/conception-1.5.0.md).
 
 ## Phase 33 — Pages en pleine largeur
 
-- [ ] Programmes et File d'attente
+- [x] Programmes et File d'attente
 - [x] Journal (frise par jour) et Réglages en deux colonnes
 
 ## Phase 34 — Paquet, documentation et release 1.5.0
