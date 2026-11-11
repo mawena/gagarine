@@ -189,5 +189,5 @@ Conception : [docs/conception-1.4.0.md](docs/conception-1.4.0.md).
 ## Phase 30 — Paquet, documentation et release 1.4.0
 
 - [x] Paquet, pages de manuel, README, CHANGELOG, site, metainfo
-- [ ] Release 1.4.0, GitHub et dépôt APT
+- [x] Release 1.4.0, GitHub et dépôt APT
 - [ ] Mise en place : `apt upgrade` (par l'utilisateur), vérification du service, de l'interface et de la ligne d'état
