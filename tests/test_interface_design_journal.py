@@ -95,7 +95,8 @@ class TestTeintes(unittest.TestCase):
         attendu = {'fige': 'alerte', 'arrete': 'alerte', 'limite': 'alerte', 'fuite': 'vigilance',
                    'fuite-travail': 'vigilance', 'bridage-impossible': 'vigilance', 'repris': 'calme',
                    'travail-debut': 'travail', 'travail-fin': 'travail', 'travail-annule': 'travail',
-                   'menage': 'neutre', 'demarrage': 'neutre', 'rechargement': 'neutre'}
+                   'menage': 'neutre', 'demarrage': 'neutre', 'rechargement': 'neutre',
+                   'lmstudio-arrete': 'vigilance'}
         for action, teinte in attendu.items():
             self.assertEqual(J.teinte_evenement({'action': action}), teinte, action)
 

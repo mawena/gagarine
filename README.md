@@ -218,6 +218,11 @@ processeur au repos), `gagarine menage arreter ID` les arrête ou décharge les 
 d'inactivité (5 minutes quand la RAM dépasse la vigilance) ; les serveurs de développement ne sont jamais arrêtés tout
 seuls. Réglages `menage_auto` et `menage_delai`.
 
+Le ménage ne démarre jamais LM Studio : `lms` le démarrerait s'il ne tourne pas. LM Studio n'est donc reconnu que par
+son vrai programme (`/proc/<pid>/exe`, jamais la ligne de commande), `lms` n'est appelé que si son serveur interne
+répond, et la liste de ses modèles est gardée 60 secondes. Si une instance démarre malgré tout pendant un appel de
+Gagarine à `lms`, elle est arrêtée aussitôt et notée au journal (`lmstudio-arrete`).
+
 ## Plafond mémoire des applications du bureau
 
 `gagarine applications` liste les applications ouvertes (Chrome, VS Code, Firefox…) et leur mémoire ;
