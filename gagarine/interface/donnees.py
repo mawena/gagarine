@@ -281,6 +281,7 @@ _ACTIONS = {
     'demarrage': ('emblem-system-symbolic', 'service', 'service démarré'),
     'rechargement': ('view-refresh-symbolic', 'service', 'réglages rechargés'),
     'menage': ('user-trash-symbolic', 'menage', 'ménage'),
+    'lmstudio-arrete': ('process-stop-symbolic', 'menage', 'LM Studio arrêté'),
     'fuite': ('go-up-symbolic', 'protection', 'fuite de mémoire'),
     'fuite-travail': ('go-up-symbolic', 'file', 'fuite probable'),
 }
@@ -406,6 +407,10 @@ def decrire_evenement(ev):
         morceaux.append('ménage automatique' if ev.get('auto') else 'à votre demande')
         if ev.get('memoire_mo') is not None:
             morceaux.append(f'{formater_taille_mo(ev["memoire_mo"])} libérés')
+    elif action == 'lmstudio-arrete':
+        titre = 'LM Studio arrêté : démarré par erreur par le ménage'
+        if ev.get('commande'):
+            morceaux.append(f'démarré par « {ev["commande"]} »')
     elif action == 'rechargement':
         titre = 'Réglages rechargés'
         if ev.get('seuil') is not None:

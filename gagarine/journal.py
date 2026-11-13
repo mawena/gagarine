@@ -173,6 +173,8 @@ def detail_lisible(e):
         else:
             texte = 'pic en hausse à chaque lancement'
         return f'{texte} ({suite} Go)' if suite else texte
+    if action == 'lmstudio-arrete':
+        return f'démarré par « {e["commande"]} »' if e.get('commande') else ''
     if action == 'menage':
         parties = [e.get('type'), f'{e["memoire_mo"]:g} Mo' if isinstance(e.get('memoire_mo'), (int, float)) else None,
                    'automatique' if e.get('auto') else None]
