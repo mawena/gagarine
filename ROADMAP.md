@@ -226,5 +226,5 @@ ligne de commande citait LM Studio (commande Bash, `tail` d'un journal, crashpad
 - [x] Filet de sécurité : une instance démarrée par un appel de Gagarine à `lms` est arrêtée aussitôt et écrite au journal
 - [x] Tests (faux positifs, vrai processus, cache, filet) dans la file : 962 tests, paquet et lintian
 - [x] Version 1.5.1, CHANGELOG, README, pages de manuel
-- [ ] Release 1.5.1 : `.deb`, GitHub et dépôt APT
-- [ ] Vérification réelle après installation : `sleep # LM Studio`, ouverture et fermeture, modèle chargé proposé
+- [x] Release 1.5.1 : `.deb`, GitHub et dépôt APT
+- [x] Vérification réelle après installation : `sleep # LM Studio`, ouverture et fermeture, modèle chargé proposé
