@@ -77,7 +77,7 @@ class TestEtatJson(Banc2):
 
     def test_contrat(self):
         e = self.donnees()
-        self.assertEqual(e['version'], '1.5.0')
+        self.assertEqual(e['version'], '1.5.1')
         self.assertRegex(e['date'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d{4}$')
         self.assertEqual(e['ram'], {'pourcent': 75.0, 'total_mo': 15625, 'disponible_mo': 3906})
         self.assertEqual(e['swap'][0], {'nom': '/dev/zram0', 'type': 'partition', 'taille_mo': 8192, 'utilise_mo': 1024,
@@ -506,7 +506,7 @@ class TestNotificationsEtFichiers(unittest.TestCase):
 
     def test_lanceur_depuis_un_autre_dossier(self):
         r = subprocess.run([str(CHEMIN), 'version'], capture_output=True, text=True, cwd='/')
-        self.assertEqual(r.stdout, 'gagarine 1.5.0\n')
+        self.assertEqual(r.stdout, 'gagarine 1.5.1\n')
 
     def test_aide_des_nouvelles_commandes(self):
         r = subprocess.run([str(CHEMIN), '-h'], capture_output=True, text=True)

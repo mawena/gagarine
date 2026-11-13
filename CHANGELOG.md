@@ -7,6 +7,29 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.5.1] - 2026-11-13
+
+### Corrigé
+
+- **Le ménage ne relance plus LM Studio.** `gagarine menage --json`, que l'indicateur lance toutes les 2 secondes,
+  appelait `lms ps` dès qu'une ligne de commande citait LM Studio : une commande Bash, un `tail` d'un journal de
+  `~/.lmstudio`, un éditeur, une session Claude lancée avec son message en argument, ou les restes de LM Studio pendant
+  sa fermeture (`chrome_crashpad_handler`, le `node` interne). Or `lms` démarre LM Studio quand il ne tourne pas
+  (`--run-as-service`, environ 360 Mo) : LM Studio revenait dans la seconde après chaque fermeture.
+  - LM Studio n'est reconnu que par son vrai programme, d'après `/proc/<pid>/exe` : le processus principal de
+    l'application (`lm-studio` sans `--type=`) ou le démon sans interface `llmster`. Une ligne de commande ne compte
+    plus jamais.
+  - `lms` n'est appelé que si son serveur interne répond : le verrou `~/.lmstudio/.internal/llmster-pid.lock` et
+    `http-server.json` désignent la même instance vivante, et son port accepte une connexion. Un verrou périmé, resté
+    après un arrêt brutal, ne suffit plus.
+  - `lms ps` n'est plus appelé à chaque passage : la liste des modèles est gardée 60 s pour la même instance
+    (`~/.local/state/gagarine/lmstudio.json`), et oubliée après un déchargement. Décharger revérifie tout juste avant.
+  - Filet de sécurité : chaque appel à `lms` porte la variable `GAGARINE_APPEL_LMS`. Si une instance de LM Studio
+    démarre malgré tout pendant l'appel, Gagarine l'arrête aussitôt avec sa famille (fils, crashpad, `node` interne) :
+    elle est figée, puis reçoit SIGKILL (LM Studio ignore SIGTERM). C'est fait même si l'appel a été interrompu, au
+    passage suivant, et c'est écrit au journal (événement `lmstudio-arrete`). Une instance ouverte par l'utilisateur
+    n'est jamais touchée.
+
 ## [1.5.0] - 2026-11-11
 
 Nouveau design de l'interface : elle prend toute la largeur de la fenêtre au lieu d'une colonne étroite et centrée, et

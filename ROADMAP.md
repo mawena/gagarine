@@ -213,3 +213,18 @@ Conception : [docs/conception-1.5.0.md](docs/conception-1.5.0.md).
 - [x] Captures (largeur normale, grande fenêtre, thème clair), README, site, CHANGELOG, metainfo
 - [x] Release 1.5.0, GitHub et dépôt APT
 - [x] Mise en place sur le poste (mise à jour par `pkexec`, application installée vérifiée avec les vraies données)
+
+## Phase 35 — Correctif 1.5.1 : le ménage ne relance plus LM Studio
+
+Constat du 13/11/2026 : `gagarine menage --json`, lancé toutes les 2 s par l'indicateur, appelait `lms ps` dès qu'une
+ligne de commande citait LM Studio (commande Bash, `tail` d'un journal, crashpad ou `node` restés après la fermeture) ;
+`lms` démarrait alors LM Studio (`--run-as-service`, ~360 Mo), qui revenait dans la seconde après chaque fermeture.
+
+- [x] Observation d'un vrai cycle de vie (verrou, `http-server.json`, port, restes à la fermeture, démarrage par `lms`)
+- [x] Détection stricte par `/proc/<pid>/exe` (processus principal sans `--type=`, ou `llmster`), verrou et port vérifiés avant tout appel à `lms`
+- [x] `lms ps` en cache 60 s (lié à l'instance), plus jamais à chaque passage
+- [x] Filet de sécurité : une instance démarrée par un appel de Gagarine à `lms` est arrêtée aussitôt et écrite au journal
+- [ ] Tests (faux positifs, vrai processus, cache, filet) dans la file
+- [x] Version 1.5.1, CHANGELOG, README, pages de manuel
+- [ ] Release 1.5.1 : `.deb`, GitHub et dépôt APT
+- [ ] Vérification réelle après installation : `sleep # LM Studio`, ouverture et fermeture, modèle chargé proposé
