@@ -1,4 +1,4 @@
-.TH GAGARINE 8 "11 novembre 2026" "gagarine 1.5.0" "Administration système"
+.TH GAGARINE 8 "13 novembre 2026" "gagarine 1.5.1" "Administration système"
 .SH NOM
 gagarine \- garde\-RAM : empêche la mémoire vive de se remplir au point de figer le poste
 .SH SYNOPSIS
@@ -201,6 +201,12 @@ LM Studio ou Ollama, serveurs de développement (node, vite, next, webpack…). 
 vus. Avec \fB\-\-json\fR : \fB{"auto", "delai_min", "candidats": [{"id", "type", "nom", "pid", "memoire_mo",
 "inactif_depuis_s", "action", "auto"}]}\fR ; \fBid\fR est le PID, \fBlmstudio\fR ou \fBollama:\fR\fIMODELE\fR, et
 \fBaction\fR vaut \fBarreter\fR ou \fBdecharger\fR.
+LM Studio n'est reconnu que par son programme (\fI/proc/PID/exe\fR : \fBlm\-studio\fR sans \fB\-\-type=\fR, ou
+\fBllmster\fR), jamais par une ligne de commande, et \fBlms\fR n'est appelé que si son serveur interne répond
+(\fI~/.lmstudio/.internal/llmster\-pid.lock\fR et \fIhttp\-server.json\fR désignent la même instance vivante, et son
+port accepte une connexion) : \fBlms\fR démarrerait LM Studio sinon. La liste des modèles (\fBlms ps\fR) est gardée 60 s.
+Une instance démarrée malgré tout pendant un appel de Gagarine à \fBlms\fR est arrêtée aussitôt (événement
+\fBlmstudio\-arrete\fR).
 .TP
 .BI menage " arreter ID" ...
 Arrête (SIGTERM, puis SIGKILL après 10 s) ou décharge les candidats nommés, et le note au journal (événement
@@ -268,7 +274,7 @@ Auto\-test sans risque : un programme d'essai grossit ; il doit être figé, ran
 affiché. À lancer en administrateur pour essayer la chaîne complète du service.
 .TP
 .BR version ", " \-\-version
-Affiche « gagarine 1.5.0 ».
+Affiche « gagarine 1.5.1 ».
 .TP
 .BR \-h ", " \-\-help
 Affiche l'aide.

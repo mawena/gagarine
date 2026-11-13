@@ -436,6 +436,15 @@ class EvenementsJournal120(unittest.TestCase):
         self.assertEqual(icone, 'user-trash-symbolic')
         self.assertEqual(d.categorie_evenement({'action': 'menage'}), 'menage')
 
+    def test_lmstudio_arrete_151(self):
+        icone, titre, detail = d.decrire_evenement({'action': 'lmstudio-arrete', 'nom': 'LM Studio', 'pid': 50,
+                                                    'raison': 'démarré par un appel de Gagarine à lms',
+                                                    'commande': 'lms ps --json', 'processus': 8})
+        self.assertEqual(titre, 'LM Studio arrêté : démarré par erreur par le ménage')
+        self.assertEqual(detail, 'démarré par « lms ps --json » · processus 50')
+        self.assertEqual(icone, 'process-stop-symbolic')
+        self.assertEqual(d.categorie_evenement({'action': 'lmstudio-arrete'}), 'menage')
+
     def test_declencheur(self):
         for decl, texte in (('seuil', 'seuil atteint'), ('anticipation', 'croissance trop rapide'),
                             ('pression', 'pression du noyau'), ('urgence', 'urgence'), ('futur', 'futur')):

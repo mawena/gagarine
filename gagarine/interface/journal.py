@@ -31,6 +31,7 @@ TEINTES = {
     'repris': 'calme',
     'travail-debut': 'travail', 'travail-fin': 'travail', 'travail-annule': 'travail',
     'menage': 'neutre', 'demarrage': 'neutre', 'rechargement': 'neutre',
+    'lmstudio-arrete': 'vigilance',   # 1.5.1 : instance démarrée par erreur par un appel à lms, arrêtée aussitôt
 }
 TOUTES_TEINTES = ('alerte', 'vigilance', 'calme', 'travail', 'neutre')
 

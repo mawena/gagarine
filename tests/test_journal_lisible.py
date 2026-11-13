@@ -34,6 +34,13 @@ class TestDetailLisible(unittest.TestCase):
         self.assertEqual(jn.detail_lisible(e('menage', type='ollama', nom='llama', memoire_mo=500, auto=False)),
                          'ollama, 500 Mo')
 
+    def test_lmstudio_arrete(self):
+        ev = e('lmstudio-arrete', nom='LM Studio', pid=50, raison='démarré par un appel de Gagarine à lms',
+               commande='lms ps --json', processus=8)
+        self.assertEqual(jn.detail_lisible(ev), 'démarré par « lms ps --json »')
+        ligne = jn.ligne_lisible(ev)
+        self.assertIn('lmstudio-arrete LM Studio 50 démarré par un appel de Gagarine à lms', ligne)
+
     def test_ligne_complete(self):
         ligne = jn.ligne_lisible(e('menage', type='gradle', nom='GradleDaemon', pid=42, memoire_mo=700, auto=True))
         self.assertIn('menage', ligne)
