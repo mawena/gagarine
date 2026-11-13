@@ -224,7 +224,7 @@ ligne de commande citait LM Studio (commande Bash, `tail` d'un journal, crashpad
 - [x] Détection stricte par `/proc/<pid>/exe` (processus principal sans `--type=`, ou `llmster`), verrou et port vérifiés avant tout appel à `lms`
 - [x] `lms ps` en cache 60 s (lié à l'instance), plus jamais à chaque passage
 - [x] Filet de sécurité : une instance démarrée par un appel de Gagarine à `lms` est arrêtée aussitôt et écrite au journal
-- [ ] Tests (faux positifs, vrai processus, cache, filet) dans la file
+- [x] Tests (faux positifs, vrai processus, cache, filet) dans la file : 962 tests, paquet et lintian
 - [x] Version 1.5.1, CHANGELOG, README, pages de manuel
 - [ ] Release 1.5.1 : `.deb`, GitHub et dépôt APT
 - [ ] Vérification réelle après installation : `sleep # LM Studio`, ouverture et fermeture, modèle chargé proposé
