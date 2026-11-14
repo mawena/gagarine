@@ -33,7 +33,7 @@ class TestEssaiEtCommandes(unittest.TestCase):
         self.assertEqual([ok for _, ok, _ in v], [False, False, False])
 
     def test_version_et_aide(self):
-        self.assertEqual(ve.VERSION, '1.5.1')
+        self.assertEqual(ve.VERSION, '1.5.2')
         import subprocess
         for a in ('version', '--version'):
             r = subprocess.run([str(CHEMIN), a], capture_output=True, text=True)
