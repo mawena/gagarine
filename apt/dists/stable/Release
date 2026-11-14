@@ -1,28 +1,28 @@
 Architectures: all amd64
 Codename: stable
 Components: main
-Date: Fri, 13 Nov 2026 16:21:02 +0000
+Date: Sat, 14 Nov 2026 11:46:35 +0000
 Description: Gagarine, garde-RAM Linux
 Label: Gagarine
 Origin: Gagarine
 Suite: stable
 MD5Sum:
- 427b572c3af11438811e27aadc710264            26559 main/binary-all/Packages
- a0212549bc4d17d3464ff561a68169b1             3042 main/binary-all/Packages.gz
+ f4dab4296c4b2925204e4c0d77dc2f53            30454 main/binary-all/Packages
+ 2489353a63ce6a59298c6ba04dffafbc             3182 main/binary-all/Packages.gz
  d41d8cd98f00b204e9800998ecf8427e                0 main/binary-amd64/Packages
  4a4dd3598707603b3f76a2378a4504aa               20 main/binary-amd64/Packages.gz
 SHA1:
- fa77979ca8c14f3067847c731d2060f074d0aa0c            26559 main/binary-all/Packages
- 0a569fe6a12bbccd7ff9d30d14883454c5daa717             3042 main/binary-all/Packages.gz
+ 33a6fb224bf38063a031501205740026d1ea93a8            30454 main/binary-all/Packages
+ 43e68a694bc90d7675bafc6ab239b2a67f0c54f4             3182 main/binary-all/Packages.gz
  da39a3ee5e6b4b0d3255bfef95601890afd80709                0 main/binary-amd64/Packages
  a0fddd5458378c1bf3c10dd2f5c060d1347741ed               20 main/binary-amd64/Packages.gz
 SHA256:
- 560621578a4d82d638d7122ce46b4170c627d5b152ebfb0e41edf2ed50f28ab6            26559 main/binary-all/Packages
- 84cc74869911b58f1b905912283cc642ad4d404e6a0aefae1aa3c8dc67129bca             3042 main/binary-all/Packages.gz
+ f9cbdb10477187cf6f8da4ddfeda33cdfefe96908ef8a0a509b25eebdbd0d5c7            30454 main/binary-all/Packages
+ ec19e04ab53bf6c41e66f3e5a02d5277259e6c760754284c6ba5133c8dbed5bc             3182 main/binary-all/Packages.gz
  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855                0 main/binary-amd64/Packages
  f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec               20 main/binary-amd64/Packages.gz
 SHA512:
- cbae22d6acbe961bdda6e49ba029247df6f8b6cd2de63a2992ff052e3660bf60f454014b0e3bb4e8d413e16770d7977f650c406a5609caab511bed84c353ac78            26559 main/binary-all/Packages
- 8f7e11b151884dac51d1aeaf86a90a3cd4e1b12923e3b6fa6b5b9b566ba8d318b7e365c08a2ac40d6e4d97d3c0a9da5ac1f38640c9d59d6c573c6ec948dd95f1             3042 main/binary-all/Packages.gz
+ 47638f09c7e6eeed80187667ea169125c98486c0278099c5447011ee0976807c2dda4439a7ab213b07796ac9dc6ded84c7a070e7e98153c13ec33e98fc9ddbcb            30454 main/binary-all/Packages
+ f5d79ef525061a1d0b839082d649051cf73b34b2607dea25348c4992a7f42bf61fbbd26d894c280f8c1859b9e2a34ab1fad4062a03142f3be97f338ade4949e0             3182 main/binary-all/Packages.gz
  cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e                0 main/binary-amd64/Packages
  1b46b9b08d5b338be9d732a1724795b2eab63daffde377218727c90857b79fe6a47bceed495117fcde60f7339812ef75ef4c69f82dd79fb69b6cbf8006b521f2               20 main/binary-amd64/Packages.gz
