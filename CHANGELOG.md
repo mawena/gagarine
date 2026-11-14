@@ -7,6 +7,17 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.5.2] - 2026-11-14
+
+### Modifié
+
+- **Hook des sessions Claude plus sobre.** Ses rappels entrent dans le contexte de chaque
+  session et s'y accumulaient à chaque commande (jusqu'à 1 500 caractères par commande) :
+  le rappel de charge tient en une ligne et ne revient qu'une fois par quart d'heure dans une
+  même session, et chaque programme figé ou arrêté n'est signalé qu'une fois par session
+  (état dans `~/.local/state/gagarine/hook-claude.json`). Le refus des travaux lourds lancés
+  hors de la file ne change pas.
+
 ## [1.5.1] - 2026-11-13
 
 ### Corrigé
