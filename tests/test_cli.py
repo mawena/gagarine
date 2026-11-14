@@ -37,7 +37,7 @@ class TestEssaiEtCommandes(unittest.TestCase):
         import subprocess
         for a in ('version', '--version'):
             r = subprocess.run([str(CHEMIN), a], capture_output=True, text=True)
-            self.assertEqual(r.stdout, 'gagarine 1.5.1\n')
+            self.assertEqual(r.stdout, 'gagarine 1.5.2\n')
         r = subprocess.run([str(CHEMIN), '--help'], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0)
         for mot in ('surveiller', 'etat', 'reprendre', 'arreter', 'essai', 'version'):

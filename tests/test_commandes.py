@@ -506,7 +506,7 @@ class TestNotificationsEtFichiers(unittest.TestCase):
 
     def test_lanceur_depuis_un_autre_dossier(self):
         r = subprocess.run([str(CHEMIN), 'version'], capture_output=True, text=True, cwd='/')
-        self.assertEqual(r.stdout, 'gagarine 1.5.1\n')
+        self.assertEqual(r.stdout, 'gagarine 1.5.2\n')
 
     def test_aide_des_nouvelles_commandes(self):
         r = subprocess.run([str(CHEMIN), '-h'], capture_output=True, text=True)
