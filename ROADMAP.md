@@ -228,3 +228,7 @@ ligne de commande citait LM Studio (commande Bash, `tail` d'un journal, crashpad
 - [x] Version 1.5.1, CHANGELOG, README, pages de manuel
 - [x] Release 1.5.1 : `.deb`, GitHub et dépôt APT
 - [x] Vérification réelle après installation : `sleep # LM Studio`, ouverture et fermeture, modèle chargé proposé
+
+## Correctif 1.5.2 — hook sobre (14/11/2026)
+
+- [x] Rappels du hook des sessions Claude courts et donnés une seule fois par session (charge au plus tous les quarts d'heure, chaque événement une fois)
