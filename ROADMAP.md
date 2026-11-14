@@ -137,7 +137,7 @@ Conception : [docs/conception-1.2.0.md](docs/conception-1.2.0.md).
 
 - [x] Installation (par l'utilisateur), puis mises à jour par `apt upgrade`
 - [x] Hook des sessions Claude remplacé par `gagarine hook-claude`
-- [ ] Scripts vidéo de Cofidesk, Cofidesk-gpu et Report passés par `gagarine file` (après les vidéos en cours)
+- [x] Scripts vidéo de Cofidesk, Cofidesk-gpu et Report passés par `gagarine file` (après les vidéos en cours) — Cofidesk et Cofidesk-gpu (même dépôt) déjà sur `develop` ; Report le 14/11/2026 (`prendreSonTour`, `executerEnFile`), essayé sous Gagarine
 
 ## Phase 22 — Socle de la 1.3.0
 
