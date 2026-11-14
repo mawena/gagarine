@@ -276,7 +276,7 @@ class TestHook(unittest.TestCase):
         s = json.loads(sortie)['hookSpecificOutput']
         self.assertEqual(s['hookEventName'], 'PreToolUse')
         self.assertNotIn('permissionDecision', s)
-        self.assertTrue(s['additionalContext'].startswith('Poste chargé : 3.2 Go de RAM disponibles, charge 0.50 pour '))
+        self.assertTrue(s['additionalContext'].startswith('Poste chargé : 3.2 Go libres, charge 0.50 pour '))
 
     def test_service_arrete_prevenu(self):
         _, sortie = lancer_hook(self.bash('ls'), FauxCtx(self.env, service=3))
@@ -340,6 +340,52 @@ class TestRappels(unittest.TestCase):
         self.assertEqual(m.count('FIGÉ'), 3)
         self.assertIn('n1', m)
         self.assertNotIn('n5', m)
+
+
+class TestSobriete(unittest.TestCase):
+    """Le hook tourne avant chaque commande de chaque session : ses rappels s'accumulent dans le
+    contexte de Claude. Un rappel de charge au plus tous les quart d'heure, un événement une fois."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        self.env = {'GAGARINE_ETAT': str(self.d), 'FILE_ATTENTE_DOSSIER': str(self.d / 'tickets'), 'HOME': str(self.d)}
+        maintenant = time.time()
+        (self.d / 'evenements.jsonl').write_text(json.dumps(
+            {'date': time.strftime('%Y-%m-%dT%H:%M:%S+0000', time.gmtime(maintenant - 60)), 'action': 'fige',
+             'nom': 'pytest', 'ram': 96, 'pid': 42, 'commande': 'pytest'}) + '\n')
+        self.ok = lambda cmd: (0, '', '')
+
+    def poste(self, session, maintenant):
+        with mock.patch.object(cl, 'lire_ram_disponible', return_value=2.0), \
+             mock.patch.object(cl, 'lire_charge', return_value=1.0), \
+             mock.patch.object(cl, 'fichiers_journaux', return_value=[self.d / 'evenements.jsonl']):
+            return cl.message_poste(self.env, self.ok, maintenant, session=session)
+
+    def test_message_de_charge_court(self):
+        m = cl.message_charge(2.0, 1.0, 14, ['a'])
+        self.assertLess(len(m), 200)
+        self.assertIn('gagarine file', m)
+
+    def test_chaque_rappel_une_fois_par_session(self):
+        t0 = time.time()
+        m = self.poste('s1', t0)
+        self.assertIn('Poste chargé', m)
+        self.assertIn('« pytest » FIGÉ', m)
+        self.assertEqual(self.poste('s1', t0 + 5), '')                   # déjà dit à cette session
+        self.assertIn('« pytest » FIGÉ', self.poste('s2', t0 + 5))       # une autre session l'apprend
+        m = self.poste('s1', t0 + cl.RAPPEL_CHARGE_S + 1)                 # la charge, de nouveau plus tard
+        self.assertIn('Poste chargé', m)
+        self.assertNotIn('pytest', m)
+
+    def test_sans_session_comme_avant(self):
+        t0 = time.time()
+        self.assertIn('pytest', self.poste(None, t0))
+        self.assertIn('pytest', self.poste(None, t0 + 1))
+
+    def test_etat_illisible_ignore(self):
+        (self.d / 'hook-claude.json').write_text('pas du json')
+        self.assertIn('pytest', self.poste('s1', time.time()))
 
 
 class TestLigneDeCommande(unittest.TestCase):

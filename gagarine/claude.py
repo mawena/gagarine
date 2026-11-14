@@ -619,13 +619,10 @@ def message_charge(ram, charge, coeurs, travaux):
     if not (charge > 0.75 * coeurs or ram < 4 or travaux):
         return ''
     liste = f' ; travaux lourds dans la file : {" ; ".join(travaux)}' if travaux else ''
-    return (f'Poste chargé : {ram:.1f} Go de RAM disponibles, charge {charge:.2f} pour {coeurs} cœurs{liste}. '
-            'Si cette commande lance un travail lourd (rendu ou montage vidéo, voix de synthèse, conversion de documents, '
-            'compilation, longue suite de tests, modèle local…), ne la lance pas en parallèle : passe par la file '
-            'd\'attente de Gagarine (gagarine file "<nom>" <Go de RAM> <cœurs libres> -- <commande>, état : gagarine file '
-            '--etat ; file-attente reste un raccourci) et dis à l\'utilisateur pourquoi le travail attend. Annonce la RAM '
-            'qu\'il lui faut vraiment : la file l\'enferme dans une limite de max(2 × annoncé, annoncé + 2 Go) et l\'arrête '
-            's\'il la dépasse. Les commandes légères (lecture, git, recherche…) ne sont pas concernées.')
+    # Court : ce rappel entre dans le contexte de Claude, et un travail lourd lancé hors de la
+    # file est de toute façon refusé avec la commande corrigée.
+    return (f'Poste chargé : {ram:.1f} Go libres, charge {charge:.2f} pour {coeurs} cœurs{liste}. '
+            'Travail lourd : par gagarine file, avec la vraie RAM.')
 
 
 def fin_de_fichier(chemin, lignes=30):
@@ -657,8 +654,13 @@ def phrase_evenement(e):
     return texte + ' ; commande : ' + re.sub(r'\s+', ' ', str(e.get('commande') or ''))[:160]
 
 
-def message_evenements(journaux, maintenant=None):
-    """Événements fige/arrete/limite de la dernière demi-heure (au plus 3), ou ''."""
+def cle_evenement(e):
+    return f'{e.get("date")}|{e.get("action")}|{e.get("pid")}|{e.get("nom")}'
+
+
+def message_evenements(journaux, maintenant=None, deja=None):
+    """Événements fige/arrete/limite de la dernière demi-heure (au plus 3), ou ''. `deja` :
+    clés des événements déjà signalés à cette session (sautés ; les nouveaux y sont ajoutés)."""
     depuis = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime((maintenant or time.time()) - 1800))
     trouves = []
     for j in journaux:
@@ -676,31 +678,71 @@ def message_evenements(journaux, maintenant=None):
             if (isinstance(e, dict) and e.get('action') in ('fige', 'arrete', 'limite')
                     and str(e.get('date', ''))[:19] >= depuis):
                 trouves.append(e)
+    if deja is not None:
+        trouves = [e for e in trouves if cle_evenement(e) not in deja]
+        deja.update(cle_evenement(e) for e in trouves)
     if not trouves:
         return ''
     trouves.sort(key=lambda e: str(e.get('date', '')))
     phrases = ' — '.join(phrase_evenement(e) for e in trouves[-3:])
-    return (f'Garde-RAM du poste (Gagarine et file d\'attente), dernière demi-heure : {phrases}. Ces programmes remplissaient '
-            'la RAM du poste (elle a figé le PC le 02/11 et le 10/11). Si l\'un d\'eux vient de cette session, ne le '
-            'relance pas tel quel : cherche et corrige la cause (fuite de mémoire, données trop grosses), puis relance-le '
-            'via gagarine file en annonçant la RAM qu\'il lui faut vraiment ; un programme figé se reprend avec gagarine '
-            'reprendre <pid> ou s\'arrête avec gagarine arreter <pid> (état : gagarine etat). Dis-le à l\'utilisateur.')
+    return (f'Gagarine, dernière demi-heure : {phrases}. Si l\'un vient de cette session : corriger la cause '
+            '(fuite, données trop grosses) avant de le relancer par gagarine file, et le dire à l\'utilisateur '
+            '(gagarine reprendre|arreter <pid>).')
 
 
 MESSAGE_SERVICE = ('Le service Gagarine ne tourne pas (systemctl status gagarine) : préviens l\'utilisateur, le poste n\'est '
                    'plus protégé contre une RAM pleine.')
 
 
-def message_poste(env, executer, maintenant=None):
-    """Les rappels à donner à Claude (texte, éventuellement vide)."""
-    from gagarine.file import dossier_tickets
+RAPPEL_CHARGE_S = 900       # une session ne reçoit le rappel de charge qu'une fois par quart d'heure
+ETAT_SESSIONS_S = 86400     # sessions oubliées après un jour sans commande
+
+
+def _lire_etat(chemin):
+    try:
+        d = json.loads(Path(chemin).read_text())
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _ecrire_etat(chemin, etat):
+    try:
+        chemin = Path(chemin)
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        tmp = chemin.with_suffix('.tmp')
+        tmp.write_text(json.dumps(etat))
+        os.replace(tmp, chemin)
+    except OSError:
+        pass
+
+
+def message_poste(env, executer, maintenant=None, session=None):
+    """Les rappels à donner à Claude (texte, éventuellement vide). Avec `session` (l'identifiant
+    de la session Claude Code), chaque rappel n'est donné qu'une fois : la charge au plus tous
+    les RAPPEL_CHARGE_S, chaque événement une seule fois. Ils s'accumulaient sinon dans le
+    contexte de la session, à chaque commande."""
+    from gagarine.file import dossier_journal, dossier_tickets
+    maintenant = maintenant or time.time()
+    chemin = dossier_journal(env) / 'hook-claude.json'
+    etat = _lire_etat(chemin) if session else {}
+    moi = etat.get(session) if isinstance(etat.get(session), dict) else {}
     morceaux = []
     m = message_charge(lire_ram_disponible(), lire_charge(), os.cpu_count() or 1, travaux_en_cours(dossier_tickets(env)))
+    if m and (not session or maintenant - float(moi.get('charge') or 0) >= RAPPEL_CHARGE_S):
+        morceaux.append(m)
+        moi['charge'] = maintenant
+    deja = set(moi.get('vus') or []) if session else None
+    m = message_evenements(fichiers_journaux(env), maintenant, deja)
     if m:
         morceaux.append(m)
-    m = message_evenements(fichiers_journaux(env), maintenant)
-    if m:
-        morceaux.append(m)
+    if session:
+        moi['vus'] = sorted(deja)[-50:]
+        moi['vu'] = maintenant
+        etat = {k: v for k, v in etat.items()
+                if isinstance(v, dict) and maintenant - float(v.get('vu') or 0) < ETAT_SESSIONS_S}
+        etat[session] = moi
+        _ecrire_etat(chemin, etat)
     if executer(['systemctl', 'is-active', '--quiet', 'gagarine'])[0] != 0:
         morceaux.append(MESSAGE_SERVICE)
     return ' '.join(morceaux)
@@ -732,7 +774,8 @@ def decider(entree, bloquer, env, executer):
                 except Exception:
                     pass
                 return sortie_hook(refus=motif_du_refus(v))
-    return sortie_hook(contexte=message_poste(env, executer))
+    session = entree.get('session_id') if isinstance(entree, dict) else None
+    return sortie_hook(contexte=message_poste(env, executer, session=session if isinstance(session, str) else None))
 
 
 def tester(commande, env=None):
