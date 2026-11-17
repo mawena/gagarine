@@ -19,5 +19,3 @@ data/autostart/io.github.mawena.Gagarine.Indicateur.desktop etc/xdg/autostart
 data/claude/ressources-poste.sh usr/share/gagarine/claude
 data/systemd-user/gagarine-menage.service usr/lib/systemd/user
 data/systemd-user/gagarine-menage.timer usr/lib/systemd/user
-data/apt/gagarine.sources etc/apt/sources.list.d
-data/apt/gagarine.gpg usr/share/keyrings

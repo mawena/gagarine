@@ -29,21 +29,30 @@ class Paquet(unittest.TestCase):
                 self.assertIn(module, installes, f'{module} n\'est pas dans debian/gagarine.install')
 
     def test_fichiers_de_la_120_installes(self):
-        """Hook Claude, ménage (unités utilisateur), dépôt APT : installés au bon endroit, et rien d'autre de data/apt."""
+        """Hook Claude, ménage (unités utilisateur) : installés au bon endroit ; rien de data/apt (depuis la 1.5.3, la source
+        et la clé APT viennent du paquet mawena-depot, dépôt unique https://apt.mawena.cloud)."""
         installes = {os.path.normpath(s): d for s, d, *_ in lignes('gagarine.install')}
         attendus = {
             'data/claude/ressources-poste.sh': 'usr/share/gagarine/claude',
             'data/systemd-user/gagarine-menage.service': 'usr/lib/systemd/user',
             'data/systemd-user/gagarine-menage.timer': 'usr/lib/systemd/user',
-            'data/apt/gagarine.sources': 'etc/apt/sources.list.d',
-            'data/apt/gagarine.gpg': 'usr/share/keyrings',
         }
         for source, destination in attendus.items():
             self.assertEqual(installes.get(source), destination, source)
-        self.assertNotIn('data/apt/LISEZMOI', installes)
+        for source, destination in installes.items():
+            self.assertFalse(source.startswith('data/apt/'), source)
+            self.assertNotIn(destination, ('etc/apt/sources.list.d', 'usr/share/keyrings'), source)
+
+    def test_depot_unique(self):
+        """Le paquet dépend de mawena-depot et retire l'ancienne source (conffile) avec rm_conffile."""
+        with open(os.path.join(RACINE, 'debian/control'), encoding='utf-8') as f:
+            controle = f.read()
+        self.assertIn('mawena-depot', controle.split('Package: gagarine', 1)[1].split('Recommends:', 1)[0])
+        self.assertEqual(lignes('gagarine.maintscript'),
+                         [['rm_conffile', '/etc/apt/sources.list.d/gagarine.sources', '1.5.3~']])
 
     def test_depot_apt_coherent(self):
-        """La source APT désigne la clé que le paquet installe."""
+        """La source de l'ancien dépôt (publiée par scripts/publier-apt.sh jusqu'en mai 2027) désigne sa clé."""
         with open(os.path.join(RACINE, 'data/apt/gagarine.sources'), encoding='utf-8') as f:
             texte = f.read()
         self.assertIn('Signed-By: /usr/share/keyrings/gagarine.gpg', texte)
@@ -64,7 +73,7 @@ class Paquet(unittest.TestCase):
         for mot in ('gagarine file appris', 'gagarine historique', 'gagarine menage', 'gagarine applications',
                     'gagarine hook\\-claude', 'gagarine ntfy essai',
                     'anticipation', 'pression', 'notifications_fin', 'notification_fin_min', 'file_ajuster',
-                    'menage_auto', 'menage_delai', 'claude_bloquer', 'travaux.json', 'gagarine.sources'):
+                    'menage_auto', 'menage_delai', 'claude_bloquer', 'travaux.json', 'mawena\\-depot.sources'):
             self.assertTrue(mot in texte, f'{mot} absent de man/gagarine.8')
 
     def test_manuel_documente_la_130(self):
