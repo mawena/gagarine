@@ -6,11 +6,11 @@ pour les travaux lourds, le **ménage** des programmes inactifs, un **swap compr
 et un **indicateur** dans la barre du haut. Il montre aussi le **processeur** : utilisation de chaque cœur, programmes les
 plus actifs, température et fréquence. Il se met à jour par `apt upgrade`.
 
-**Site et installation : [mawena.github.io/gagarine](https://mawena.github.io/gagarine/)** — dépôt APT signé, mises à
-jour par `sudo apt upgrade`.
+**Site : [mawena.github.io/gagarine](https://mawena.github.io/gagarine/)** — installation par le dépôt APT signé de
+mawena ([apt.mawena.cloud](https://apt.mawena.cloud/)), mises à jour par `sudo apt upgrade`.
 
 ```bash
-curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh
+curl -fsSL https://apt.mawena.cloud/installer.sh | sudo sh -s -- gagarine
 ```
 
 ![Aperçu de l'interface de Gagarine : phrase d'état, instruments de la RAM et du processeur, courbe](docs/captures/apercu-large.png)
@@ -43,27 +43,34 @@ Pour Ubuntu 24.04 (noyau 6.8, cgroup v2, systemd, GNOME), ou toute distribution 
 depuis son **dépôt APT signé**, publié sur [mawena.github.io/gagarine](https://mawena.github.io/gagarine/) ; ensuite,
 `sudo apt upgrade` apporte les nouvelles versions avec le reste du système.
 
+Gagarine est publié dans le dépôt APT signé unique de mawena, [apt.mawena.cloud](https://apt.mawena.cloud/) (un seul
+dépôt pour tous ses paquets Ubuntu).
+
 ### En une ligne
 
 ```bash
-curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh
+curl -fsSL https://apt.mawena.cloud/installer.sh | sudo sh -s -- gagarine
 ```
 
-Le script ([à lire sur le site](https://mawena.github.io/gagarine/installer.sh)) ajoute la clé et le dépôt, puis
-installe Gagarine : exactement les trois étapes ci-dessous.
+Le script ([à lire](https://apt.mawena.cloud/installer.sh)) ajoute la clé et le dépôt, puis installe Gagarine :
+exactement les trois étapes ci-dessous.
 
 ### Pas à pas
 
 ```bash
 # 1. La clé qui signe le dépôt
-sudo curl -fsSLo /usr/share/keyrings/gagarine.gpg https://mawena.github.io/gagarine/apt/gagarine.gpg
+sudo curl -fsSL -o /usr/share/keyrings/mawena-depot.gpg https://apt.mawena.cloud/mawena-depot.gpg
 # 2. Le dépôt
-sudo curl -fsSLo /etc/apt/sources.list.d/gagarine.sources https://mawena.github.io/gagarine/apt/gagarine.sources
+sudo curl -fsSL -o /etc/apt/sources.list.d/mawena-depot.sources https://apt.mawena.cloud/mawena-depot.sources
 # 3. Gagarine
-sudo apt update && sudo apt install gagarine
+sudo apt update && sudo apt install mawena-depot gagarine
 ```
 
-Empreinte de la clé du dépôt : `FE66 B5A9 00CB E8EB FB8F B079 FCA7 E8E0 C551 3B93` (« Gagarine APT (mawena) »).
+Empreinte de la clé du dépôt : `60A2 0BB2 21C9 1DAD F39D D55B 456B 0129 30FA 901D` (« mawena APT »).
+
+**Installé avant la 1.5.3** (ancien dépôt `https://mawena.github.io/gagarine/apt`) : rien à faire,
+`sudo apt update && sudo apt upgrade` installe `mawena-depot` et retire l'ancienne source `gagarine.sources`. L'ancien
+dépôt reste en ligne jusqu'à mai 2027.
 
 ### Vérifier que tout marche
 
@@ -96,7 +103,8 @@ Depuis la 1.2.0, le paquet ajoute lui-même le dépôt APT et sa clé : les vers
 - l'application **Gagarine** apparaît dans les applications, et l'indicateur se lance à la prochaine ouverture de session
   (ou tout de suite avec `gagarine-indicateur &`) ;
 - le minuteur du ménage (`gagarine-menage.timer`) est activé pour chaque utilisateur ;
-- le dépôt APT et sa clé sont ajoutés (`/etc/apt/sources.list.d/gagarine.sources`, `/usr/share/keyrings/gagarine.gpg`).
+- le dépôt APT et sa clé sont en place, par le paquet `mawena-depot` dont Gagarine dépend
+  (`/etc/apt/sources.list.d/mawena-depot.sources`, `/usr/share/keyrings/mawena-depot.gpg`).
 
 Les réglages (`/etc/gagarine.conf`) sont conservés aux mises à jour. L'interface et l'indicateur demandent des paquets
 recommandés (`python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `gir1.2-gtk-3.0`, `gir1.2-ayatanaappindicator3-0.1`,

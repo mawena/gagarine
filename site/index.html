@@ -64,10 +64,10 @@
     <div class="installation-courte">
       <p>Sur Ubuntu 24.04 :</p>
       <div class="commande">
-        <pre><code id="cmd-courte">curl -fsSL https://mawena.github.io/gagarine/installer.sh | sudo sh</code></pre>
+        <pre><code id="cmd-courte">curl -fsSL https://apt.mawena.cloud/installer.sh | sudo sh -s -- gagarine</code></pre>
         <button type="button" class="copier" data-cible="cmd-courte">Copier</button>
       </div>
-      <p class="nuance">Le script ajoute le dépôt APT signé puis installe le paquet ; <a href="#installer">les trois commandes qu'il lance</a> sont détaillées plus bas, pour qui préfère les taper soi-même.</p>
+      <p class="nuance">Le script ajoute le <a href="https://apt.mawena.cloud/">dépôt APT signé de mawena</a> (un seul dépôt pour tous ses paquets) puis installe le paquet ; <a href="#installer">les trois commandes qu'il lance</a> sont détaillées plus bas, pour qui préfère les taper soi-même.</p>
     </div>
   </section>
 
@@ -126,28 +126,28 @@
     <ol class="pas">
       <li>
         <p>Ajouter la clé qui signe le dépôt :</p>
-        <div class="commande"><pre><code id="cmd-cle">sudo curl -fsSLo /usr/share/keyrings/gagarine.gpg https://mawena.github.io/gagarine/apt/gagarine.gpg</code></pre><button type="button" class="copier" data-cible="cmd-cle">Copier</button></div>
+        <div class="commande"><pre><code id="cmd-cle">sudo curl -fsSLo /usr/share/keyrings/mawena-depot.gpg https://apt.mawena.cloud/mawena-depot.gpg</code></pre><button type="button" class="copier" data-cible="cmd-cle">Copier</button></div>
       </li>
       <li>
         <p>Ajouter le dépôt :</p>
-        <div class="commande"><pre><code id="cmd-source">sudo curl -fsSLo /etc/apt/sources.list.d/gagarine.sources https://mawena.github.io/gagarine/apt/gagarine.sources</code></pre><button type="button" class="copier" data-cible="cmd-source">Copier</button></div>
+        <div class="commande"><pre><code id="cmd-source">sudo curl -fsSLo /etc/apt/sources.list.d/mawena-depot.sources https://apt.mawena.cloud/mawena-depot.sources</code></pre><button type="button" class="copier" data-cible="cmd-source">Copier</button></div>
       </li>
       <li>
         <p>Installer :</p>
-        <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install gagarine</code></pre><button type="button" class="copier" data-cible="cmd-installer">Copier</button></div>
+        <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install mawena-depot gagarine</code></pre><button type="button" class="copier" data-cible="cmd-installer">Copier</button></div>
       </li>
       <li>
         <p>Vérifier que tout marche, sans risque : un programme d'essai grossit, il doit être figé, rangé dans le swap puis arrêté.</p>
         <div class="commande"><pre><code id="cmd-essai">sudo gagarine essai</code></pre><button type="button" class="copier" data-cible="cmd-essai">Copier</button></div>
       </li>
     </ol>
-    <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/gagarine/releases/latest">dernière version</a>, puis <code>sudo apt install ./gagarine_*_all.deb</code>.</p>
+    <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/gagarine/releases/latest">dernière version</a>, avec celui de <a href="https://apt.mawena.cloud/pool/main/depot/mawena-depot_0.2.1_all.deb">mawena-depot</a>, puis <code>sudo apt install ./mawena-depot_*_all.deb ./gagarine_*_all.deb</code>.</p>
   </section>
 </main>
 
 <footer class="pied">
   <p>Gagarine est un logiciel libre sous licence MIT, écrit par <a href="https://github.com/mawena">mawena</a>.</p>
-  <p>Clé du dépôt APT : <code>FE66 B5A9 00CB E8EB FB8F B079 FCA7 E8E0 C551 3B93</code></p>
+  <p>Dépôt APT : <a href="https://apt.mawena.cloud/">apt.mawena.cloud</a>, clé « mawena APT » <code>60A2 0BB2 21C9 1DAD F39D D55B 456B 0129 30FA 901D</code></p>
 </footer>
 
 <script src="gagarine.js" defer></script>
