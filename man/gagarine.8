@@ -443,11 +443,11 @@ Ménage automatique, toutes les 2 minutes (minuteur activé pour tous les utilis
 .I /usr/share/gagarine/claude/ressources\-poste.sh
 Hook \fBPreToolUse\fR à déclarer dans les réglages de Claude Code (appelle \fBgagarine hook\-claude\fR).
 .TP
-.I /etc/apt/sources.list.d/gagarine.sources
+.I /etc/apt/sources.list.d/mawena\-depot.sources
 .TQ
-.I /usr/share/keyrings/gagarine.gpg
-Dépôt APT signé (\fIhttps://mawena.github.io/gagarine/apt\fR) : après une première installation, \fBapt upgrade\fR met
-Gagarine à jour.
+.I /usr/share/keyrings/mawena\-depot.gpg
+Dépôt APT signé de mawena (\fIhttps://apt.mawena.cloud\fR), installé par le paquet \fBmawena\-depot\fR dont Gagarine
+dépend : \fBapt upgrade\fR met Gagarine à jour.
 .PP
 Hors administrateur, l'état est dans \fI~/.local/state/gagarine\fR.
 .SH EXEMPLES

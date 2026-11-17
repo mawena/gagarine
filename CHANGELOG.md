@@ -7,6 +7,17 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.5.3] - 2026-11-17
+
+### Modifié
+- Passage au dépôt APT unique de mawena, <https://apt.mawena.cloud/>. Le paquet ne fournit plus sa source
+  `/etc/apt/sources.list.d/gagarine.sources` ni sa clé `/usr/share/keyrings/gagarine.gpg` : il dépend de
+  `mawena-depot`, qui installe la source et la clé du dépôt unique. Un simple `sudo apt update && sudo apt upgrade`
+  fait passer une machine existante au nouveau dépôt ; l'ancienne source est retirée proprement (`rm_conffile`).
+- Installation : `curl -fsSL https://apt.mawena.cloud/installer.sh | sudo sh -s -- gagarine` (README, site,
+  `installer.sh` du site qui lance désormais cet installateur). L'ancien dépôt `https://mawena.github.io/gagarine/apt`
+  reste en ligne jusqu'à mai 2027.
+
 ## [1.5.2] - 2026-11-14
 
 ### Modifié

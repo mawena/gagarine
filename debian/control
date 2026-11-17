@@ -10,6 +10,7 @@ Rules-Requires-Root: no
 Package: gagarine
 Architecture: all
 Depends: ${misc:Depends},
+         mawena-depot,
          python3 (>= 3.10),
          libnotify-bin,
          systemd,
@@ -66,8 +67,8 @@ Description: RAM guard that freezes the program filling the memory
  launched outside the queue and suggests the right command, and a status line
  ("gagarine ligne-etat") shows the state of the machine in Claude Code.
  .
- The package installs a signed APT repository entry, so "apt upgrade" keeps
- Gagarine up to date.
+ The package depends on mawena-depot, the signed APT repository of its
+ author (https://apt.mawena.cloud), so "apt upgrade" keeps Gagarine up to date.
  .
  A GNOME graphical interface ("gagarine-interface", GTK 4 and libadwaita)
  shows the RAM, the processor, the swap, the frozen programs, the job queue,
